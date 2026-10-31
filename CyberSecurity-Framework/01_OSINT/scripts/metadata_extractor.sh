@@ -5,7 +5,9 @@
 # ============================================================
 
 FILE="$1"
-OUTPUT_DIR="${2:-../metadata}"
+# Salida junto al módulo, independiente del cwd desde el que se lance
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="${2:-$MODULE_DIR/metadata}"
 
 if [[ -z "$FILE" ]]; then
     echo "Uso: ./metadata_extractor.sh <archivo>"
@@ -14,11 +16,19 @@ if [[ -z "$FILE" ]]; then
 fi
 
 if [[ ! -f "$FILE" ]]; then
+    case "$FILE" in
+        /*) RUTA_BUSCADA="$FILE" ;;
+        *)  RUTA_BUSCADA="$PWD/$FILE" ;;
+    esac
     echo "❌ Archivo no encontrado: $FILE"
+    echo "   Se buscó en: $RUTA_BUSCADA"
+    echo "   Las rutas relativas se resuelven desde el directorio en el que se ejecuta"
+    echo "   el script; también puedes pasar una ruta absoluta."
     exit 1
 fi
 
 echo "📄 Extrayendo metadatos de: $FILE"
+mkdir -p "$OUTPUT_DIR"
 
 # Detectar tipo de archivo
 TYPE=$(file -b "$FILE" | cut -d' ' -f1)
