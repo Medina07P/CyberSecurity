@@ -141,6 +141,17 @@ printf '1\n10.9.9.9\n22\n\n\n\ns\nn\ns\n' | SESSION_TARGETS_FILE="$f" bash "$WZ"
 grep -qF '10.9.9.9|22|SSH|SSH|M' "$f" && ok "escribe sobre fichero vacío" || ko "escribe sobre fichero vacío"
 
 echo ""
+echo "=== integración ==="
+# run_all_config no debe lanzar el asistente (se colgaría esperando entrada).
+# Se lanza desde su propio directorio: es como lo ejecuta el gestor
+# (cyber_framework.sh hace cd al módulo antes de llamar a run_all_*).
+out=$(cd "$FW_DIR/00_Config" && printf '' | timeout 60 bash ./run_all_config.sh 2>&1)
+printf '%s' "$out" | grep -q 'Ejecutando: scripts/validate_config' \
+    && ok "run_all_config sí ejecuta el resto" || ko "run_all_config sí ejecuta el resto"
+printf '%s' "$out" | grep -q 'Ejecutando: scripts/config_wizard' \
+    && ko "run_all_config salta el asistente" || ok "run_all_config salta el asistente"
+
+echo ""
 echo "----------------------------------------"
 echo "pasan: $pasan   fallan: $fallan"
 [[ "$fallan" -eq 0 ]]
