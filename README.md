@@ -71,15 +71,14 @@ CyberSecurity-Framework/
 │
 ├── 03_Scanners/             # Escáneres de vulnerabilidades
 │   ├── network_scanners/    # Nmap, Masscan, Rustscan
-│   ├── web_scanners/        # Nuclei, Nikto, Burp, ZAP
-│   └── vulnerability_scanners/ # OpenVAS, Nessus
+│   └── web_scanners/        # Nuclei, Nikto, Burp, ZAP
 │
 ├── 04_Enumeration/          # Enumeración de servicios
 │   ├── smb/                 # Enumeración SMB
 │   ├── ldap/                # Enumeración LDAP
 │   ├── web/                 # Enumeración web
-│   ├── database/            # MySQL, PostgreSQL, Redis
-│   └── scripts/             # Scripts de enumeración
+│   ├── ssh/ ftp/ api/       # SSH, FTP y APIs
+│   └── database/            # MySQL, PostgreSQL, Redis
 │
 ├── 05_Exploitation/         # Explotación controlada
 │   ├── web/                 # SQLi, XSS, RCE
@@ -96,8 +95,7 @@ CyberSecurity-Framework/
 │
 ├── 07_Wireless/             # Seguridad inalámbrica
 │   ├── wifi/                # Ataques WiFi
-│   ├── bluetooth/           # Ataques Bluetooth
-│   └── captures/            # Capturas de paquetes
+│   └── bluetooth/           # Ataques Bluetooth
 │
 ├── 08_Forensics/            # Análisis forense
 │   ├── memory/              # Análisis de memoria
@@ -128,12 +126,21 @@ CyberSecurity-Framework/
 │   ├── cves/                # Documentación de CVEs
 │   └── procedures/          # Procedimientos estándar
 │
-└── 13_Labs/                 # Laboratorios y prácticas
-    ├── hackthebox/          # Máquinas HTB
-    ├── tryhackme/           # Salas THM
-    ├── active_directory/    # Laboratorios AD
-    └── web_apps/            # Aplicaciones web vulnerables
+├── 13_Labs/                 # Laboratorios y prácticas
+│   ├── hackthebox/          # Máquinas HTB
+│   ├── tryhackme/           # Salas THM
+│   ├── active_directory/    # Laboratorios AD
+│   └── web_apps/            # Aplicaciones web vulnerables
+│
+├── 00_Config/lib/           # Librería del gestor (parser, sesión, fases)
+├── tests/                   # Pruebas del gestor
+└── cyber_framework.sh       # Gestor interactivo (punto de entrada)
 ```
+
+Los resultados **no** se guardan dentro del framework: todos los scripts escriben
+en `scans/<herramienta>/`, en la raíz del repositorio. Esa carpeta y los datos de
+reconocimiento están en `.gitignore`, porque contienen IPs y hallazgos de cada
+sesión.
 
 ---
 
@@ -179,10 +186,10 @@ sudo apt install -y nmap masscan hydra ffuf sqlmap nikto whatweb \
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/tu-usuario/CyberSecurity-Framework.git
+git clone https://github.com/Medina07P/CyberSecurity.git
 
-# Entrar al directorio
-cd CyberSecurity-Framework
+# Entrar al directorio del framework
+cd CyberSecurity/CyberSecurity-Framework
 
 # Dar permisos a todos los scripts
 find . -name "*.sh" -exec chmod +x {} \;
@@ -195,8 +202,7 @@ tree -a -L 2
 ### Configuración Inicial
 
 ```bash
-# 1. Configurar alcance
-cp 00_Config/scope.yaml.example 00_Config/scope.yaml
+# 1. Configurar alcance (editar el fichero que ya existe)
 nano 00_Config/scope.yaml
 
 # 2. Configurar objetivos
@@ -209,6 +215,39 @@ cd 00_Config && ./scripts/validate_config.sh && cd ..
 ---
 
 ## 🎮 Uso
+
+### El gestor interactivo (recomendado)
+
+```bash
+cd CyberSecurity-Framework
+./cyber_framework.sh
+```
+
+Al arrancar te pide el objetivo, o te deja elegirlo de `00_Config/targets.txt`, y
+lo recuerda durante toda la sesión: todos los scripts que piden un host lo
+reciben como valor por defecto. La cabecera muestra el objetivo actual y qué
+fases tienen ya resultados.
+
+| Tecla | Acción |
+|---|---|
+| `00`–`13` | Entrar en un módulo (también vale `0`–`9`) |
+| `T` | Cambiar el objetivo de la sesión |
+| `99` | Flujo completo (comprueba el alcance de `scope.yaml` y pide confirmación) |
+| `?` | Ayuda, con el orden recomendado de fases |
+| `Q` | Salir |
+
+Cada script declara sus datos en su propia línea `Uso:`, así que el gestor
+pregunta exactamente los que necesita —también en los que piden dos o más— y
+ofrece el valor del `Ejemplo:` como defecto al pulsar Enter.
+
+Las marcas de la lista avisan antes de ejecutar:
+
+- `[intrusiva]` — fuerza bruta, explotación, persistencia o limpieza: pide confirmación aparte
+- `[manual]` — usa banderas o subcomandos: escribes la línea de argumentos completa
+- `[generador]` — escribe otro script, no escanea nada
+
+Los resultados van siempre a `scans/<herramienta>/` en la raíz del repositorio, se
+lance el script desde donde se lance.
 
 ### Flujo de Auditoría Completo
 
@@ -399,6 +438,32 @@ El framework incluye una extensa base de conocimiento:
 
 ---
 
+## 📖 Documentación del proyecto
+
+Además de este README:
+
+| Documento | Contenido |
+|---|---|
+| `AGENTS.md` | Conocimiento operativo: cómo están hechas las cosas y por qué. Empieza por aquí si vas a tocar el código |
+| `docs/CLEANUP-2026-10-30.md` | Sesión de limpieza: 44 ficheros en cuarentena, 8 bugs corregidos, rutas absolutas eliminadas |
+| `docs/SCANS-PATHS-2026-10-30.md` | Por qué todos los resultados van a `<repo>/scans/` y cómo verificarlo en Kali |
+| `docs/GESTOR-2026-10-30.md` | Diseño del gestor: parser de `Uso:`, sesión del objetivo, estado de fases, decisiones tomadas |
+| `docs/superpowers/plans/` | Plan de implementación de la unificación de rutas |
+
+### Pruebas
+
+```bash
+cd CyberSecurity-Framework
+./tests/run_tests.sh    # librería del gestor (61 comprobaciones)
+./tests/run_e2e.sh      # el script recibe el argumento tecleado (11)
+./tests/run_smoke.sh    # navegación del menú con entrada simulada
+```
+
+No necesitan terminal interactiva ni herramientas de pentesting instaladas: se
+alimentan por tubería y usan dobles de `nmap`.
+
+---
+
 ## 🤝 Contribuir
 
 Si deseas contribuir a este framework:
@@ -412,7 +477,14 @@ Si deseas contribuir a este framework:
 - **Bash**: Usar `#!/bin/bash` y funciones claras
 - **Python**: Seguir PEP 8
 - **Documentación**: Markdown con formato limpio
-- **Scripts**: Siempre incluir `--help` y validación de argumentos
+- **Scripts**: Siempre incluir `Uso:` y `Ejemplo:` en la cabecera, con los huecos
+  entre `<OBLIGATORIO>` y `[opcional]`. El gestor los lee para pedir los datos.
+- **Rutas de salida**: nunca relativas al directorio actual. Se resuelven desde
+  el propio script y se escriben bajo `<repo>/scans/<herramienta>/`.
+- **Valores de retorno**: una función que devuelve un valor imprime solo el valor
+  por stdout; la interfaz va por stderr.
+- **Pruebas**: si tocas `00_Config/lib/` o `cyber_framework.sh`, ejecuta
+  `tests/run_tests.sh` y `tests/run_e2e.sh`.
 
 ---
 

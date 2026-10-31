@@ -1,1 +1,80 @@
 *.restore
+
+# ═══════════════════════════════════════════════════════════
+#  DATOS GENERADOS POR EL FRAMEWORK — NO SON CÓDIGO
+#  Contienen IPs, dominios, banners y credenciales de
+#  sesiones reales. El remoto es público: nada de esto se
+#  versiona. Si añades un directorio de salida nuevo, añádelo
+#  también aquí.
+# ═══════════════════════════════════════════════════════════
+
+# Resultados de escaneo (convención actual: raíz del repo)
+/scans/
+CyberSecurity-Framework/scans/
+
+# Árboles de datos del framework
+CyberSecurity-Framework/loot/
+CyberSecurity-Framework/captures/
+CyberSecurity-Framework/dns/
+CyberSecurity-Framework/fingerprinting/
+
+# 01_OSINT: dominios, subdominios, emails, metadatos y redes sociales
+CyberSecurity-Framework/01_OSINT/domains/*.txt
+CyberSecurity-Framework/01_OSINT/emails/*.txt
+CyberSecurity-Framework/01_OSINT/emails/leaks/*.json
+CyberSecurity-Framework/01_OSINT/metadata/*.txt
+CyberSecurity-Framework/01_OSINT/social_media/*.txt
+CyberSecurity-Framework/01_OSINT/subdomains/*
+!CyberSecurity-Framework/01_OSINT/subdomains/README.md
+
+# 02_Recon: un directorio por ejecución y sus volcados
+CyberSecurity-Framework/02_Recon/recon_*/
+CyberSecurity-Framework/02_Recon/dns/*
+CyberSecurity-Framework/02_Recon/fingerprinting/*
+CyberSecurity-Framework/02_Recon/host_discovery/*
+CyberSecurity-Framework/02_Recon/whois/*
+CyberSecurity-Framework/02_Recon/screenshots/*
+
+# 04_Enumeration: los enumeradores dejan la salida junto a los scripts
+CyberSecurity-Framework/04_Enumeration/*.txt
+CyberSecurity-Framework/04_Enumeration/*/*.txt
+
+# 08_Forensics: resultados del análisis
+CyberSecurity-Framework/08_Forensics/analysis/
+CyberSecurity-Framework/08_Forensics/recovered/
+
+# 09_Automation: informes que genera report_generator.py
+CyberSecurity-Framework/09_Automation/python/report.html
+CyberSecurity-Framework/09_Automation/python/report.json
+
+# 10_Evidence: pruebas, hallazgos y volcados
+CyberSecurity-Framework/10_Evidence/proofs/
+CyberSecurity-Framework/10_Evidence/findings/
+CyberSecurity-Framework/10_Evidence/logs/
+CyberSecurity-Framework/10_Evidence/pcaps/
+CyberSecurity-Framework/10_Evidence/screenshots/
+CyberSecurity-Framework/10_Evidence/credentials/found/
+CyberSecurity-Framework/10_Evidence/*.zip
+
+# 11_Reports: informes generados (las plantillas de templates/ se conservan)
+CyberSecurity-Framework/11_Reports/final_report/*
+!CyberSecurity-Framework/11_Reports/final_report/.gitkeep
+CyberSecurity-Framework/11_Reports/evidence/*.tar.gz
+CyberSecurity-Framework/11_Reports/report_*.json
+
+# Payloads generados (la muestra php_shell.php se conserva)
+CyberSecurity-Framework/05_Exploitation/payloads/web_shells/shell_*
+
+# Objetivo de sesión del gestor
+CyberSecurity-Framework/00_Config/.session
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Editores y sistema
+*.swp
+*~
+.DS_Store
+Thumbs.db
