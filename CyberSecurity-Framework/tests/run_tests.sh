@@ -795,6 +795,45 @@ kill $OCC 2>/dev/null
 PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --parar >/dev/null 2>&1
 rm -rf "$FW/../scans/burp" "$BSTUB"
 
+# ──────────────────────────────────────────────────────────
+section "burp_launcher: espera, captura y explicación"
+BSTUB="$TMPD/bin"; mkdir -p "$BSTUB"
+# burpsuite falso que SÍ abre el puerto indicado en el config
+cat > "$BSTUB/burpsuite" <<'EOS'
+#!/bin/bash
+CFG=""; while [ $# -gt 0 ]; do
+    case "$1" in
+        --config-file=*) CFG="${1#*=}" ;;
+        --config-file)   CFG="$2"; shift ;;
+    esac
+    shift
+done
+PORT=$(grep -o '"listener_port":[0-9]*' "$CFG" 2>/dev/null | cut -d: -f2)
+exec python3 -c 'import socket,sys,time
+s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+s.bind(("127.0.0.1",int(sys.argv[1]))); s.listen(5); time.sleep(20)' "$PORT"
+EOS
+chmod +x "$BSTUB/burpsuite"
+export SESSION_FILE="$TMPD/.session"; printf '127.0.0.1\n' > "$SESSION_FILE"
+OUT=$(PATH="$BSTUB:$PATH" BURP_LAUNCHER_ESPERA=10 bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" 8090 2>&1)
+eq "launcher: detecta el puerto cuando escucha" "$(printf '%s' "$OUT" | grep -c 'Burp escucha')" "1"
+eq "launcher: explica el flujo manual" "$(printf '%s' "$OUT" | grep -ci 'Repeater')" "1"
+eq "launcher: imprime el comando de http_inject" "$(printf '%s' "$OUT" | grep -c 'http_inject.sh')" "1"
+eq "launcher: avisa de que Community no guarda el proyecto" "$(printf '%s' "$OUT" | grep -ci 'no guarda' )" "1"
+PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --parar >/dev/null 2>&1
+
+# El config se ignora y el puerto no escucha: no aborta, guía
+cat > "$BSTUB/burpsuite" <<'EOS'
+#!/bin/bash
+sleep 5
+EOS
+chmod +x "$BSTUB/burpsuite"
+OUT=$(PATH="$BSTUB:$PATH" BURP_LAUNCHER_ESPERA=2 bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" 8091 2>&1)
+eq "launcher: si no escucha, guía en vez de abortar" "$(printf '%s' "$OUT" | grep -ci 'Settings.*Proxy')" "1"
+eq "launcher: si no escucha, no miente sobre la captura" "$(printf '%s' "$OUT" | grep -ci 'verificad')" "0"
+PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --parar >/dev/null 2>&1
+rm -rf "$FW/../scans/burp" "$BSTUB"
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
