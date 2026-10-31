@@ -150,3 +150,92 @@ printf '%s\n' "$PID" > "$PIDFILE"
 echo "🚀 Burp arrancado (PID ${PID}) con config: ${CONFIG}"
 echo "   Puerto pedido: ${PUERTO}"
 echo "   Log: ${LOG}"
+
+# ─── Espera al listener ────────────────────────────────────
+# Community ignora el --project-file y puede ignorar el puerto del config:
+# no se asume nada, se comprueba quién escucha de verdad.
+
+esperar_listener() {
+    local puerto="$1" i=0
+    while (( i < ESPERA )); do
+        puerto_libre "$puerto" || return 0
+        sleep 2
+        i=$((i + 2))
+    done
+    return 1
+}
+
+# Ofrece pulsar Start Burp si hay ventana. Solo con confirmación explícita:
+# es una acción sobre la interfaz del operador.
+pulsar_start_burp() {
+    command -v xdotool >/dev/null 2>&1 || return 1
+    local w geom x y ancho alto
+    w=$(xdotool search --name 'Burp Suite Community' 2>/dev/null | head -1)
+    [[ -z "$w" ]] && return 1
+    echo ""
+    echo "Hay una ventana de Burp esperando. ¿Pulso 'Start Burp' por ti? [s/N]"
+    read -r respuesta
+    case "$respuesta" in
+        s|S|si|SI|sí|SÍ) ;;
+        *) return 1 ;;
+    esac
+    geom=$(xwininfo -id "$w" 2>/dev/null)
+    x=$(printf '%s' "$geom" | awk -F: '/Absolute upper-left X/{gsub(/ /,"",$2); print $2}')
+    y=$(printf '%s' "$geom" | awk -F: '/Absolute upper-left Y/{gsub(/ /,"",$2); print $2}')
+    ancho=$(printf '%s' "$geom" | awk -F: '/Width/{gsub(/ /,"",$2); print $2}')
+    alto=$(printf '%s' "$geom" | awk -F: '/Height/{gsub(/ /,"",$2); print $2}')
+    [[ -z "$x" || -z "$y" || -z "$ancho" || -z "$alto" ]] && return 1
+    xdotool windowraise "$w" 2>/dev/null
+    xdotool windowactivate --sync "$w" 2>/dev/null
+    sleep 1
+    xdotool mousemove $((x + ancho - 62)) $((y + alto - 33)) click 1 2>/dev/null
+    return 0
+}
+
+if ! esperar_listener "$PUERTO"; then
+    if pulsar_start_burp; then
+        esperar_listener "$PUERTO" || true
+    fi
+fi
+
+if puerto_libre "$PUERTO"; then
+    echo ""
+    echo "❌ Burp no está escuchando en ${PUERTO}."
+    echo "   En Community, el puerto del config no siempre se aplica y el 8080"
+    echo "   puede estar ocupado por otro proceso."
+    echo "   Cámbialo en Settings → Proxy → Proxy settings, o libera el puerto."
+    echo "   Vuelve a comprobar con: ./burp_launcher.sh --estado"
+    exit 0
+fi
+
+echo "✅ Burp escucha en 127.0.0.1:${PUERTO}"
+
+# Verificación de captura: una petición real a través del proxy. Se fuerza el
+# proxy con --noproxy '' porque curl se salta localhost por defecto.
+if [[ -n "$TARGET" ]]; then
+    codigo=$(curl -sk --max-time 5 --noproxy '' -x "http://127.0.0.1:${PUERTO}" \
+        -o /dev/null -w '%{http_code}' "http://${TARGET}/" 2>/dev/null)
+    if [[ -n "$codigo" && "$codigo" != "000" ]]; then
+        echo "✅ Proxy comprobado: una petición a ${TARGET} ha pasado por el puerto ${PUERTO} (HTTP ${codigo})."
+    else
+        echo "⚠️  No se pudo comprobar la captura: sin respuesta a través del proxy."
+        echo "   El listener responde, pero puede faltar aceptar el CA o no ser HTTP."
+    fi
+fi
+
+# ─── Flujo manual ──────────────────────────────────────────
+
+echo ""
+echo "── Qué hacer ahora (Burp no escanea; captura) ──────────────"
+echo "1. Apunta el navegador al proxy 127.0.0.1:${PUERTO}."
+echo "2. Abre https:// y acepta el CA de Burp (http://burp) si hace falta."
+echo "3. Navega con la sesión iniciada, manda la petición interesante a Repeater."
+echo "4. Guárdala como: ${DIR}/peticion_${SLUG}.txt"
+echo "   (este script no crea ese fichero: lo guardas tú)"
+echo "5. Prueba la inyección sobre ella:"
+echo "   ./05_Exploitation/web/http_inject.sh ${DIR}/peticion_${SLUG}.txt ${TARGET:-<objetivo>}"
+echo ""
+echo "⚠️  Community no guarda proyectos en disco: al cerrar Burp se pierde el"
+echo "   historial. Lo único que sobrevive es la petición que guardes en el paso 4."
+echo ""
+echo "   Para cerrar este Burp: ./burp_launcher.sh --parar"
