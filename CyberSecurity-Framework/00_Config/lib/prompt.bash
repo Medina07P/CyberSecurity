@@ -11,7 +11,7 @@
 #  el prompt entero como si fuera el parámetro.
 # ============================================================
 
-PROMPT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROMPT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 [[ -n "${PARAMS_LIB_DIR:-}" ]] || source "$PROMPT_LIB_DIR/params.bash"
 [[ -n "${SESSION_LIB_DIR:-}" ]] || source "$PROMPT_LIB_DIR/session.bash"
 

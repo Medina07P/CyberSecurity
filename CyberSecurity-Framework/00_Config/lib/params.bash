@@ -5,7 +5,7 @@
 #  Solo lee el fichero: no ejecuta nada del script analizado.
 # ============================================================
 
-PARAMS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PARAMS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 # ─── Lectura de la línea de uso ────────────────────────────
 
