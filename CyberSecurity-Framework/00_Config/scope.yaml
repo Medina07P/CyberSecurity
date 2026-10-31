@@ -1,0 +1,85 @@
+# ============================================================
+#  ALCANCE DE AUDITORÍA - Red Team Assessment
+#  ⚠️  ACTUALIZAR ANTES DE CADA PROYECTO
+# ============================================================
+
+project:
+  name: "Red Team Assessment - PROYECTO"
+  client: "Nombre del Cliente"
+  start_date: "YYYY-MM-DD"
+  end_date: "YYYY-MM-DD"
+  version: "1.0"
+  team:
+    lead: "Auditor Líder"
+    members:
+      - "Miembro 1"
+      - "Miembro 2"
+
+# ─── OBJETIVOS ──────────────────────────────────────────────
+targets:
+  ips:
+    - "192.168.1.0/24"
+    - "10.10.10.0/24"
+  domains:
+    - "example.com"
+    - "*.example.com"
+  excluded:
+    - "192.168.1.1"
+    - "192.168.1.254"
+    - "10.10.10.1"
+
+  allowed_ports:
+    - "22"
+    - "80"
+    - "443"
+    - "445"
+    - "3306"
+    - "8080"
+
+# ─── METODOLOGÍA ────────────────────────────────────────────
+methods:
+  reconnaissance:
+    - "nmap"
+    - "masscan"
+    - "dnsrecon"
+  
+  scanning:
+    - "nmap -sV -sC"
+    - "nikto"
+    - "nuclei"
+  
+  exploitation:
+    - "metasploit"
+    - "sqlmap"
+    - "hydra"
+  
+  post_exploitation:
+    - "mimikatz"
+    - "bloodhound"
+    - "linpeas"
+
+# ─── REGLAS DE COMPROMISO ──────────────────────────────────
+rules_of_engagement:
+  - "No realizar ataques DoS"
+  - "No modificar datos de producción"
+  - "Todas las pruebas en horario: 00:00-06:00"
+  - "Reportar hallazgos críticos en menos de 4 horas"
+  - "No acceder a datos de clientes reales"
+
+# ─── AUTORIZACIÓN ──────────────────────────────────────────
+authorization:
+  document: "autorizacion_firmada.pdf"
+  issued_by: "Departamento Legal"
+  date: "YYYY-MM-DD"
+  contact:
+    name: "Contacto de Seguridad"
+    email: "security@cliente.com"
+    phone: "+XX XXX XXX XXX"
+
+# ─── REPORTING ──────────────────────────────────────────────
+reporting:
+  format: "HTML, PDF, JSON"
+  frequency: "Diaria (hallazgos críticos)"
+  final_report: "YYYY-MM-DD"
+  executive_summary: true
+  technical_annex: true
