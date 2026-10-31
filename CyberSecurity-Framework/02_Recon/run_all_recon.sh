@@ -1,12 +1,25 @@
 #!/bin/bash
+# ============================================================
+#  RECON - Reconocimiento completo del objetivo
+#  Uso: ./run_all_recon.sh [objetivo]
+#  Ejemplo: ./run_all_recon.sh 192.168.1.10
+#  Sin argumento recorre las 3 primeras entradas de targets.txt.
+# ============================================================
+
+TARGET="${1:-}"
+
 echo "════════════════════════════════════════════════════════"
 echo "  EJECUTANDO RECONOCIMIENTO"
 echo "════════════════════════════════════════════════════════"
-TARGETS_FILE="../00_Config/targets.txt"
-if [[ -f "$TARGETS_FILE" ]]; then
-    TARGETS=$(grep -v "^#" "$TARGETS_FILE" | grep "|" | head -3 | cut -d'|' -f1 | tr -d ' ')
+if [[ -n "$TARGET" ]]; then
+    TARGETS="$TARGET"
 else
-    TARGETS="127.0.0.1"
+    TARGETS_FILE="../00_Config/targets.txt"
+    if [[ -f "$TARGETS_FILE" ]]; then
+        TARGETS=$(grep -v "^#" "$TARGETS_FILE" | grep "|" | head -3 | cut -d'|' -f1 | tr -d ' ')
+    else
+        TARGETS="127.0.0.1"
+    fi
 fi
 echo "🎯 Objetivos: $TARGETS"
 echo ""
