@@ -302,7 +302,7 @@ class ReportGenerator:
 
     def generate_json(self):
         """Genera reporte JSON"""
-        json_file = self.output_file.replace('.html', '.json')
+        json_file = os.path.splitext(self.output_file)[0] + ".json"
         with open(json_file, 'w') as f:
             json.dump(self.data, f, indent=2, default=str)
         print(f"✅ Reporte JSON generado: {json_file}")
