@@ -151,6 +151,71 @@ hr_url() {
     fi
 }
 
+# ─── Señales ───────────────────────────────────────────────
+
+# hr_signature <fichero_cuerpo> <codigo> <tamano> [cadena...] → codigo:tamano:md5
+# El cuerpo se normaliza antes del md5: se neutraliza el eco de cada cadena
+# (y sus variantes URL/HTML) y los valores volátiles (nonce, CSRF, epoch,
+# fechas). Sin eso, una página con token distinto en cada respuesta parecería
+# distinta para cada payload y todo sería "hallazgo".
+hr_signature() {
+    local fichero="$1" codigo="$2" tamano="$3"
+    shift 3
+    local contenido cadena url html md5
+    contenido=$(cat "$fichero" 2>/dev/null)
+
+    for cadena in "$@"; do
+        [[ -z "$cadena" ]] && continue
+        contenido=${contenido//"$cadena"/~~}
+        url=$(printf '%s' "$cadena" | sed 's/ /%20/g; s/'\''/%27/g; s/"/%22/g; s/</%3C/g; s/>/%3E/g; s/&/%26/g; s/;/%3B/g')
+        [[ "$url" != "$cadena" ]] && contenido=${contenido//"$url"/~~}
+        html=$(printf '%s' "$cadena" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g; s/'\''/\&#39;/g')
+        [[ "$html" != "$cadena" ]] && contenido=${contenido//"$html"/~~}
+    done
+
+    contenido=$(printf '%s' "$contenido" | sed -E \
+        -e 's/[0-9a-fA-F]{16,}/~~/g' \
+        -e 's/[A-Za-z0-9+\/]{24,}={0,2}/~~/g' \
+        -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:?[0-9]{2})?/~~/g' \
+        -e 's/[0-9]{10,13}/~~/g')
+
+    md5=$(printf '%s' "$contenido" | md5sum | cut -d' ' -f1)
+    printf '%s:%s:%s\n' "$codigo" "$tamano" "$md5"
+}
+
+# hr_unescaped <fichero_cuerpo> <payload> → 0 si el payload aparece literal
+hr_unescaped() {
+    local fichero="$1" payload="$2"
+    [[ -r "$fichero" && -n "$payload" ]] || return 1
+    grep -qF -- "$payload" "$fichero" 2>/dev/null
+}
+
+# hr_db_error <fichero_cuerpo> → imprime el motor si hay error de BD (rc 0)
+hr_db_error() {
+    local fichero="$1" motor patron
+    [[ -r "$fichero" ]] || return 1
+    while IFS='|' read -r motor patron; do
+        [[ -z "$motor" ]] && continue
+        if grep -qiE -- "$patron" "$fichero" 2>/dev/null; then
+            printf '%s\n' "$motor"
+            return 0
+        fi
+    done <<'FIRMAS'
+MySQL|You have an error in your SQL syntax
+MySQL|Warning: mysql_
+MySQL|MySqlException
+PostgreSQL|ERROR:[[:space:]]+syntax error at or near
+PostgreSQL|pg_query\(\)
+MSSQL|Unclosed quotation mark after the character string
+MSSQL|Incorrect syntax near
+Oracle|ORA-[0-9]{4,5}
+SQLite|SQLITE_ERROR
+SQLite|near "[^"]*": syntax error
+FIRMAS
+    return 1
+}
+
+
 # ─── Parámetros ────────────────────────────────────────────
 
 # _hr_pares <cadena> <ubicacion> → una línea "ubicacion|nombre|valor" por par
