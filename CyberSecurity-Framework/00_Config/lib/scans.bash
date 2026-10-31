@@ -1,0 +1,56 @@
+#!/bin/bash
+# ============================================================
+#  SCANS - Rutas, nombres y línea base de los resultados
+#  Uso: source 00_Config/lib/scans.bash
+#  Quien devuelve un valor imprime SOLO el valor por stdout.
+# ============================================================
+
+SCANS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+SCANS_CONFIG_DIR="$(cd "$SCANS_LIB_DIR/.." && pwd)"
+SCANS_FW_DIR="$(cd "$SCANS_CONFIG_DIR/.." && pwd)"
+SCANS_REPO_DIR="$(cd "$SCANS_FW_DIR/.." && pwd)"
+
+# ─── Rutas ─────────────────────────────────────────────────
+
+# scans_root → <repo>/scans
+scans_root() {
+    printf '%s\n' "$SCANS_REPO_DIR/scans"
+}
+
+# scans_dir <tool> → <repo>/scans/<tool>, creado
+scans_dir() {
+    local tool="$1" dir
+    [[ -z "$tool" ]] && return 1
+    dir="$(scans_root)/$tool"
+    mkdir -p "$dir" 2>/dev/null || return 1
+    printf '%s\n' "$dir"
+}
+
+# ─── Nombres ───────────────────────────────────────────────
+
+# scans_slug <objetivo> → objetivo con ':' y '/' sustituidos por '_'
+scans_slug() {
+    printf '%s\n' "${1//[:\/]/_}"
+}
+
+# ─── Línea base ────────────────────────────────────────────
+
+# scans_signature <url> → "<código>:<tamaño>" de la respuesta
+scans_signature() {
+    curl -sk -o /dev/null -w '%{http_code}:%{size_download}' "$1" 2>/dev/null
+}
+
+# scans_baseline_size <url> → tamaño del relleno catch-all, o 0 si no lo hay.
+# Pide una ruta aleatoria que no debería existir: si el servidor responde 2xx/3xx
+# con contenido, está sirviendo lo mismo para todo (SPA, rewrite) y ese tamaño
+# es el que hay que filtrar en el fuzzing.
+scans_baseline_size() {
+    local url="${1%/}" sig code size
+    sig=$(curl -sk -o /dev/null -w '%{http_code}:%{size_download}' \
+        "${url}/scans_probe_${RANDOM}${RANDOM}" 2>/dev/null)
+    code=${sig%%:*}
+    size=${sig#*:}
+    [[ "$code" =~ ^[23][0-9][0-9]$ ]] || { printf '0\n'; return 0; }
+    [[ "$size" =~ ^[0-9]+$ ]] || size=0
+    printf '%s\n' "$size"
+}

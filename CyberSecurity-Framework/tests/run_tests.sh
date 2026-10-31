@@ -185,6 +185,32 @@ printf 'x;y\nx;y\nx;y\n' | prompt_for_slots "$FW/03_Scanners/network_scanners/nm
 printf 'abc\nabc\nabc\n' | prompt_for_slots "$FW/06_PostExploitation/persistence/ssh_backdoor.sh" "x" >/dev/null 2>&1
 eq "puerto inválido 3 veces devuelve 1" "$?" "1"
 
+# ──────────────────────────────────────────────────────────
+section "scans.bash: rutas, nombres y línea base"
+source "$FW/00_Config/lib/scans.bash" 2>/dev/null
+
+STUBD="$(mktemp -d)"
+cat > "$STUBD/curl" <<'EOS'
+#!/bin/bash
+echo "${STUB_CODE:-200}:${STUB_SIZE:-433}"
+EOS
+chmod +x "$STUBD/curl"
+
+eq "scans_root termina en /scans" "$(basename "$(scans_root)")" "scans"
+eq "scans_slug limpia : y /"      "$(scans_slug 'https://a.b:443/x')" "https___a.b_443_x"
+eq "scans_dir devuelve <scans>/pruebatool" "$(basename "$(scans_dir pruebatool)")" "pruebatool"
+[ -d "$(scans_dir pruebatool)" ] && ok "scans_dir deja el directorio en disco" || bad "scans_dir no creó el directorio"
+
+PATH="$STUBD:$PATH"
+export STUB_CODE=200 STUB_SIZE=433
+eq "baseline con catch-all" "$(scans_baseline_size https://x/)" "433"
+export STUB_CODE=404 STUB_SIZE=0
+eq "baseline sin catch-all" "$(scans_baseline_size https://x/)" "0"
+export STUB_CODE=200 STUB_SIZE=433
+eq "signature devuelve código:tamaño" "$(scans_signature https://x/)" "200:433"
+
+rm -rf "$STUBD" "$(scans_dir pruebatool)"
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
