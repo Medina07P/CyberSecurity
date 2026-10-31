@@ -1,7 +1,10 @@
 # INFORME EJECUTIVO DE AUDITORÍA
 
+> ⚠️ **PLANTILLA**: este esqueleto no consume los resultados de `scans/`.
+> Los huecos `[ASÍ]` se rellenan a mano con lo que se haya verificado.
+
 ## Resumen Ejecutivo
-- **Fecha:** 2026-06-17 20:32:00
+- **Fecha:** 2026-10-31 08:39:18
 - **Auditor:** kali
 - **Cliente:** Cliente
 - **Alcance:** Escaneo de red y aplicaciones web
@@ -42,4 +45,4 @@
 3. [Paso 3]
 
 ---
-*Informe generado automáticamente por CTF Toolkit Pro*
+*Plantilla generada por CTF Toolkit Pro — rellenar a mano*

@@ -100,5 +100,17 @@ printf '%s' "$out" | grep -qF "config_wizard.sh" \
     || { echo "  FALLO    no lista config_wizard.sh"; fail=$((fail + 1)); }
 
 echo ""
+echo "=== informes: se declaran plantilla ==="
+# report_generator.sh no lee nada de scans/: escribe un esqueleto con huecos
+# [FECHA], [NOMBRE_CLIENTE]... Presentarlo como "generado automáticamente" tras
+# una auditoría real es lo que este aserto impide.
+run "informe: avisa en pantalla de que es plantilla" '11\n2\n--executive\n\nQ\n' "PLANTILLA"
+if grep -qi "PLANTILLA" "$FW/11_Reports/executive/executive_summary.md" 2>/dev/null; then
+    echo "  OK       el informe ejecutivo se declara plantilla"
+else
+    echo "  FALLO    el informe ejecutivo no se declara plantilla"; fail=$((fail+1))
+fi
+
+echo ""
 echo "----------------------------------------"
 echo "fallos: $fail"
