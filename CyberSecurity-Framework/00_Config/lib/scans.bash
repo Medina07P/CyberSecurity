@@ -54,3 +54,24 @@ scans_baseline_size() {
     [[ "$size" =~ ^[0-9]+$ ]] || size=0
     printf '%s\n' "$size"
 }
+
+# scans_ffuf_count <json> → número de hallazgos en la salida JSON de ffuf.
+# Contar '"url"' no vale: la configuración de ffuf también trae su propia "url"
+# con el marcador FUZZ, así que un run sin hallazgos se leía como uno solo.
+scans_ffuf_count() {
+    local file="$1" n
+    [[ -f "$file" ]] || { printf '0\n'; return 0; }
+    if command -v python3 >/dev/null 2>&1; then
+        n=$(python3 -c '
+import json, sys
+try:
+    print(len(json.load(open(sys.argv[1])).get("results") or []))
+except Exception:
+    print(0)
+' "$file" 2>/dev/null)
+        [[ "$n" =~ ^[0-9]+$ ]] && { printf '%s\n' "$n"; return 0; }
+    fi
+    # Sin python3: cada hallazgo lleva "position", que la configuración no tiene.
+    n=$(grep -o '"position"' "$file" 2>/dev/null | wc -l | tr -d ' ')
+    printf '%s\n' "${n:-0}"
+}
