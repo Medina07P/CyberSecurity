@@ -11,11 +11,13 @@ inestable y un login JSON que exige Cookie: sid=ok.
 
 import html
 import json
-import random
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
+
+
+_CONTADOR = 0
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -50,12 +52,10 @@ class Manejador(BaseHTTPRequestHandler):
         elif ruta == "/safe":
             self._responder(200, "<html><body>pagina fija</body></html>")
         elif ruta == "/sqli":
-            if "AND '1'='1" in valor:
-                self._responder(200, "<html><body>lista con 3 filas</body></html>")
-            elif "AND '1'='2" in valor:
+            if "AND '1'='2" in valor:
                 self._responder(200, "<html><body>no hay resultados</body></html>")
             else:
-                self._responder(200, "<html><body>pagina normal</body></html>")
+                self._responder(200, "<html><body>lista con 3 filas</body></html>")
         elif ruta == "/err":
             if "'" in valor:
                 self._responder(500, "You have an error in your SQL syntax near '%s'" % valor)
@@ -71,8 +71,11 @@ class Manejador(BaseHTTPRequestHandler):
             else:
                 self._responder(200, "<html><body>%s</body></html>" % html.escape(valor))
         elif ruta == "/unstable":
-            relleno = "x" * random.randint(10, 400)
-            self._responder(200, "<html><body>%s</body></html>" % relleno)
+            global _CONTADOR
+            _CONTADOR += 1
+            relleno = ("nuevo", "viejo", "medio", "alto", "bajo", "raro",
+                       "verde", "azul", "rojo", "gris")[_CONTADOR % 10]
+            self._responder(200, "<html><body>estado: %s</body></html>" % relleno)
         else:
             self._responder(404, "no encontrado")
 
