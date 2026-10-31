@@ -48,7 +48,7 @@ esac
 section "Parser: recuentos sobre los .sh"
 # Se excluye tests/ (este mismo fichero); la librería usa extensión .bash
 total=$(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | wc -l | tr -d ' ')
-eq "116 scripts .sh en el framework" "$total" "116"
+eq "117 scripts .sh en el framework" "$total" "117"
 eq "la librería no se cuenta como script" "$(find "$FW/00_Config/lib" -name '*.sh' | wc -l | tr -d ' ')" "0"
 
 dos=0
@@ -59,7 +59,7 @@ for f in $(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | sort); do
     o=$(params_slots "$f" | awk -F'|' '$3=="obligatorio"' | wc -l | tr -d ' ')
     [ "$o" -ge 2 ] && oblig=$((oblig + 1))
 done
-eq "37 scripts con 2+ huecos" "$dos" "37"
+eq "38 scripts con 2+ huecos" "$dos" "38"
 eq "8 scripts con 2+ obligatorios" "$oblig" "8"
 
 # ──────────────────────────────────────────────────────────
@@ -927,6 +927,70 @@ if HPORT=$(iniciar_servidor_http); then
 else
     echo "  SKIP     python3 no instalado"
 fi
+
+# ──────────────────────────────────────────────────────────
+section "sqlmap_request: entrada, objetivo y permisos"
+SSTUB="$(mktemp -d)"
+cat > "$SSTUB/sqlmap" <<'EOS'
+#!/bin/bash
+printf '%s\n' "$*" >> "${SSTUB_LOG:-/dev/null}"
+case " $* " in
+    *" --dbs "*)      echo "[INFO] available databases [1]:"; echo "[*] clientes" ;;
+    *" --tables "*)   echo "Database: clientes"; echo "[2 tables]"; echo "| clientes |"; echo "| pedidos |" ;;
+    *" --dump "*)     echo "Table: clientes"; echo "| 1 | ana |"; echo "| 2 | luis |" ;;
+    *)                echo "[INFO] GET parameter 'id' appears to be 'AND boolean-based blind - WHERE or HAVING clause' injectable" ;;
+esac
+exit 0
+EOS
+chmod +x "$SSTUB/sqlmap"
+export SSTUB_LOG="$TMPD/sqlmap_llamadas.txt"; : > "$SSTUB_LOG"
+export SQLMAP_SI=1
+
+printf 'GET /?id=1 HTTP/1.1\nHost: 127.0.0.1:18001\n\n' > "$TMPD/req_sm.req"
+OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1)
+eq "sqlmap_request: pasa --ignore-stdin" "$(grep -c -- '--ignore-stdin' "$SSTUB_LOG")" "1"
+eq "sqlmap_request: exige --batch" "$(grep -c -- '--batch' "$SSTUB_LOG")" "1"
+eq "sqlmap_request: technique B por defecto" "$(grep -c -- '--technique=B\b' "$SSTUB_LOG")" "1"
+eq "sqlmap_request: escribe el resumen" "$(find "$FW/../scans/sqlmap" -name '*.txt' | wc -l | tr -d ' ')" "1"
+
+# Sin sqlmap instalado: error explícito, no "no inyectable". Se le da un PATH
+# mínimo (solo dirname, que es lo único que el script usa antes de comprobar
+# la herramienta) porque con el PATH real sqlmap siempre aparece.
+mkdir -p "$TMPD/minbin"
+ln -sf "$(command -v dirname)" "$TMPD/minbin/dirname" 2>/dev/null
+BASHBIN=$(command -v bash)
+OUT=$(PATH="$TMPD/minbin" "$BASHBIN" "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1); RC=$?
+eq "sqlmap_request: sin sqlmap lo dice" "$(printf '%s' "$OUT" | grep -ci 'no está instalado\|no se encuentra' )" "1"
+eq "sqlmap_request: sin sqlmap sale 1" "$RC" "1"
+
+# Entrada estándar: "-" lee la petición y la deja en un temporal
+: > "$SSTUB_LOG"
+printf 'GET /?id=1 HTTP/1.1\nHost: 127.0.0.1:18001\n\n' | PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" - >/dev/null 2>&1
+eq "sqlmap_request: '-' lee de la entrada estándar" "$(grep -c -- '--batch' "$SSTUB_LOG")" "1"
+
+# Directorio: un sqlmap por .req y ficheros que no se pisan
+mkdir -p "$TMPD/ev"; cp "$TMPD/req_sm.req" "$TMPD/ev/001_id_sqli_bool.req"; cp "$TMPD/req_sm.req" "$TMPD/ev/002_q_xss.req"
+: > "$SSTUB_LOG"
+PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/ev" >/dev/null 2>&1
+eq "sqlmap_request: directorio = un sqlmap por fichero" "$(grep -c -- '--batch' "$SSTUB_LOG")" "2"
+eq "sqlmap_request: dos logs, uno por fichero" "$(find "$FW/../scans/sqlmap/127.0.0.1_18001" -name '*.log' | wc -l | tr -d ' ')" "2"
+eq "sqlmap_request: un solo resumen para la tanda" "$(find "$FW/../scans/sqlmap" -name '*.txt' | wc -l | tr -d ' ')" "1"
+
+# POST: pide confirmación y, si se niega, no llama a sqlmap
+: > "$SSTUB_LOG"
+printf 'POST /login HTTP/1.1\nHost: 127.0.0.1:18001\nContent-Type: application/json\n\n{"user":"ana"}' > "$TMPD/req_sm_post.req"
+OUT=$(SQLMAP_SI= PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm_post.req" 2>&1 <<< 'n')
+eq "sqlmap_request: POST pide confirmación" "$(printf '%s' "$OUT" | grep -ci 'repetir\|confirm' )" "1"
+eq "sqlmap_request: si se niega, no ejecuta sqlmap" "$(wc -l < "$SSTUB_LOG" | tr -d ' ')" "0"
+
+# Host reescrito: conserva el puerto del .req
+printf 'GET /?id=1 HTTP/1.1\nHost: app.inventado.example:8443\n\n' > "$TMPD/req_sm_vhost.req"
+PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm_vhost.req" 10.0.0.5 >/dev/null 2>&1
+eq "sqlmap_request: el Host reescrito conserva el puerto" \
+   "$(grep -ho 'Host: 10\.0\.0\.5:[0-9]*' "$FW/../scans/sqlmap/"*/copia_*.req 2>/dev/null | head -1 | grep -c ':8443')" "1"
+
+unset SQLMAP_SI
+rm -rf "$FW/../scans/sqlmap" "$SSTUB"
 
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
