@@ -152,6 +152,37 @@ printf '%s' "$out" | grep -q 'Ejecutando: scripts/config_wizard' \
     && ko "run_all_config salta el asistente" || ok "run_all_config salta el asistente"
 
 echo ""
+echo "=== escritura: errores que no deben pasar en silencio ==="
+# La tabla muestra host, puerto, protocolo y prioridad (no la descripción)
+f="$FIXTURE/tabla.txt"
+printf '%s\n' "192.168.1.10|80|HTTP|Portal Web Principal|C" > "$f"
+out=$(printf '1\n\nn\n' | SESSION_TARGETS_FILE="$f" bash "$WZ" 2>&1)
+printf '%s' "$out" | grep -qE '192\.168\.1\.10[[:space:]]+80[[:space:]]+HTTP[[:space:]]+C' \
+    && ok "la tabla muestra la prioridad" || ko "la tabla muestra la prioridad"
+
+# Si la copia de seguridad no se puede crear, el fichero no se sustituye
+f="$FIXTURE/sin_bak.txt"
+printf '%s\n' "1.1.1.1|80|HTTP|X|B" > "$f"
+mkdir -p "$f.bak"
+out=$(printf '2\n10.9.9.9\n22\n\n\n\ns\nn\ns\n' | SESSION_TARGETS_FILE="$f" bash "$WZ" 2>&1)
+grep -qF '1.1.1.1|80|HTTP|X|B' "$f" \
+    && ok "sin copia de seguridad no sustituye el fichero" || ko "sin copia de seguridad no sustituye el fichero"
+printf '%s' "$out" | grep -qF '❌' \
+    && ok "avisa de que no pudo hacer la copia" || ko "avisa de que no pudo hacer la copia"
+printf '%s' "$out" | grep -qF '✅' \
+    && ko "no anuncia éxito si no hay copia" || ok "no anuncia éxito si no hay copia"
+
+# Si no se puede escribir (directorio que es un fichero), no se anuncia éxito
+f="$FIXTURE/bloque.txt/t.txt"
+: > "$FIXTURE/bloque.txt"
+out=$(printf '1\n10.9.9.9\n22\n\n\n\ns\nn\ns\n' | SESSION_TARGETS_FILE="$f" bash "$WZ" 2>&1)
+printf '%s' "$out" | grep -qF '✅' \
+    && ko "no anuncia éxito si la escritura falla" || ok "no anuncia éxito si la escritura falla"
+printf '%s' "$out" | grep -qF '❌' \
+    && ok "avisa de que no pudo escribir" || ko "avisa de que no pudo escribir"
+[[ -e "$f" ]] && ko "no deja restos tras el fallo" || ok "no deja restos tras el fallo"
+
+echo ""
 echo "----------------------------------------"
 echo "pasan: $pasan   fallan: $fallan"
 [[ "$fallan" -eq 0 ]]
