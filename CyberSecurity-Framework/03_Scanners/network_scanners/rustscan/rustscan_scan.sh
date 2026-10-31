@@ -27,10 +27,16 @@ echo "🚀 Escaneando con RustScan: $TARGET"
 
 rustscan -a "$TARGET" -r 1-65535 -t 2000 \
     -o "$OUTPUT_DIR/rustscan_${TARGET}.txt" \
-    --ulimit 5000 2>/dev/null
+    --ulimit 5000 2>>"$OUTPUT_DIR/errores.log"
 
 if [[ -f "$OUTPUT_DIR/rustscan_${TARGET}.txt" ]]; then
     echo "✅ Escaneo completado"
     echo "📁 Resultados: $OUTPUT_DIR/rustscan_${TARGET}.txt"
     cat "$OUTPUT_DIR/rustscan_${TARGET}.txt"
+fi
+
+# El stderr de la herramienta no se descarta: un "0 hallazgos" no debe
+# poder ser en realidad un fallo de ejecucion.
+if [[ -s "$OUTPUT_DIR/errores.log" ]]; then
+    echo "⚠️  Errores registrados en: $OUTPUT_DIR/errores.log"
 fi

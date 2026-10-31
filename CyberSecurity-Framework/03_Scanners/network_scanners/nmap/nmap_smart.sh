@@ -23,7 +23,7 @@ echo "📡 Escaneo inteligente de: $TARGET"
 
 # Fase 1: Puertos abiertos (usando -Pn para evitar problemas de ping)
 echo "  Fase 1: Descubriendo puertos..."
-nmap -Pn -p- --min-rate 2000 -T4 "$TARGET" -oA "$OUTPUT_DIR/smart_ports_${SLUG}" 2>/dev/null
+nmap -Pn -p- --min-rate 2000 -T4 "$TARGET" -oA "$OUTPUT_DIR/smart_ports_${SLUG}" 2>>"$OUTPUT_DIR/errores.log"
 
 # Extraer puertos
 if [[ -f "$OUTPUT_DIR/smart_ports_${SLUG}.nmap" ]]; then
@@ -37,11 +37,11 @@ if [[ -n "$OPEN_PORTS" ]]; then
     
     # Fase 2: Servicios y versiones
     echo "  Fase 2: Detectando servicios..."
-    nmap -Pn -sV -sC -O -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_services_${SLUG}" 2>/dev/null
+    nmap -Pn -sV -sC -O -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_services_${SLUG}" 2>>"$OUTPUT_DIR/errores.log"
     
     # Fase 3: Scripts de vulnerabilidad
     echo "  Fase 3: Escaneando vulnerabilidades..."
-    nmap --script vuln -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_vuln_${SLUG}" 2>/dev/null
+    nmap --script vuln -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_vuln_${SLUG}" 2>>"$OUTPUT_DIR/errores.log"
     
     echo ""
     echo "✅ Escaneo completado"
@@ -53,4 +53,10 @@ else
     echo "     asegúrate de tener servicios corriendo:"
     echo "     - sudo systemctl start ssh  (puerto 22)"
     echo "     - sudo systemctl start apache2 (puerto 80)"
+fi
+
+# El stderr de la herramienta no se descarta: un "0 hallazgos" no debe
+# poder ser en realidad un fallo de ejecucion.
+if [[ -s "$OUTPUT_DIR/errores.log" ]]; then
+    echo "⚠️  Errores registrados en: $OUTPUT_DIR/errores.log"
 fi

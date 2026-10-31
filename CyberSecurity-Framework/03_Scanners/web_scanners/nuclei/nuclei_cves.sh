@@ -26,7 +26,7 @@ echo "  Severidad: $SEVERITY"
 # Escaneo de CVEs con severity específica
 nuclei -u "$URL" -t cves/ -severity "$SEVERITY" \
     -o "$OUTPUT_DIR/cves_${SLUG}.txt" \
-    -json -stats 2>/dev/null
+    -json -stats 2>>"$OUTPUT_DIR/errores.log"
 
 if [[ -f "$OUTPUT_DIR/cves_${SLUG}.txt" ]]; then
     echo ""
@@ -35,4 +35,10 @@ if [[ -f "$OUTPUT_DIR/cves_${SLUG}.txt" ]]; then
     grep -E "CVE-[0-9]{4}-[0-9]{4,}" "$OUTPUT_DIR/cves_${SLUG}.txt" | sort -u
     echo ""
     echo "📁 Resultados: $OUTPUT_DIR/cves_${SLUG}.txt"
+fi
+
+# El stderr de la herramienta no se descarta: un "0 hallazgos" no debe
+# poder ser en realidad un fallo de ejecucion.
+if [[ -s "$OUTPUT_DIR/errores.log" ]]; then
+    echo "⚠️  Errores registrados en: $OUTPUT_DIR/errores.log"
 fi

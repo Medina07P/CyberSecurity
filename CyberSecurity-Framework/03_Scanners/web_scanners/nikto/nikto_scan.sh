@@ -32,7 +32,7 @@ echo "  ⚠️  Nikto puede tardar varios minutos..."
 NIKTO_BASE="$OUTPUT_DIR/nikto_${SLUG}"
 NIKTO_ARGS=(-h "$URL" -o "$NIKTO_BASE" -Format txt)
 [[ "$URL" == https://* ]] && NIKTO_ARGS+=(-ssl)
-nikto "${NIKTO_ARGS[@]}" 2>/dev/null
+nikto "${NIKTO_ARGS[@]}" 2>>"$OUTPUT_DIR/errores.log"
 
 # Extraer CVEs y vulnerabilidades
 if [[ -f "${NIKTO_BASE}.txt" ]]; then
@@ -44,4 +44,10 @@ if [[ -f "${NIKTO_BASE}.txt" ]]; then
     echo "📁 Resultados: ${NIKTO_BASE}.txt"
 else
     echo "  ⚠️ No se encontraron vulnerabilidades o el escaneo falló"
+fi
+
+# El stderr de la herramienta no se descarta: un "0 hallazgos" no debe
+# poder ser en realidad un fallo de ejecucion.
+if [[ -s "$OUTPUT_DIR/errores.log" ]]; then
+    echo "⚠️  Errores registrados en: $OUTPUT_DIR/errores.log"
 fi
