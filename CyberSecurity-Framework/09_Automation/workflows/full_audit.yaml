@@ -1,0 +1,38 @@
+name: Full Audit
+version: 1.0
+
+steps:
+  - name: Config
+    phase: config
+    script: ../00_Config/scripts/validate_config.sh
+
+  - name: OSINT
+    phase: osint
+    script: ../01_OSINT/scripts/osint_harvester.sh
+
+  - name: Recon
+    phase: recon
+    script: ../02_Recon/scripts/auto_recon.sh
+
+  - name: Scan
+    phase: scan
+    script: ../03_Scanners/run_all_scanners.sh
+
+  - name: Enum
+    phase: enum
+    script: ../04_Enumeration/run_all_enum.sh
+
+  - name: Exploit
+    phase: exploit
+    script: ../05_Exploitation/run_all_exploits.sh
+
+  - name: Post
+    phase: post
+    script: ../06_PostExploitation/run_all_post.sh
+
+  - name: Report
+    phase: report
+    script: ../09_Automation/python/report_generator.py
+
+timeout: 3600
+parallel: false

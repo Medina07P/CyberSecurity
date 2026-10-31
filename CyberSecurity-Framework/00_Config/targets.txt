@@ -1,0 +1,50 @@
+# ============================================================
+#  LISTA DE OBJETIVOS
+#  Formato: IP|PUERTO|PROTOCOLO|DESCRIPCIÓN|PRIORIDAD
+# ============================================================
+#  PRIORIDAD: C = Crítica, A = Alta, M = Media, B = Baja
+# ============================================================
+
+# ─── MÁQUINAS PRINCIPALES ──────────────────────────────────
+
+192.168.1.10|22|SSH|Servidor Ubuntu 22.04|C
+192.168.1.10|80|HTTP|Portal Web Principal|C
+192.168.1.10|443|HTTPS|Portal Web (SSL)|C
+192.168.1.10|8080|HTTP|Proxy / API Gateway|A
+
+192.168.1.20|445|SMB|Servidor de Archivos (Windows)|A
+192.168.1.20|135|RPC|RPC / DCOM|M
+192.168.1.20|3389|RDP|Remote Desktop|A
+
+192.168.1.30|3306|MySQL|Base de Datos Principal|C
+192.168.1.30|5432|PostgreSQL|Base de Datos Secundaria|M
+192.168.1.30|6379|Redis|Cache / Sesiones|A
+
+# ─── SERVICIOS ADICIONALES ─────────────────────────────────
+
+10.10.10.5|21|FTP|FTP Anónimo (test)|B
+10.10.10.5|22|SSH|Jump Server|A
+10.10.10.5|8080|HTTP|Proxy|M
+
+10.10.10.15|53|DNS|Servidor DNS|M
+10.10.10.15|123|NTP|Servidor NTP|B
+
+# ─── DOMINIOS ──────────────────────────────────────────────
+
+example.com|80|HTTP|Página Principal|C
+example.com|443|HTTPS|Página Principal SSL|C
+
+admin.example.com|443|HTTPS|Panel Administración|C
+api.example.com|443|HTTPS|API REST|A
+mail.example.com|25|SMTP|Servidor de Correo|M
+
+# ─── FIREWALL / SEGURIDAD ─────────────────────────────────
+
+192.168.1.1|—|—|Gateway / Firewall|—(EXCLUIDO)
+192.168.1.254|—|—|DNS / DHCP|—(EXCLUIDO)
+
+# ─── NOTAS ─────────────────────────────────────────────────
+
+# ✅ VERIFICADOS: 2026-01-15
+# ⚠️ PENDIENTE: Puerto 8080 en 192.168.1.30 (Nginx)
+# 🚫 PROHIBIDO: Escanear 10.10.10.1 (Router)
