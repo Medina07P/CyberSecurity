@@ -665,6 +665,37 @@ else
     echo "  SKIP     python3 no instalado: sin servidor de prueba"
 fi
 
+# ──────────────────────────────────────────────────────────
+section "http_inject: SQLi por niveles"
+if HPORT=$(iniciar_servidor_http); then
+    export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5
+    printf 'GET /sqli?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_sqli.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_sqli.txt" 127.0.0.1 >/dev/null 2>&1
+    TSV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT".tsv"
+    eq "sqli: par booleano es CONFIRMADO" "$(awk -F'\t' '$1=="CONFIRMADO" && $3=="sqli_bool"' "$TSV" | wc -l | tr -d ' ')" "1"
+    eq "sqli: el par booleano va marcado como tal" "$(cut -f4 "$TSV" | grep -c "AND '1'='2")" "1"
+
+    printf 'GET /err?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_err.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_err.txt" 127.0.0.1 >/dev/null 2>&1
+    eq "sqli: error de BD es FUERTE, no CONFIRMADO" "$(awk -F'\t' '$1=="FUERTE" && $3=="sqli_error"' "$TSV" | wc -l | tr -d ' ')" "1"
+    eq "sqli: el error no se declara confirmado" "$(awk -F'\t' '$1=="CONFIRMADO" && $3=="sqli_error"' "$TSV" | wc -l | tr -d ' ')" "0"
+
+    printf 'GET /time?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_time.txt"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_time.txt" 127.0.0.1 2>&1)
+    eq "sqli: retardo confirmado en los dos payloads de sueño" "$(awk -F'\t' '$1=="CONFIRMADO" && $3=="sqli_time"' "$TSV" | wc -l | tr -d ' ')" "2"
+    eq "sqli: resume confirmados en consola" "$(printf '%s' "$OUT" | grep -c '2 confirmados')" "1"
+
+    # El falso positivo del 31: un parámetro que solo refleja no es SQLi.
+    printf 'GET /echo?q=hola HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_echo3.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_echo3.txt" 127.0.0.1 >/dev/null 2>&1
+    eq "sqli: un parámetro que solo refleja no da SQLi confirmada" \
+       "$(awk -F'\t' '$1=="CONFIRMADO" && $3 ~ /^sqli/' "$TSV" | wc -l | tr -d ' ')" "0"
+    rm -f "$FW/../scans/web/http_inject_127.0.0.1_"*
+    kill "$HTTP_SRV_PID" 2>/dev/null
+else
+    echo "  SKIP     python3 no instalado"
+fi
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
