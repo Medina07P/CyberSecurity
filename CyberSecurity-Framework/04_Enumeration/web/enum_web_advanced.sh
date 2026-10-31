@@ -5,8 +5,9 @@
 # Ejemplo: ./enum_web_advanced.sh 192.168.1.10
 
 TARGET="$1"
-SCANS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scans"
-OUTPUT_DIR="$SCANS_DIR/web"
+
+SCANS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../00_Config/lib" && pwd)"
+source "$SCANS_LIB/scans.bash"
 
 if [[ -z "$TARGET" ]]; then
     echo "Uso: ./enum_web_advanced.sh <IP>"
@@ -14,7 +15,8 @@ if [[ -z "$TARGET" ]]; then
     exit 1
 fi
 
-mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR=$(scans_dir web)
+SLUG=$(scans_slug "$TARGET")
 
 echo "🌐 Enumeración Web Avanzada en: $TARGET"
 echo "────────────────────────────────────────"
@@ -29,16 +31,19 @@ for port in 80 443 8080 8443 8000 8888 9000; do
 
         # Cabeceras de seguridad
         echo " → Cabeceras de seguridad..."
-        curl -skI "$URL" | grep -iE "X-Frame-Options|X-Content-Type-Options|Content-Security-Policy|Strict-Transport-Security" > "$OUTPUT_DIR/security_headers_${port}.txt"
+        curl -skI "$URL" | grep -iE "X-Frame-Options|X-Content-Type-Options|Content-Security-Policy|Strict-Transport-Security" > "$OUTPUT_DIR/security_headers_${SLUG}_${port}.txt"
 
-        # Archivos sensibles
+        # Archivos sensibles. Sin línea base, un catch-all marca los siete archivos.
         echo " → Buscando archivos sensibles..."
+        BASE=$(scans_baseline_size "$URL")
         for file in .env .git/config backup.zip config.php wp-config.php .htaccess admin.php; do
-            CODE=$(curl -sk -o /dev/null -w "%{http_code}" "$URL/$file")
-            if [[ "$CODE" =~ ^(200|301|302|403) ]]; then
-                echo " 🔴 $file ($CODE)"
-                echo "$URL/$file|$CODE" >> "$OUTPUT_DIR/sensitive_files_${port}.txt"
-            fi
+            SIG=$(scans_signature "$URL/$file")
+            CODE=${SIG%%:*}
+            SIZE=${SIG#*:}
+            [[ "$CODE" =~ ^(200|301|302|403)$ ]] || continue
+            [[ "$BASE" != "0" && "$SIZE" == "$BASE" ]] && continue
+            echo " 🔴 $file ($CODE)"
+            echo "$URL/$file|$CODE" >> "$OUTPUT_DIR/sensitive_files_${SLUG}_${port}.txt"
         done
     fi
 done
