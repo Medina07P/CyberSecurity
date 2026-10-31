@@ -24,7 +24,7 @@ for port in 80 443 8080 8443 8000 8888 9000; do
     if nc -zv "$TARGET" "$port" 2>/dev/null; then
         echo " → Puerto $port abierto"
         PROTO="http"
-        [[ "$port" == "443" ]] && PROTO="https"
+        [[ "$port" == "443" || "$port" == "8443" ]] && PROTO="https"
         URL="${PROTO}://${TARGET}:${port}"
 
         # Cabeceras de seguridad

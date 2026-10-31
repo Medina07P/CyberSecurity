@@ -57,22 +57,29 @@ WEB_PORTS=$(nmap -p 80,443,8080,8443 "$TARGET" 2>/dev/null | grep -E "^[0-9]+/tc
 
 if [[ -n "$WEB_PORTS" ]]; then
     echo "  → Puertos web abiertos: $WEB_PORTS"
-    
-    # Nikto
-    echo "  → Nikto..."
-    if [[ -f "web_scanners/nikto/nikto_scan.sh" ]]; then
-        ./web_scanners/nikto/nikto_scan.sh "http://$TARGET"
-    else
-        echo "  ⚠️ nikto_scan.sh no encontrado"
-    fi
-    
-    # Nuclei
-    echo "  → Nuclei..."
-    if [[ -f "web_scanners/nuclei/nuclei_scan.sh" ]]; then
-        ./web_scanners/nuclei/nuclei_scan.sh "http://$TARGET"
-    else
-        echo "  ⚠️ nuclei_scan.sh no encontrado"
-    fi
+
+    # Un escaneo por puerto detectado, con el esquema correcto: nunca asumir el 80.
+    for WEB_PORT in ${WEB_PORTS//,/ }; do
+        WEB_SCHEME="http"
+        [[ "$WEB_PORT" == "443" || "$WEB_PORT" == "8443" ]] && WEB_SCHEME="https"
+        WEB_URL="${WEB_SCHEME}://${TARGET}:${WEB_PORT}"
+
+        # Nikto
+        echo "  → Nikto ($WEB_URL)..."
+        if [[ -f "web_scanners/nikto/nikto_scan.sh" ]]; then
+            ./web_scanners/nikto/nikto_scan.sh "$WEB_URL"
+        else
+            echo "  ⚠️ nikto_scan.sh no encontrado"
+        fi
+
+        # Nuclei
+        echo "  → Nuclei ($WEB_URL)..."
+        if [[ -f "web_scanners/nuclei/nuclei_scan.sh" ]]; then
+            ./web_scanners/nuclei/nuclei_scan.sh "$WEB_URL"
+        else
+            echo "  ⚠️ nuclei_scan.sh no encontrado"
+        fi
+    done
 else
     echo "  ⚠️ No se encontraron puertos web abiertos"
 fi
