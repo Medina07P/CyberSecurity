@@ -443,9 +443,10 @@ module_labs() {
 
 # ─── Flujo Completo ──────────────────────────────────────────
 
-# La fase de reconocimiento se lanza con auto_recon.sh, que sí acepta el
-# objetivo. run_all_recon.sh ignora sus argumentos y usa los tres primeros
-# de 00_Config/targets.txt, así que no sirve para un objetivo de sesión.
+# La fase de reconocimiento se lanza con auto_recon.sh, no con
+# run_all_recon.sh: este último ya acepta objetivo desde 2026-10-31, pero
+# encadena los seis scripts del módulo y multiplicaría por seis lo que hace
+# la opción 99. Se mantiene auto_recon.sh por alcance, no por limitación.
 run_recon_phase() {
     local script="02_Recon/scripts/auto_recon.sh"
     if [[ ! -f "$script" ]]; then

@@ -227,6 +227,23 @@ else
     echo "  SKIP     zsh no instalado"
 fi
 
+# ──────────────────────────────────────────────────────────
+section "run_all_recon acepta objetivo"
+RMP="$TMPD/recon"
+mkdir -p "$RMP/02_Recon/scripts" "$RMP/00_Config"
+printf '192.168.1.10|22|SSH|fixture|C\n' > "$RMP/00_Config/targets.txt"
+cat > "$RMP/02_Recon/scripts/fake.sh" <<'EOS'
+#!/bin/bash
+printf '%s\n' "$1" >> "$RMP_LOG"
+EOS
+cp "$FW/02_Recon/run_all_recon.sh" "$RMP/02_Recon/"
+export RMP_LOG="$TMPD/recon_args"
+: > "$RMP_LOG"
+(cd "$RMP/02_Recon" && bash run_all_recon.sh 192.0.2.99 >/dev/null 2>&1)
+eq "run_all_recon: usa el objetivo recibido"        "$(grep -c '192.0.2.99'   "$RMP_LOG")" "1"
+eq "run_all_recon: con argumento no lee targets.txt" "$(grep -c '192.168.1.10' "$RMP_LOG")" "0"
+eq "run_all_recon: declara su hueco en Uso:"         "$(params_mode "$FW/02_Recon/run_all_recon.sh")" "slots"
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
