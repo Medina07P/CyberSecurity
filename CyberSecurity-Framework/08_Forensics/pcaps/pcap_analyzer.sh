@@ -5,7 +5,8 @@
 # Ejemplo: ./pcap_analyzer.sh capture.pcap
 
 PCAP_FILE="$1"
-OUTPUT_DIR="../analysis/pcaps"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/analysis/pcaps"
 
 if [[ -z "$PCAP_FILE" ]]; then
     echo "Uso: ./pcap_analyzer.sh <PCAP_FILE>"

@@ -6,8 +6,9 @@
 # Ejemplo: ./report_generator.sh --full
 # ============================================================
 
-REPORT_DIR="$(pwd)"
-EVIDENCE_DIR="../10_Evidence"
+REPORT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$REPORT_DIR" || exit 1
+EVIDENCE_DIR="$REPORT_DIR/../10_Evidence"
 DATE=$(date +%Y%m%d)
 TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
 
@@ -253,6 +254,11 @@ show_help() {
     echo "    ./report_generator.sh --full"
     echo "    ./report_generator.sh --all"
 }
+
+if [[ $# -eq 0 ]]; then
+    show_help
+    exit 1
+fi
 
 case "$1" in
     --executive) generate_executive ;;

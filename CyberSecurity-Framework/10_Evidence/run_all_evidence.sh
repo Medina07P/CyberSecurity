@@ -18,6 +18,9 @@ echo "════════════════════════�
 echo "  GESTIÓN DE EVIDENCIAS PARA: $TARGET"
 echo "════════════════════════════════════════════════════════"
 
+# Los hijos se invocan con rutas relativas: ejecutar desde este directorio.
+cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
+
 echo ""
 echo "📸 CAPTURA AUTOMÁTICA"
 echo "────────────────────────────────────────"
