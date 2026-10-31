@@ -48,7 +48,7 @@ esac
 section "Parser: recuentos sobre los .sh"
 # Se excluye tests/ (este mismo fichero); la librería usa extensión .bash
 total=$(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | wc -l | tr -d ' ')
-eq "113 scripts .sh en el framework" "$total" "113"
+eq "114 scripts .sh en el framework" "$total" "114"
 eq "la librería no se cuenta como script" "$(find "$FW/00_Config/lib" -name '*.sh' | wc -l | tr -d ' ')" "0"
 
 dos=0
