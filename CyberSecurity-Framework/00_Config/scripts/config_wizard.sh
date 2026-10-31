@@ -117,9 +117,65 @@ wz_exists() {
 WZ_LINES=()
 WZ_MODE=""
 
-# Escribe el resultado. La tarea 3 la implementa.
+# ─── Escritura ─────────────────────────────────────────────
+
+# Cabecera estándar de targets.txt, idéntica a la del fichero del repo.
+wz_header() {
+    cat <<'EOF'
+# ============================================================
+#  LISTA DE OBJETIVOS
+#  Formato: IP|PUERTO|PROTOCOLO|DESCRIPCIÓN|PRIORIDAD
+# ============================================================
+#  PRIORIDAD: C = Crítica, A = Alta, M = Media, B = Baja
+# ============================================================
+
+EOF
+}
+
+# Vuelca WZ_LINES al fichero según WZ_MODE (1 añadir / 2 lista nueva).
 wz_write() {
-    :
+    local f="$TARGETS_FILE" tmp="$TARGETS_FILE.tmp" linea
+
+    mkdir -p "$(dirname "$f")" 2>/dev/null
+
+    if [[ "$WZ_MODE" == "2" ]]; then
+        if ! { wz_header; for linea in "${WZ_LINES[@]}"; do printf '%s\n' "$linea"; done; } > "$tmp"; then
+            echo "❌ No se pudo escribir $tmp"
+            rm -f "$tmp"
+            return 1
+        fi
+        # Copia de seguridad antes de sustituir: el original no desaparece
+        # hasta que el temporal está completo.
+        [[ -f "$f" ]] && cp -f "$f" "$f.bak"
+        if ! mv -f "$tmp" "$f"; then
+            echo "❌ No se pudo sustituir $f (la copia sigue en $f.bak)"
+            rm -f "$tmp"
+            return 1
+        fi
+    else
+        if [[ ! -f "$f" ]]; then
+            wz_header > "$f"
+        elif [[ -s "$f" ]] && [[ "$(tail -c1 "$f")" != "" ]]; then
+            # El fichero no acaba en salto: la línea nueva no debe pegarse.
+            echo >> "$f"
+        fi
+        printf '# ─── AÑADIDOS POR config_wizard (%s) ───\n' "$(date '+%Y-%m-%d %H:%M')" >> "$f"
+        for linea in "${WZ_LINES[@]}"; do
+            printf '%s\n' "$linea" >> "$f"
+        done
+    fi
+
+    echo ""
+    echo "✅ Objetivos escritos en $f"
+    [[ "$WZ_MODE" == "2" ]] && echo "   Copia de la lista anterior: $f.bak"
+
+    if command -v python3 >/dev/null 2>&1; then
+        # Ruta absoluta: parse_targets.py resuelve las relativas contra su directorio.
+        python3 "$SCRIPT_DIR/parse_targets.py" --input "$f" --summary 2>/dev/null
+    fi
+
+    echo ""
+    echo "Recuerda validar la configuración: ./scripts/validate_config.sh"
 }
 
 main() {
