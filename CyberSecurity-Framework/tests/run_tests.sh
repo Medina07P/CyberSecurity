@@ -576,6 +576,35 @@ else
     echo "  SKIP     python3 no instalado: sin casos JSON"
 fi
 
+# ──────────────────────────────────────────────────────────
+section "http_request: firma normalizada y señales"
+printf '<html><input name="csrf" value="a1b2c3d4e5f6a7b8"><p>hola</p><span id="n">1717171717</span></html>' > "$TMPD/c1"
+printf '<html><input name="csrf" value="9999888877776666"><p>hola</p><span id="n">1717179999</span></html>' > "$TMPD/c2"
+eq "hr_signature: nonce y epoch no cambian la firma" \
+   "$(hr_signature "$TMPD/c1" 200 96)" "$(hr_signature "$TMPD/c2" 200 96)"
+sig=$(hr_signature "$TMPD/c1" 200 96)
+eq "hr_signature: la firma no está vacía" "$([ -n "$sig" ] && echo si || echo no)" "si"
+eq "hr_signature: formato codigo:tamano:md5" "$(printf '%s' "$sig" | cut -d: -f1-2)" "200:96"
+
+printf '<p>tu busqueda: zq7xk1</p>' > "$TMPD/eco"
+eq "hr_signature: el eco se neutraliza" \
+   "$(hr_signature "$TMPD/eco" 200 22 zq7xk1)" "$(hr_signature "$TMPD/eco" 200 22 zq7xk1)"
+printf '<p>tu busqueda: OTRO</p>' > "$TMPD/eco2"
+eq "hr_signature: sin neutralizar, el eco difiere" \
+   "$([ "$(hr_signature "$TMPD/eco" 200 22)" = "$(hr_signature "$TMPD/eco2" 200 22)" ] && echo igual || echo distinto)" "distinto"
+
+printf '<div><script>alert(1)</script></div>' > "$TMPD/xss"
+hr_unescaped "$TMPD/xss" '<script>alert(1)</script>'
+eq "hr_unescaped: payload literal" "$?" "0"
+printf '<div>&lt;script&gt;alert(1)&lt;/script&gt;</div>' > "$TMPD/xss2"
+hr_unescaped "$TMPD/xss2" '<script>alert(1)</script>'
+eq "hr_unescaped: reflejo escapado no cuenta" "$?" "1"
+
+printf 'You have an error in your SQL syntax near x' > "$TMPD/err"
+eq "hr_db_error: detecta MySQL" "$(hr_db_error "$TMPD/err")" "MySQL"
+printf '<p>todo bien</p>' > "$TMPD/ok"
+hr_db_error "$TMPD/ok" >/dev/null; eq "hr_db_error: página normal no coincide" "$?" "1"
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
