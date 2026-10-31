@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+<comment>Burp Suite Configuration for Red Team</comment>
+
+<!-- Proxy Settings -->
+<entry key="proxy.listeners[0].port">8080</entry>
+<entry key="proxy.listeners[0].address">127.0.0.1</entry>
+<entry key="proxy.listeners[0].invisible">false</entry>
+
+<!-- Scope -->
+<entry key="scope.enabled">true</entry>
+<entry key="scope.exclude.0">^.*\.google\.com$</entry>
+<entry key="scope.exclude.1">^.*\.microsoft\.com$</entry>
+
+<!-- Spider Settings -->
+<entry key="spider.max-depth">5</entry>
+<entry key="spider.thread-count">10</entry>
+<entry key="spider.passive">true</entry>
+
+<!-- Scanner Settings -->
+<entry key="scanner.active">true</entry>
+<entry key="scanner.passive">true</entry>
+<entry key="scanner.thread-count">5</entry>
+
+<!-- Repeater -->
+<entry key="repeater.follow-redirects">true</entry>
+
+<!-- Intruder -->
+<entry key="intruder.thread-count">20</entry>
+<entry key="intruder.payloads.encoding">URL</entry>
+
+<!-- Extender -->
+<entry key="extender.extensions.active">true</entry>
+
+<!-- Logging -->
+<entry key="logging.request">true</entry>
+<entry key="logging.response">true</entry>
+<entry key="logging.errors">true</entry>
+</properties>
