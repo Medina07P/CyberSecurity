@@ -834,6 +834,56 @@ eq "launcher: si no escucha, no miente sobre la captura" "$(printf '%s' "$OUT" |
 PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --parar >/dev/null 2>&1
 rm -rf "$FW/../scans/burp" "$BSTUB"
 
+# ──────────────────────────────────────────────────────────
+section "http_inject: guardas que pide la revisión"
+if HPORT=$(iniciar_servidor_http); then
+    export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5
+    TSV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT".tsv"
+
+    printf 'GET /mostrar49?x=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req49.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req49.txt" 127.0.0.1 >/dev/null 2>&1
+    eq "ssti: un 49 que ya estaba en la línea base no confirma" "$(awk -F'\t' '$1=="CONFIRMADO" && $3=="ssti"' "$TSV" | wc -l | tr -d ' ')" "0"
+
+    printf 'GET /caduca?x=1 HTTP/1.1\nHost: 127.0.0.1:%s\nCookie: sid=ok\n\n' "$HPORT" > "$TMPD/reqcad.txt"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/reqcad.txt" 127.0.0.1 2>&1)
+    eq "sesión: avisa de que caducó a mitad" "$(printf '%s' "$OUT" | grep -ci 'caducada' )" "1"
+    eq "sesión: no inventa hallazgos con 401" "$(awk -F'\t' '$1=="FUERTE" || $1=="CONFIRMADO"' "$TSV" | wc -l | tr -d ' ')" "0"
+
+    printf 'GET /sqli?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/reqmax.txt"
+    OUT=$(HTTP_INJECT_MAX=5 bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/reqmax.txt" 127.0.0.1 2>&1)
+    eq "tope: avisa al alcanzarlo" "$(printf '%s' "$OUT" | grep -ci 'tope' )" "1"
+    eq "tope: dice cuántos parámetros quedaron sin probar" "$(printf '%s' "$OUT" | grep -c '0 de 1' )" "1"
+    eq "tope: no anuncia hallazgos" "$(awk -F'\t' '$1=="FUERTE" || $1=="CONFIRMADO"' "$TSV" | wc -l | tr -d ' ')" "0"
+
+    printf 'GET /sqli?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\nCookie: a=b\n\n' "$HPORT" > "$TMPD/reqev2.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/reqev2.txt" 127.0.0.1 >/dev/null 2>&1
+    EV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT
+    eq "evidencia: una sola cabecera Host en el .req" "$(grep -c '^Host:' "$(ls "$EV"/*.req | head -1)")" "1"
+
+    printf 'POST /pedido HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"qty":1,"sku":"A1"}' "$HPORT" > "$TMPD/reqjson.txt"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/reqjson.txt" 127.0.0.1 2>&1)
+    eq "catch-all: no se inventa en un POST JSON" "$(printf '%s' "$OUT" | grep -ci 'catch-all')" "0"
+
+    printf 'GET /muere?x=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/reqmuere.txt"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/reqmuere.txt" 127.0.0.1 2>&1)
+    eq "red: avisa cuando el servidor deja de responder" "$(printf '%s' "$OUT" | grep -ci 'sin respuesta\|no responde' )" "1"
+    eq "red: no puntúa una respuesta 000" "$(awk -F'\t' '$5=="000"' "$TSV" | wc -l | tr -d ' ')" "0"
+
+    printf 'POST /pedido?debug=1 HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"qty":1}' "$HPORT" > "$TMPD/reqnopy.txt"
+    OUT=$(HTTP_REQUEST_PYTHON=python-inexistente bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/reqnopy.txt" 127.0.0.1 2>&1)
+    eq "sin python3: avisa de que el JSON se omite" "$(printf '%s' "$OUT" | grep -ci 'json' )" "1"
+    eq "sin python3: sigue probando la query" "$(printf '%s' "$OUT" | grep -c 'debug (query)' )" "1"
+
+    eq "hr_signature: neutraliza la comilla escapada &#x27;" \
+       "$(printf '<p>a &#x27; b</p>' > "$TMPD/e1"; printf '<p>a &#39; b</p>' > "$TMPD/e2"; \
+         [ "$(hr_signature "$TMPD/e1" 200 30 "'")" = "$(hr_signature "$TMPD/e2" 200 30 "'")" ] && echo igual || echo distinto)" "igual"
+
+    rm -rf "$FW/../scans/web/http_inject_127.0.0.1_"*
+    kill "$HTTP_SRV_PID" 2>/dev/null
+else
+    echo "  SKIP     python3 no instalado"
+fi
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"

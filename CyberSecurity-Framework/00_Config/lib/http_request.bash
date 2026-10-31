@@ -171,6 +171,13 @@ hr_signature() {
         [[ "$url" != "$cadena" ]] && contenido=${contenido//"$url"/~~}
         html=$(printf '%s' "$cadena" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g; s/'\''/\&#39;/g')
         [[ "$html" != "$cadena" ]] && contenido=${contenido//"$html"/~~}
+        # html.escape de Python (y Django) escapan la comilla como &#x27; y la
+        # barra como &#x2F;: sin neutralizarlas, un reflejo escapado se cuenta
+        # como diferencia y produce hallazgos que se desmienten solos.
+        html=$(printf '%s' "$cadena" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g; s/'\''/\&#x27;/g; s|/|\&#x2F;|g')
+        [[ "$html" != "$cadena" ]] && contenido=${contenido//"$html"/~~}
+        html=$(printf '%s' "$cadena" | sed "s/'/\&apos;/g")
+        [[ "$html" != "$cadena" ]] && contenido=${contenido//"$html"/~~}
     done
 
     contenido=$(printf '%s' "$contenido" | sed -E \
@@ -250,8 +257,13 @@ _hr_pares_sustituidos() {
     printf '%s' "$out"
 }
 
+# hr_python → intérprete de Python a usar (los tests lo sustituyen)
+hr_python() {
+    printf '%s\n' "${HTTP_REQUEST_PYTHON:-python3}"
+}
+
 # hr_params → "ubicacion|nombre|valor" por parámetro (query, form o json)
-# 4 si el cuerpo es JSON y no hay python3 · 5 si el JSON no parsea
+# 4 si el cuerpo es JSON y no hay intérprete · 5 si el JSON no parsea
 hr_params() {
     local consulta
 
@@ -259,12 +271,18 @@ hr_params() {
         _hr_pares "$HR_BODY" form
     fi
 
+    # La query va ANTES del JSON: si el cuerpo no se puede leer (sin
+    # intérprete o JSON roto), la URL sigue siendo probable.
+    consulta="${HR_TARGET#*\?}"
+    [[ "$consulta" == "$HR_TARGET" ]] && consulta=""
+    [[ -n "$consulta" ]] && _hr_pares "$consulta" query
+
     if [[ "$HR_CT" == application/json* ]]; then
-        if ! command -v python3 >/dev/null 2>&1; then
-            echo "El cuerpo es JSON y no hay python3: no se pueden listar sus parámetros" >&2
+        if ! command -v "$(hr_python)" >/dev/null 2>&1; then
+            echo "El cuerpo es JSON y no hay $(hr_python): se omite el cuerpo y se sigue con lo demás" >&2
             return 4
         fi
-        python3 - "$HR_BODY" <<'PY' || return 5
+        "$(hr_python)" - "$HR_BODY" <<'PY' || return 5
 import json, sys
 
 try:
@@ -292,9 +310,6 @@ recorrer(datos, "")
 PY
     fi
 
-    consulta="${HR_TARGET#*\?}"
-    [[ "$consulta" == "$HR_TARGET" ]] && consulta=""
-    [[ -n "$consulta" ]] && _hr_pares "$consulta" query
     return 0
 }
 
@@ -317,7 +332,7 @@ hr_body_with() {
         query) printf '%s' "$HR_BODY" ;;
         form)  _hr_pares_sustituidos "$HR_BODY" "$nombre" "$valor" ;;
         json)
-            python3 - "$HR_BODY" "$nombre" "$valor" <<'PY'
+            "$(hr_python)" - "$HR_BODY" "$nombre" "$valor" <<'PY'
 import json, sys
 
 try:
