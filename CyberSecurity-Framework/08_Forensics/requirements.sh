@@ -1,0 +1,1 @@
+sudo apt install -y volatility autopsy foremost scalpel tcpdump wireshark
