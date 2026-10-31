@@ -55,7 +55,7 @@ Two rules worth keeping:
 - Any function that returns a value to a caller must print **only** the value to stdout. This is the bug that made the manager unusable: it printed the prompt to stdout and the caller captured the whole block.
 - A `Uso:` line with `--flags` or a bare first token (`monitor` in `interface_manager.sh`) is passed through in **manual mode**: the manager shows the usage and you type the whole argument line. It never guesses positions for those.
 
-Verify with `tests/run_tests.sh` (library, 57 asserts), `tests/run_e2e.sh` (a script really receives the typed value, 11 asserts) and `tests/run_smoke.sh` (menu navigation with piped input). All three run on Windows/Git Bash without a terminal.
+Verify with `tests/run_tests.sh` (library, 61 asserts), `tests/run_e2e.sh` (a script really receives the typed value, 11 asserts) and `tests/run_smoke.sh` (menu navigation with piped input). All three run on Windows/Git Bash without a terminal, and they pass in a clean clone (no `scans/` present) because the phase tests build their own fixture.
 
 ## Running a script
 

@@ -454,7 +454,7 @@ Además de este README:
 
 ```bash
 cd CyberSecurity-Framework
-./tests/run_tests.sh    # librería del gestor (57 comprobaciones)
+./tests/run_tests.sh    # librería del gestor (61 comprobaciones)
 ./tests/run_e2e.sh      # el script recibe el argumento tecleado (11)
 ./tests/run_smoke.sh    # navegación del menú con entrada simulada
 ```
