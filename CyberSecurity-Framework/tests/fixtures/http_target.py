@@ -35,10 +35,11 @@ class Manejador(BaseHTTPRequestHandler):
         self.wfile.write(datos)
 
     def _valor(self):
+        # El primer valor de la query, sea cual sea el nombre del parámetro.
         consulta = parse_qs(urlparse(self.path).query, keep_blank_values=True)
-        for clave in ("q", "id", "name"):
-            if clave in consulta:
-                return consulta[clave][0]
+        for valores in consulta.values():
+            if valores:
+                return valores[0]
         return ""
 
     def do_GET(self):
@@ -62,9 +63,15 @@ class Manejador(BaseHTTPRequestHandler):
             else:
                 self._responder(200, "<html><body>ok</body></html>")
         elif ruta == "/time":
-            if "sleep" in valor.lower():
+            # Solo los payloads de tiempo de la SQLi: el resto de clases tiene
+            # su propio endpoint y así cada caso mide lo suyo.
+            if "pg_sleep" in valor.lower() or "sleep(" in valor.lower():
                 time.sleep(1)
             self._responder(200, "<html><body>listo</body></html>")
+        elif ruta == "/cmd":
+            if "sleep" in valor.lower():
+                time.sleep(1)
+            self._responder(200, "<html><body>comando</body></html>")
         elif ruta == "/ssti":
             if "{{7*7}}" in valor:
                 self._responder(200, "<html><body>49</body></html>")
