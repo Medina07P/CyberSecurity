@@ -24,10 +24,16 @@ if ! command -v masscan &>/dev/null; then
     exit 1
 fi
 
+# Masscan usa sockets raw: sin root falla y el mensaje de "sin puertos" engaña.
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo "❌ Masscan necesita root (sockets raw)"
+    echo "   Ejecuta: sudo bash ${BASH_SOURCE[0]} $TARGET $PORTS"
+    exit 1
+fi
+
 echo "📡 Ejecutando masscan en: $TARGET"
 echo "   Puertos: $PORTS"
 
-# Ejecutar masscan con sudo (ya que estamos como root)
 masscan -p"$PORTS" --rate=10000 "$TARGET" \
     -oJ "$OUTPUT_DIR/masscan_${TARGET//\//_}.json" \
     -oG "$OUTPUT_DIR/masscan_${TARGET//\//_}.grep" \
