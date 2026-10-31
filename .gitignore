@@ -73,6 +73,11 @@ CyberSecurity-Framework/10_Evidence/*.zip
 # 11_Reports: informes generados (las plantillas de templates/ se conservan)
 CyberSecurity-Framework/11_Reports/final_report/*
 !CyberSecurity-Framework/11_Reports/final_report/.gitkeep
+# report_generator.sh reescribe estos dos en cada ejecución (fecha, usuario,
+# ruta): versionarlos ensucia el árbol. Las plantillas de verdad viven en
+# 11_Reports/templates/.
+CyberSecurity-Framework/11_Reports/executive/*.md
+CyberSecurity-Framework/11_Reports/technical/*.md
 CyberSecurity-Framework/11_Reports/evidence/*.tar.gz
 CyberSecurity-Framework/11_Reports/report_*.json
 
