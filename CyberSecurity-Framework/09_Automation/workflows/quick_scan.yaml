@@ -1,0 +1,14 @@
+name: Quick Scan
+version: 1.0
+
+steps:
+  - name: Recon
+    phase: recon
+    script: ../02_Recon/scripts/auto_recon.sh
+
+  - name: Scan
+    phase: scan
+    script: ../03_Scanners/run_all_scanners.sh
+
+timeout: 600
+parallel: false
