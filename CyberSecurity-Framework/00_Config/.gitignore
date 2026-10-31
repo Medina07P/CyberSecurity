@@ -1,0 +1,40 @@
+# Credenciales - NUNCA SUBIR A GIT
+# Se ignora el contenido, pero no el andamiaje del directorio
+credentials/*
+!credentials/README.md
+!credentials/.gitkeep
+*.gpg
+*.enc
+credenciales_*.txt
+passwords_*.txt
+
+# Archivos temporales
+*.tmp
+*.temp
+*.log
+*.swp
+*.swo
+
+# Objetivo de la sesión del gestor (estado local, no se versiona)
+.session
+
+# Backups
+*.bak
+*.backup
+*~
+
+# Configuraciones sensibles
+*.key
+*.pem
+*.crt
+*.pfx
+*.p12
+*.jks
+
+# No subir archivos grandes
+*.pcap
+*.pcapng
+*.iso
+*.ova
+*.vmdk
+*.vdi
