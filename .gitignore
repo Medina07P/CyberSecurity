@@ -27,11 +27,19 @@ CyberSecurity-Framework/07_Wireless/captures/
 CyberSecurity-Framework/01_OSINT/domains/*.txt
 CyberSecurity-Framework/01_OSINT/emails/*.txt
 CyberSecurity-Framework/01_OSINT/emails/*.html
+CyberSecurity-Framework/01_OSINT/emails/*.json
+CyberSecurity-Framework/01_OSINT/emails/*.xml
 CyberSecurity-Framework/01_OSINT/emails/leaks/*.json
 CyberSecurity-Framework/01_OSINT/metadata/*.txt
 CyberSecurity-Framework/01_OSINT/social_media/*.txt
 CyberSecurity-Framework/01_OSINT/subdomains/*
 !CyberSecurity-Framework/01_OSINT/subdomains/README.md
+
+# 01_OSINT escribe volcados sueltos en la raíz del módulo (whois, certificados,
+# subdominios, tecnologías, emails): son datos de dominios reales, nunca al remoto
+CyberSecurity-Framework/01_OSINT/*.txt
+CyberSecurity-Framework/01_OSINT/*.json
+CyberSecurity-Framework/01_OSINT/*.xml
 
 # 02_Recon: un directorio por ejecución y sus volcados
 CyberSecurity-Framework/02_Recon/recon_*/
