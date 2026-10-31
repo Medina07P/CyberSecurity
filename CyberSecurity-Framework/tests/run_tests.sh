@@ -244,6 +244,29 @@ eq "run_all_recon: usa el objetivo recibido"        "$(grep -c '192.0.2.99'   "$
 eq "run_all_recon: con argumento no lee targets.txt" "$(grep -c '192.168.1.10' "$RMP_LOG")" "0"
 eq "run_all_recon: declara su hueco en Uso:"         "$(params_mode "$FW/02_Recon/run_all_recon.sh")" "slots"
 
+# ──────────────────────────────────────────────────────────
+section "enum_web: nombres con objetivo y línea base de ffuf"
+WOUT="$FW/../scans/web"
+mkdir -p "$WOUT"
+rm -f "$WOUT"/headers_192.0.2.1_443.txt "$WOUT"/headers_192.0.2.2_443.txt "$WOUT"/headers_443.txt
+WSTUB="$(mktemp -d)"
+printf '#!/bin/bash\necho "200:433"\n' > "$WSTUB/curl"
+printf '#!/bin/bash\necho "whatweb stub"\n' > "$WSTUB/whatweb"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$WSTUB_ARGS"\n' > "$WSTUB/ffuf"
+chmod +x "$WSTUB/curl" "$WSTUB/whatweb" "$WSTUB/ffuf"
+export WSTUB_ARGS="$WSTUB/ffuf_args"
+: > "$WSTUB_ARGS"
+
+PATH="$WSTUB:$PATH" bash "$FW/04_Enumeration/web/enum_web.sh" 192.0.2.1 443 >/dev/null 2>&1
+PATH="$WSTUB:$PATH" bash "$FW/04_Enumeration/web/enum_web.sh" 192.0.2.2 443 >/dev/null 2>&1
+
+eq "enum_web: dos objetivos no se pisan"    "$(ls "$WOUT" | grep -c '^headers_192\.0\.2\.')" "2"
+eq "enum_web: el nombre lleva el objetivo"  "$(ls "$WOUT" | grep -c '^headers_192\.0\.2\.1_443')" "1"
+eq "enum_web: cada ejecución filtra por tamaño base"  "$(grep -c -- '-fs 433' "$WSTUB_ARGS")" "2"
+
+rm -f "$WOUT"/headers_192.0.2.1_443.txt "$WOUT"/headers_192.0.2.2_443.txt
+rm -rf "$WSTUB"
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
