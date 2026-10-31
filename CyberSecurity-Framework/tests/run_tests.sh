@@ -211,6 +211,22 @@ eq "signature devuelve código:tamaño" "$(scans_signature https://x/)" "200:433
 
 rm -rf "$STUBD" "$(scans_dir pruebatool)"
 
+# ──────────────────────────────────────────────────────────
+section "Librería: portable bajo zsh"
+if command -v zsh >/dev/null 2>&1; then
+    for par in "session:SESSION_LIB_DIR" "params:PARAMS_LIB_DIR" "phase_status:PHASE_LIB_DIR" "prompt:PROMPT_LIB_DIR" "scans:SCANS_LIB_DIR"; do
+        libf="${par%%:*}"; var="${par##*:}"
+        got=$(zsh -c "cd '$FW' && source '00_Config/lib/$libf.bash' >/dev/null 2>&1; printf '%s' \"\${$var}\"" 2>/dev/null)
+        eq "zsh: $libf.bash resuelve bajo 00_Config/lib" "$got" "$FW/00_Config/lib"
+    done
+    rm -f "$FW/../.session"
+    zsh -c "cd '$FW'; unset SESSION_FILE SESSION_TARGETS_FILE; source '00_Config/lib/session.bash' >/dev/null 2>&1; session_set_target prueba.example >/dev/null 2>&1" 2>/dev/null
+    [ -f "$FW/../.session" ] && bad "zsh: .session no debe acabar en la raíz del repo" || ok "zsh: .session no acaba en la raíz del repo"
+    rm -f "$FW/../.session"
+else
+    echo "  SKIP     zsh no instalado"
+fi
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"

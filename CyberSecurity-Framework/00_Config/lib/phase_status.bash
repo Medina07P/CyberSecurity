@@ -5,7 +5,7 @@
 #  No guarda estado propio: mira lo que hay en disco.
 # ============================================================
 
-PHASE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PHASE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PHASE_FW_DIR="${PHASE_FW_DIR:-$(cd "$PHASE_LIB_DIR/../.." && pwd)}"
 PHASE_REPO_DIR="${PHASE_REPO_DIR:-$(cd "$PHASE_FW_DIR/.." && pwd)}"
 PHASE_SCANS_DIR="${PHASE_SCANS_DIR:-$PHASE_REPO_DIR/scans}"
