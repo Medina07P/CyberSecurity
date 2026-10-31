@@ -30,25 +30,30 @@ fi
 echo "📄 Extrayendo metadatos de: $FILE"
 mkdir -p "$OUTPUT_DIR"
 
+# Nombre sin extensión: la salida es siempre .txt y no debe duplicarla
+NOMBRE_BASE="$(basename "$FILE")"
+NOMBRE_SIN_EXT="${NOMBRE_BASE%.*}"
+[[ -n "$NOMBRE_SIN_EXT" ]] || NOMBRE_SIN_EXT="$NOMBRE_BASE"
+
 # Detectar tipo de archivo
 TYPE=$(file -b "$FILE" | cut -d' ' -f1)
 
 case "$TYPE" in
     PDF)
         echo "  → PDF..."
-        pdfinfo "$FILE" > "$OUTPUT_DIR/metadatos_$(basename "$FILE").txt"
+        pdfinfo "$FILE" > "$OUTPUT_DIR/metadatos_$NOMBRE_SIN_EXT.txt"
         ;;
     JPEG|PNG|TIFF)
         echo "  → Imagen..."
-        exiftool "$FILE" > "$OUTPUT_DIR/exif_$(basename "$FILE").txt"
+        exiftool "$FILE" > "$OUTPUT_DIR/exif_$NOMBRE_SIN_EXT.txt"
         ;;
-    DOCX|XLSX|PPTX)
+    DOCX|XLSX|PPTX|Microsoft*|Zip*)
         echo "  → Office..."
-        zipinfo -v "$FILE" > "$OUTPUT_DIR/office_$(basename "$FILE").txt"
+        zipinfo -v "$FILE" > "$OUTPUT_DIR/office_$NOMBRE_SIN_EXT.txt"
         ;;
     *)
         echo "  → Desconocido, usando strings..."
-        strings "$FILE" | head -50 > "$OUTPUT_DIR/strings_$(basename "$FILE").txt"
+        strings "$FILE" | head -50 > "$OUTPUT_DIR/strings_$NOMBRE_SIN_EXT.txt"
         ;;
 esac
 
