@@ -18,7 +18,7 @@ fi
 mkdir -p "$OUTPUT_DIR"
 
 PROTO="http"
-[[ "$PORT" == "443" ]] && PROTO="https"
+[[ "$PORT" == "443" || "$PORT" == "8443" ]] && PROTO="https"
 URL="${PROTO}://${TARGET}:${PORT}"
 
 echo "🌐 Enumerando Web en: $URL"
