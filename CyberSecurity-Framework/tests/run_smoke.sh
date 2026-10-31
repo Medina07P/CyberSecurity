@@ -44,9 +44,7 @@ run "muestra el objetivo sin definir" 'Q\n'                    "sin definir"
 printf '%s\n' "192.168.1.10" > "$SESSION_FILE"
 run "muestra el objetivo guardado"    'Q\n'                    "192.168.1.10"
 run "muestra el estado de fases"      'Q\n'                    "Fases:"
-run "marca las fases con evidencia"   'Q\n'                    "*00"
-# Con este repo todas las fases medidas salen hechas, así que no hay sugerencia.
-# En un checkout limpio la sugerencia sería 00_Config.
+run "explica la leyenda de fases"     'Q\n'                    "hecha, . pendiente"
 run "sin pendientes, no sugiere nada" 'Q\n'                    "Salir"
 rm -f "$SESSION_FILE"
 

@@ -130,10 +130,26 @@ eq "respeta los EXCLUIDO" "$(printf '%s\n' "$lista" | grep -c '^192\.168\.1\.1|'
 eq "conserva el huésped bueno" "$(printf '%s\n' "$lista" | cut -d'|' -f1 | tr '\n' ' ')" "192.168.1.10 example.com "
 
 # ──────────────────────────────────────────────────────────
-section "Estado de fases sobre el scans/ real"
-eq "03_Scanners sale hecha" "$(phase_state 03_Scanners)" "done"
-eq "04_Enumeration sale hecha" "$(phase_state 04_Enumeration)" "done"
+section "Estado de fases (fixture aislado)"
+# Con un fixture propio, el test no depende de los escaneos locales
+FIX="$TMPD/fixture"
+mkdir -p "$FIX/fw/00_Config" "$FIX/scans/nmap" "$FIX/scans/web"
+printf 'x|80|HTTP|desc|C\n' > "$FIX/fw/00_Config/targets.txt"
+printf 'scope: x\n' > "$FIX/fw/00_Config/scope.yaml"
+printf 'datos\n' > "$FIX/scans/nmap/algo.nmap"
+PHASE_FW_DIR="$FIX/fw"
+PHASE_SCANS_DIR="$FIX/scans"
+source "$FW/00_Config/lib/phase_status.bash"
+
+eq "00_Config hecha con alcance y objetivos" "$(phase_state 00_Config)" "done"
+eq "03_Scanners hecha con resultados" "$(phase_state 03_Scanners)" "done"
+eq "04_Enumeration pendiente sin datos" "$(phase_state 04_Enumeration)" "pending"
+eq "02_Recon pendiente sin recon_*" "$(phase_state 02_Recon)" "pending"
 eq "05_Exploitation no participa" "$(phase_state 05_Exploitation)" "na"
+eq "sugiere la primera pendiente" "$(next_suggested_phase)" "02_Recon"
+
+rm -rf "$FIX/scans/nmap" "$FIX/scans/web"
+eq "sin datos, 03 vuelve a pendiente" "$(phase_state 03_Scanners)" "pending"
 
 # ──────────────────────────────────────────────────────────
 section "R2: la lista de peligrosas apunta a ficheros que existen"

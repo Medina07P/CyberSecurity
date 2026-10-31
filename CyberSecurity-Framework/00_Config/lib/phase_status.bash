@@ -6,9 +6,9 @@
 # ============================================================
 
 PHASE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PHASE_FW_DIR="$(cd "$PHASE_LIB_DIR/../.." && pwd)"
-PHASE_REPO_DIR="$(cd "$PHASE_FW_DIR/.." && pwd)"
-PHASE_SCANS_DIR="$PHASE_REPO_DIR/scans"
+PHASE_FW_DIR="${PHASE_FW_DIR:-$(cd "$PHASE_LIB_DIR/../.." && pwd)}"
+PHASE_REPO_DIR="${PHASE_REPO_DIR:-$(cd "$PHASE_FW_DIR/.." && pwd)}"
+PHASE_SCANS_DIR="${PHASE_SCANS_DIR:-$PHASE_REPO_DIR/scans}"
 
 # _has_files <dir> → 0 si hay algún fichero que no sea .gitkeep
 _has_files() {
