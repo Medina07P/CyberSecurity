@@ -503,6 +503,44 @@ printf '%s' '{"results":[{"position":10,"url":"http://x/a"},{"position":20,"url"
 eq "ffuf: dos hallazgos son dos"  "$(scans_ffuf_count "$FFJ")" "2"
 eq "ffuf: fichero ilegible es cero" "$(scans_ffuf_count "$TMPD/no-existe.json")" "0"
 
+# ──────────────────────────────────────────────────────────
+section "http_request: leer la petición capturada"
+source "$FW/00_Config/lib/http_request.bash" 2>/dev/null
+
+REQ="$TMPD/peticion_https.txt"
+printf 'POST /api/login?next=%%2Fhome HTTP/1.1\r\nHost: app.example:8443\r\nCookie: sid=abc\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}' > "$REQ"
+hr_load "$REQ"; eq "hr_load: acepta CRLF y CRLF final" "$?" "0"
+eq "hr_load: método"        "$HR_METHOD" "POST"
+eq "hr_load: target"        "$HR_TARGET" "/api/login?next=%2Fhome"
+eq "hr_load: Host"          "$HR_HOST" "app.example:8443"
+eq "hr_load: content-type"  "$HR_CT" "application/json"
+eq "hr_load: cuerpo"        "$HR_BODY" "{}"
+eq "hr_load: cabecera Cookie conservada" "$(printf '%s\n' "${HR_HEADERS[@]}" | grep -c '^Cookie: sid=abc')" "1"
+
+eq "hr_scheme: 8443 es https"    "$(hr_scheme 8443)" "https"
+eq "hr_scheme: 8080 es http"     "$(hr_scheme 8080)" "http"
+eq "hr_port: del Host"           "$(hr_port https)" "8443"
+eq "hr_url: host y puerto"       "$(hr_url app.example https)" "https://app.example:8443/api/login?next=%2Fhome"
+
+REQ2="$TMPD/peticion_simple.txt"
+printf 'GET /x HTTP/1.1\nHost: app.example\n\n' > "$REQ2"
+hr_load "$REQ2"
+eq "hr_port: sin puerto en Host y https" "$(hr_port https)" "443"
+eq "hr_url: omite el puerto por defecto"  "$(hr_url app.example https)" "https://app.example/x"
+
+REQ3="$TMPD/peticion_lc.txt"
+printf 'POST /y HTTP/1.1\nHost: app.example\nContent-Length: 99\n\n{"a":1}' > "$REQ3"
+hr_load "$REQ3" 2>"$TMPD/lc.err"
+eq "hr_load: recalcula Content-Length" "$(printf '%s\n' "${HR_HEADERS[@]}" | grep -c '^Content-Length: 7$')" "1"
+eq "hr_load: avisa del Content-Length mentiroso" "$(grep -c 'Content-Length' "$TMPD/lc.err")" "1"
+
+printf 'POST /z HTTP/1.1\nHost: a\nTransfer-Encoding: chunked\n\n0\n' > "$TMPD/chunk.txt"
+hr_load "$TMPD/chunk.txt" 2>/dev/null; eq "hr_load: rechaza chunked" "$?" "3"
+printf 'POST /z HTTP/1.1\nHost: a\nContent-Type: multipart/form-data; boundary=x\n\n--x--' > "$TMPD/multi.txt"
+hr_load "$TMPD/multi.txt" 2>/dev/null; eq "hr_load: rechaza multipart" "$?" "3"
+printf 'no-es-una-peticion\n' > "$TMPD/malo.txt"
+hr_load "$TMPD/malo.txt" 2>/dev/null; eq "hr_load: rechaza lo que no es petición" "$?" "2"
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
