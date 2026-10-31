@@ -48,7 +48,7 @@ esac
 section "Parser: recuentos sobre los .sh"
 # Se excluye tests/ (este mismo fichero); la librería usa extensión .bash
 total=$(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | wc -l | tr -d ' ')
-eq "115 scripts .sh en el framework" "$total" "115"
+eq "116 scripts .sh en el framework" "$total" "116"
 eq "la librería no se cuenta como script" "$(find "$FW/00_Config/lib" -name '*.sh' | wc -l | tr -d ' ')" "0"
 
 dos=0
@@ -756,6 +756,44 @@ if HPORT=$(iniciar_servidor_http); then
 else
     echo "  SKIP     python3 no instalado"
 fi
+
+# ──────────────────────────────────────────────────────────
+section "burp_launcher: puerto, config y PID"
+BSTUB="$TMPD/bin"; mkdir -p "$BSTUB"
+cat > "$BSTUB/burpsuite" <<'EOS'
+#!/bin/bash
+printf '%s\n' "$*" >> "${BSTUB_LOG:-/dev/null}"
+if [ -n "${BSTUB_BIND:-}" ]; then
+    exec python3 -c 'import socket,sys,time
+s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+s.bind(("127.0.0.1",int(sys.argv[1]))); s.listen(5); time.sleep(30)' "$BSTUB_BIND"
+fi
+sleep 30
+EOS
+chmod +x "$BSTUB/burpsuite"
+export BSTUB_LOG="$TMPD/burp_llamadas.txt" BSTUB_BIND=""
+: > "$BSTUB_LOG"
+
+export SESSION_FILE="$TMPD/.session"; printf '127.0.0.1\n' > "$SESSION_FILE"
+OUT=$(PATH="$BSTUB:$PATH" BURP_LAUNCHER_ESPERA=2 bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" 8099 2>&1)
+sleep 0.5   # el stub corre en segundo plano
+eq "launcher: llama al wrapper, no a java -jar" "$(grep -c . "$BSTUB_LOG")" "1"
+eq "launcher: pasa --project-file" "$(grep -c -- '--project-file' "$BSTUB_LOG")" "1"
+eq "launcher: escribe el config con el puerto" "$(grep -c '"listener_port":8099' "$FW/../scans/burp/config_127.0.0.1.json")" "1"
+eq "launcher: guarda el PID" "$([ -s "$FW/../scans/burp/burp.pid" ] && echo 1)" "1"
+eq "launcher: --estado informa del PID" "$(PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --estado 2>&1 | grep -c 'PID')" "1"
+PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --parar >/dev/null 2>&1
+eq "launcher: --parar borra el PID" "$([ -f "$FW/../scans/burp/burp.pid" ] && echo queda || echo borrado)" "borrado"
+
+# Puerto ocupado: elige otro
+python3 -c 'import socket,time;s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(("127.0.0.1",8080));s.listen(1);time.sleep(8)' &
+OCC=$!; sleep 1
+: > "$BSTUB_LOG"
+PATH="$BSTUB:$PATH" BURP_LAUNCHER_ESPERA=2 bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" >/dev/null 2>&1
+eq "launcher: con 8080 ocupado no usa 8080" "$(grep -c '"listener_port":8080' "$FW/../scans/burp/config_127.0.0.1.json")" "0"
+kill $OCC 2>/dev/null
+PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --parar >/dev/null 2>&1
+rm -rf "$FW/../scans/burp" "$BSTUB"
 
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
