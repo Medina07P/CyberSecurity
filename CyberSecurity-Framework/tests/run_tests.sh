@@ -744,6 +744,9 @@ if HPORT=$(iniciar_servidor_http); then
     eq "evidencia: hay pares .resp" "$(ls "$EV"/*.resp 2>/dev/null | wc -l | tr -d ' ' | awk '{print ($1>0)}')" "1"
     eq "evidencia: el .req lleva la línea de petición" "$(head -1 "$(ls "$EV"/*.req | head -1)" | grep -c '^GET /sqli')" "1"
     eq "evidencia: el .resp no pasa de 64 KB" "$(find "$EV" -name '*.resp' -size +64k | wc -l | tr -d ' ')" "0"
+    eq "contexto: el directorio de evidencia guarda el esquema" "$(grep -cx 'esquema=http' "$EV/contexto.txt" 2>/dev/null)" "1"
+    eq "contexto: guarda el Host enviado" "$(grep -c '^host=127.0.0.1:' "$EV/contexto.txt" 2>/dev/null)" "1"
+    eq "contexto: guarda el método" "$(grep -cx 'metodo=GET' "$EV/contexto.txt" 2>/dev/null)" "1"
 
     OUT=$(HTTP_INJECT_NIVEL=fuertes bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_ev.txt" 127.0.0.1 2>&1)
     eq "filtro fuertes: la consola omite los débiles" "$(printf '%s' "$OUT" | grep -c 'DEBIL')" "0"
