@@ -18,9 +18,15 @@ CyberSecurity-Framework/captures/
 CyberSecurity-Framework/dns/
 CyberSecurity-Framework/fingerprinting/
 
+# 06_PostExploitation y 07_Wireless: salidas junto al módulo
+CyberSecurity-Framework/06_PostExploitation/loot/
+CyberSecurity-Framework/06_PostExploitation/persistence/
+CyberSecurity-Framework/07_Wireless/captures/
+
 # 01_OSINT: dominios, subdominios, emails, metadatos y redes sociales
 CyberSecurity-Framework/01_OSINT/domains/*.txt
 CyberSecurity-Framework/01_OSINT/emails/*.txt
+CyberSecurity-Framework/01_OSINT/emails/*.html
 CyberSecurity-Framework/01_OSINT/emails/leaks/*.json
 CyberSecurity-Framework/01_OSINT/metadata/*.txt
 CyberSecurity-Framework/01_OSINT/social_media/*.txt
