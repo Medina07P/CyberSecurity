@@ -95,6 +95,52 @@ out=$(printf '1\n10.9.9.9\n' | SESSION_TARGETS_FILE="$f" timeout 10 bash "$WZ" 2
     && ok "EOF a mitad no escribe" || ko "EOF a mitad no escribe"
 
 echo ""
+echo "=== escritura ==="
+# Añadir conservando lo anterior
+f="$FIXTURE/targets.txt"
+printf '%s\n' "# cabecera" "192.168.1.10|80|HTTP|Portal|C" > "$f"
+out=$(printf '1\n10.9.9.9\n8080\n\nPrueba\n\ns\nn\ns\n' | \
+      SESSION_TARGETS_FILE="$f" bash "$WZ" 2>&1)
+grep -qF '192.168.1.10|80|HTTP|Portal|C' "$f" && ok "añadir conserva lo previo" || ko "añadir conserva lo previo"
+grep -qF '10.9.9.9|8080|HTTP|Prueba|M' "$f" && ok "añadir escribe la línea nueva" || ko "añadir escribe la línea nueva"
+grep -qE '^# ─── AÑADIDOS POR config_wizard' "$f" && ok "añadir deja marca de fecha" || ko "añadir deja marca de fecha"
+printf '%s' "$out" | grep -qF 'RESUMEN DE OBJETIVOS' && ok "cierra con el resumen del parser" || ko "cierra con el resumen del parser"
+
+# Sin salto de línea final: la línea nueva no se pega
+f="$FIXTURE/sin_salto.txt"
+printf '%s' "192.168.1.10|80|HTTP|Portal|C" > "$f"
+printf '1\n10.9.9.9\n22\n\n\n\ns\nn\ns\n' | SESSION_TARGETS_FILE="$f" bash "$WZ" >/dev/null 2>&1
+grep -qE '^192\.168\.1\.10\|80\|HTTP\|Portal\|C$' "$f" && ok "no pega la línea al final sin \\n" || ko "no pega la línea al final sin \\n"
+grep -qF '10.9.9.9|22|SSH|SSH|M' "$f" && ok "escribe aunque faltase el salto final" || ko "escribe aunque faltase el salto final"
+
+# Lista nueva: .bak con lo anterior, fichero con cabecera y solo lo nuevo
+f="$FIXTURE/nueva.txt"
+printf '%s\n' "192.168.1.10|80|HTTP|Portal|C" "10.0.0.1|22|SSH|Viejo|A" > "$f"
+printf '2\n10.9.9.9\n443\n\n\nA\ns\nn\ns\n' | SESSION_TARGETS_FILE="$f" bash "$WZ" >/dev/null 2>&1
+grep -qF '10.0.0.1|22|SSH|Viejo|A' "$f.bak" && ok "lista nueva guarda .bak" || ko "lista nueva guarda .bak"
+grep -qF '192.168.1.10|80|HTTP|Portal|C' "$f" && ko "lista nueva descarta lo viejo" || ok "lista nueva descarta lo viejo"
+grep -qF '10.9.9.9|443|HTTPS|HTTPS|A' "$f" && ok "lista nueva escribe la entrada" || ko "lista nueva escribe la entrada"
+head -1 "$f" | grep -q '^# =====' && ok "lista nueva lleva cabecera estándar" || ko "lista nueva lleva cabecera estándar"
+
+# .bak previo se sobrescribe
+f="$FIXTURE/rebak.txt"
+printf '%s\n' "1.1.1.1|80|HTTP|X|B" > "$f"
+printf '%s\n' "viejo backup" > "$f.bak"
+printf '2\n10.9.9.9\n22\n\n\n\ns\nn\ns\n' | SESSION_TARGETS_FILE="$f" bash "$WZ" >/dev/null 2>&1
+grep -qF 'viejo backup' "$f.bak" && ko ".bak previo se sobrescribe" || ok ".bak previo se sobrescribe"
+
+# Fichero inexistente: se crea con cabecera
+f="$FIXTURE/no_existe.txt"
+printf '1\n10.9.9.9\n22\n\n\n\ns\nn\ns\n' | SESSION_TARGETS_FILE="$f" bash "$WZ" >/dev/null 2>&1
+[[ -f "$f" ]] && grep -qF '10.9.9.9|22|SSH|SSH|M' "$f" && ok "crea el fichero si falta" || ko "crea el fichero si falta"
+
+# Fichero vacío: no falla y escribe cabecera + entrada
+f="$FIXTURE/vacio.txt"
+: > "$f"
+printf '1\n10.9.9.9\n22\n\n\n\ns\nn\ns\n' | SESSION_TARGETS_FILE="$f" bash "$WZ" >/dev/null 2>&1
+grep -qF '10.9.9.9|22|SSH|SSH|M' "$f" && ok "escribe sobre fichero vacío" || ko "escribe sobre fichero vacío"
+
+echo ""
 echo "----------------------------------------"
 echo "pasan: $pasan   fallan: $fallan"
 [[ "$fallan" -eq 0 ]]
