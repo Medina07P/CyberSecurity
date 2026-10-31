@@ -252,19 +252,31 @@ rm -f "$WOUT"/headers_192.0.2.1_443.txt "$WOUT"/headers_192.0.2.2_443.txt "$WOUT
 WSTUB="$(mktemp -d)"
 printf '#!/bin/bash\necho "200:433"\n' > "$WSTUB/curl"
 printf '#!/bin/bash\necho "whatweb stub"\n' > "$WSTUB/whatweb"
-printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$WSTUB_ARGS"\n' > "$WSTUB/ffuf"
+cat > "$WSTUB/ffuf" <<'EOS'
+#!/bin/bash
+printf '%s\n' "$*" >> "$WSTUB_ARGS"
+out=""; prev=""
+for a in "$@"; do [[ "$prev" == "-o" ]] && out="$a"; prev="$a"; done
+[[ -n "$out" ]] && printf '%s' '{"commandline":"x","results":[],"config":{"url":"http://x/FUZZ"}}' > "$out"
+exit 0
+EOS
 chmod +x "$WSTUB/curl" "$WSTUB/whatweb" "$WSTUB/ffuf"
 export WSTUB_ARGS="$WSTUB/ffuf_args"
 : > "$WSTUB_ARGS"
 
 PATH="$WSTUB:$PATH" bash "$FW/04_Enumeration/web/enum_web.sh" 192.0.2.1 443 >/dev/null 2>&1
 PATH="$WSTUB:$PATH" bash "$FW/04_Enumeration/web/enum_web.sh" 192.0.2.2 443 >/dev/null 2>&1
+WOUT_TXT=$(PATH="$WSTUB:$PATH" bash "$FW/04_Enumeration/web/enum_web.sh" 192.0.2.3 443 2>&1)
 
-eq "enum_web: dos objetivos no se pisan"    "$(ls "$WOUT" | grep -c '^headers_192\.0\.2\.')" "2"
+eq "enum_web: dos objetivos no se pisan"    "$(ls "$WOUT" | grep -c '^headers_192\.0\.2\.')" "3"
 eq "enum_web: el nombre lleva el objetivo"  "$(ls "$WOUT" | grep -c '^headers_192\.0\.2\.1_443')" "1"
-eq "enum_web: cada ejecución filtra por tamaño base"  "$(grep -c -- '-fs 433' "$WSTUB_ARGS")" "2"
+eq "enum_web: cada ejecución filtra por tamaño base"  "$(grep -c -- '-fs 433' "$WSTUB_ARGS")" "3"
+# Un catch-all con results vacío debe decir 0, no 1 por la "url" de la config.
+eq "enum_web: cero hallazgos se informa como cero" \
+   "$(printf '%s' "$WOUT_TXT" | grep -c ' 0 directorios encontrados')" "1"
 
-rm -f "$WOUT"/headers_192.0.2.1_443.txt "$WOUT"/headers_192.0.2.2_443.txt
+rm -f "$WOUT"/headers_192.0.2.1_443.txt "$WOUT"/headers_192.0.2.2_443.txt "$WOUT"/headers_192.0.2.3_443.txt
+rm -f "$WOUT"/ffuf_192.0.2.*
 rm -rf "$WSTUB"
 
 # ──────────────────────────────────────────────────────────
@@ -374,6 +386,16 @@ eq "run_all_scanners: no resume un log vacío"     "$(grep -cE '/scans/nikto/err
 rm -f "$FW/../scans/nmap/errores.log" "$FW/../scans/nikto/errores.log"
 for l in $RBAK; do mv "$TMPD/$l.errores.bak" "$FW/../scans/$l/errores.log"; done
 rm -rf "$RSTUB"
+
+# ──────────────────────────────────────────────────────────
+section "ffuf: contar hallazgos, no la url de la configuración"
+source "$FW/00_Config/lib/scans.bash" 2>/dev/null
+FFJ="$TMPD/ffuf.json"
+printf '%s' '{"commandline":"ffuf -u http://x/FUZZ","results":[],"config":{"url":"http://x/FUZZ"}}' > "$FFJ"
+eq "ffuf: cero hallazgos es cero" "$(scans_ffuf_count "$FFJ")" "0"
+printf '%s' '{"results":[{"position":10,"url":"http://x/a"},{"position":20,"url":"http://x/b"}],"config":{"url":"http://x/FUZZ"}}' > "$FFJ"
+eq "ffuf: dos hallazgos son dos"  "$(scans_ffuf_count "$FFJ")" "2"
+eq "ffuf: fichero ilegible es cero" "$(scans_ffuf_count "$TMPD/no-existe.json")" "0"
 
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'

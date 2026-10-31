@@ -67,7 +67,7 @@ if command -v ffuf &>/dev/null; then
     fi
     ffuf "${FFUF_ARGS[@]}" 2>/dev/null
     if [[ -f "$OUTPUT_DIR/ffuf_${SLUG}_${PORT}.json" ]]; then
-        FOUND=$(grep -c "\"url\"" "$OUTPUT_DIR/ffuf_${SLUG}_${PORT}.json" 2>/dev/null)
+        FOUND=$(scans_ffuf_count "$OUTPUT_DIR/ffuf_${SLUG}_${PORT}.json")
         echo " ✅ ${FOUND} directorios encontrados"
     fi
 fi
