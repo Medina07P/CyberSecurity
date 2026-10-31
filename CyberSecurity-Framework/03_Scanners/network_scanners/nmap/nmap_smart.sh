@@ -6,8 +6,9 @@
 # ============================================================
 
 TARGET="$1"
-SCANS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)/scans"
-OUTPUT_DIR="$SCANS_DIR/nmap"
+
+SCANS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../../00_Config/lib" && pwd)"
+source "$SCANS_LIB/scans.bash"
 
 if [[ -z "$TARGET" ]]; then
     echo "Uso: ./nmap_smart.sh <IP>"
@@ -15,17 +16,18 @@ if [[ -z "$TARGET" ]]; then
     exit 1
 fi
 
-mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR=$(scans_dir nmap)
+SLUG=$(scans_slug "$TARGET")
 
 echo "📡 Escaneo inteligente de: $TARGET"
 
 # Fase 1: Puertos abiertos (usando -Pn para evitar problemas de ping)
 echo "  Fase 1: Descubriendo puertos..."
-nmap -Pn -p- --min-rate 2000 -T4 "$TARGET" -oA "$OUTPUT_DIR/smart_ports" 2>/dev/null
+nmap -Pn -p- --min-rate 2000 -T4 "$TARGET" -oA "$OUTPUT_DIR/smart_ports_${SLUG}" 2>/dev/null
 
 # Extraer puertos
-if [[ -f "$OUTPUT_DIR/smart_ports.nmap" ]]; then
-    OPEN_PORTS=$(grep open "$OUTPUT_DIR/smart_ports.nmap" 2>/dev/null | cut -d'/' -f1 | tr '\n' ',' | sed 's/,$//')
+if [[ -f "$OUTPUT_DIR/smart_ports_${SLUG}.nmap" ]]; then
+    OPEN_PORTS=$(grep open "$OUTPUT_DIR/smart_ports_${SLUG}.nmap" 2>/dev/null | cut -d'/' -f1 | tr '\n' ',' | sed 's/,$//')
 else
     OPEN_PORTS=""
 fi
@@ -35,15 +37,15 @@ if [[ -n "$OPEN_PORTS" ]]; then
     
     # Fase 2: Servicios y versiones
     echo "  Fase 2: Detectando servicios..."
-    nmap -Pn -sV -sC -O -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_services" 2>/dev/null
+    nmap -Pn -sV -sC -O -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_services_${SLUG}" 2>/dev/null
     
     # Fase 3: Scripts de vulnerabilidad
     echo "  Fase 3: Escaneando vulnerabilidades..."
-    nmap --script vuln -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_vuln" 2>/dev/null
+    nmap --script vuln -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_vuln_${SLUG}" 2>/dev/null
     
     echo ""
     echo "✅ Escaneo completado"
-    echo "📁 Resultados: $OUTPUT_DIR/smart_*"
+    echo "📁 Resultados: $OUTPUT_DIR/smart_*_${SLUG}"
 else
     echo "  ⚠️ No se encontraron puertos abiertos"
     echo ""
