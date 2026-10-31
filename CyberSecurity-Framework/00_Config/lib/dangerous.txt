@@ -1,0 +1,23 @@
+# Herramientas que piden confirmación explícita antes de ejecutarse.
+# Una ruta relativa al directorio del framework por línea, sin comentarios al final.
+# Estas además NO aceptan el valor del ejemplo como valor por defecto:
+# hay que teclear el objetivo a mano.
+05_Exploitation/active_directory/kerberos_attack.sh
+05_Exploitation/database/mysql_attack.sh
+05_Exploitation/database/postgres_attack.sh
+05_Exploitation/database/redis_attack.sh
+05_Exploitation/exploits/cve_2021_4034.sh
+05_Exploitation/exploits/cve_2021_44228.sh
+05_Exploitation/exploits/cve_2024_6387.sh
+05_Exploitation/network/ftp_bruteforce.sh
+05_Exploitation/network/ssh_attack.sh
+05_Exploitation/network/ssh_bruteforce.sh
+05_Exploitation/web/sql_injection.sh
+05_Exploitation/web/web_attack.sh
+05_Exploitation/web/xss.sh
+05_Exploitation/wireless/wifi_attack.sh
+06_PostExploitation/cleanup/logs_cleaner.sh
+06_PostExploitation/lateral_movement/ps_exec.sh
+06_PostExploitation/lateral_movement/ssh_jump.sh
+06_PostExploitation/persistence/cron_persistence.sh
+06_PostExploitation/persistence/ssh_backdoor.sh
