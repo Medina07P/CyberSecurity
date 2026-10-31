@@ -201,13 +201,27 @@ eq "scans_slug limpia : y /"      "$(scans_slug 'https://a.b:443/x')" "https___a
 eq "scans_dir devuelve <scans>/pruebatool" "$(basename "$(scans_dir pruebatool)")" "pruebatool"
 [ -d "$(scans_dir pruebatool)" ] && ok "scans_dir deja el directorio en disco" || bad "scans_dir no creó el directorio"
 
+SCANS_PATH_BAK="$PATH"
 PATH="$STUBD:$PATH"
 export STUB_CODE=200 STUB_SIZE=433
 eq "baseline con catch-all" "$(scans_baseline_size https://x/)" "433"
 export STUB_CODE=404 STUB_SIZE=0
-eq "baseline sin catch-all" "$(scans_baseline_size https://x/)" "0"
+# Sin catch-all no hay nada que filtrar: la señal es la CADENA VACÍA, no "0",
+# porque 0 es un tamaño legítimo (un rewrite que solo redirige).
+eq "baseline sin catch-all" "$(scans_baseline_size https://x/)" ""
+export STUB_CODE=403 STUB_SIZE=120
+eq "baseline: WAF 403 con cuerpo también es catch-all" "$(scans_baseline_size https://x/)" "120"
+export STUB_CODE=302 STUB_SIZE=0
+eq "baseline: redirect sin cuerpo filtra tamaño 0" "$(scans_baseline_size https://x/)" "0"
+export STUB_CODE=000 STUB_SIZE=0
+eq "baseline: sin conexión no inventa catch-all" "$(scans_baseline_size https://x/)" ""
 export STUB_CODE=200 STUB_SIZE=433
 eq "signature devuelve código:tamaño" "$(scans_signature https://x/)" "200:433"
+
+# El stub no debe sobrevivir a la sección: cualquier aserto posterior sobre
+# curl mediría el falso.
+PATH="$SCANS_PATH_BAK"
+unset STUB_CODE STUB_SIZE SCANS_PATH_BAK
 
 rm -rf "$STUBD" "$(scans_dir pruebatool)"
 
@@ -219,10 +233,16 @@ if command -v zsh >/dev/null 2>&1; then
         got=$(zsh -c "cd '$FW' && source '00_Config/lib/$libf.bash' >/dev/null 2>&1; printf '%s' \"\${$var}\"" 2>/dev/null)
         eq "zsh: $libf.bash resuelve bajo 00_Config/lib" "$got" "$FW/00_Config/lib"
     done
-    rm -f "$FW/../.session"
+    # El .session real del operador no se toca: se aparta y se devuelve.
+    SESS_REAL="$FW/00_Config/.session"
+    SESS_BAK=""
+    if [ -f "$SESS_REAL" ]; then SESS_BAK="$TMPD/session.bak"; cp "$SESS_REAL" "$SESS_BAK"; fi
+    rm -f "$FW/../.session" "$SESS_REAL"
     zsh -c "cd '$FW'; unset SESSION_FILE SESSION_TARGETS_FILE; source '00_Config/lib/session.bash' >/dev/null 2>&1; session_set_target prueba.example >/dev/null 2>&1" 2>/dev/null
     [ -f "$FW/../.session" ] && bad "zsh: .session no debe acabar en la raíz del repo" || ok "zsh: .session no acaba en la raíz del repo"
-    rm -f "$FW/../.session"
+    [ -f "$SESS_REAL" ] && ok "zsh: .session aterriza en 00_Config" || bad "zsh: .session no llegó a 00_Config"
+    rm -f "$FW/../.session" "$SESS_REAL"
+    [ -n "$SESS_BAK" ] && cp "$SESS_BAK" "$SESS_REAL"
 else
     echo "  SKIP     zsh no instalado"
 fi
@@ -243,6 +263,12 @@ export RMP_LOG="$TMPD/recon_args"
 eq "run_all_recon: usa el objetivo recibido"        "$(grep -c '192.0.2.99'   "$RMP_LOG")" "1"
 eq "run_all_recon: con argumento no lee targets.txt" "$(grep -c '192.168.1.10' "$RMP_LOG")" "0"
 eq "run_all_recon: declara su hueco en Uso:"         "$(params_mode "$FW/02_Recon/run_all_recon.sh")" "slots"
+
+# Lanzado desde fuera de su directorio también debe encontrar sus hijos y
+# targets.txt: los invoca con rutas relativas.
+: > "$RMP_LOG"
+(cd "$TMPD" && bash "$RMP/02_Recon/run_all_recon.sh" 192.0.2.97 >/dev/null 2>&1)
+eq "run_all_recon: funciona desde cualquier cwd"      "$(grep -c '192.0.2.97' "$RMP_LOG")" "1"
 
 # ──────────────────────────────────────────────────────────
 section "enum_web: nombres con objetivo y línea base de ffuf"
@@ -275,8 +301,23 @@ eq "enum_web: cada ejecución filtra por tamaño base"  "$(grep -c -- '-fs 433' 
 eq "enum_web: cero hallazgos se informa como cero" \
    "$(printf '%s' "$WOUT_TXT" | grep -c ' 0 directorios encontrados')" "1"
 
-rm -f "$WOUT"/headers_192.0.2.1_443.txt "$WOUT"/headers_192.0.2.2_443.txt "$WOUT"/headers_192.0.2.3_443.txt
-rm -f "$WOUT"/ffuf_192.0.2.*
+# Un catch-all contesta al robots.txt con el relleno de la app: 200 y cuerpo,
+# así que "no vacío" no significa "existe".
+eq "enum_web: no anuncia robots.txt cuando es el relleno" \
+   "$(printf '%s' "$WOUT_TXT" | grep -c 'Robots.txt encontrado')" "0"
+
+# Un objetivo inalcanzable no es un objetivo limpio: hay que decirlo.
+cat > "$WSTUB/curl" <<'EOS'
+#!/bin/bash
+echo "000:0"
+EOS
+chmod +x "$WSTUB/curl"
+: > "$WSTUB_ARGS"
+WOUT_DOWN=$(PATH="$WSTUB:$PATH" bash "$FW/04_Enumeration/web/enum_web.sh" 192.0.2.8 443 2>&1)
+eq "enum_web: sin conexión avisa"    "$(printf '%s' "$WOUT_DOWN" | grep -c 'No se pudo conectar')" "1"
+eq "enum_web: sin conexión no fuzzea" "$(grep -c . "$WSTUB_ARGS")" "0"
+
+rm -f "$WOUT"/*_192.0.2.*
 rm -rf "$WSTUB"
 
 # ──────────────────────────────────────────────────────────
@@ -312,7 +353,7 @@ rm -rf "$NSTUB"
 # ──────────────────────────────────────────────────────────
 section "sql_injection: línea base"
 SQLI="$FW/05_Exploitation/web/sql_injection.sh"
-SQLOUT="$FW/../scans/web/sqli_findings.txt"
+WOUT_SQL="$FW/../scans/web"
 QSTUB="$(mktemp -d)"
 printf '#!/bin/bash\nexit 0\n' > "$QSTUB/sqlmap"
 chmod +x "$QSTUB/sqlmap"
@@ -320,9 +361,9 @@ chmod +x "$QSTUB/sqlmap"
 # Escenario 1: servidor catch-all, toda respuesta idéntica
 printf '#!/bin/bash\necho "200:433"\n' > "$QSTUB/curl"
 chmod +x "$QSTUB/curl"
-rm -f "$SQLOUT"
+rm -f "$WOUT_SQL"/sqli_findings_192.0.2.1.txt
 PATH="$QSTUB:$PATH" bash "$SQLI" 192.0.2.1 443 / >/dev/null 2>&1
-N1=$([ -f "$SQLOUT" ] && wc -l < "$SQLOUT" || echo 0)
+N1=$([ -f "$WOUT_SQL/sqli_findings_192.0.2.1.txt" ] && wc -l < "$WOUT_SQL/sqli_findings_192.0.2.1.txt" || echo 0)
 eq "sqli: catch-all no genera hallazgos" "$N1" "0"
 
 # Escenario 2: servidor normal que solo cambia con la carga de inyección
@@ -335,13 +376,45 @@ case "$url" in
 esac
 EOS
 chmod +x "$QSTUB/curl"
-rm -f "$SQLOUT"
+rm -f "$WOUT_SQL"/sqli_findings_192.0.2.*.txt
 PATH="$QSTUB:$PATH" bash "$SQLI" 192.0.2.1 443 / >/dev/null 2>&1
-N2=$([ -f "$SQLOUT" ] && wc -l < "$SQLOUT" || echo 0)
-if [ "$N2" -ge 1 ]; then ok "sqli: detecta la diferencia real ($N2)"; else bad "sqli: no detectó la diferencia real" "obtenido $N2"; fi
+N2=$([ -f "$WOUT_SQL/sqli_findings_192.0.2.1.txt" ] && wc -l < "$WOUT_SQL/sqli_findings_192.0.2.1.txt" || echo 0)
+[ "$N2" -ge 1 ] && ok "sqli: detecta la diferencia real ($N2)" || bad "sqli: no detectó la diferencia real" "obtenido $N2"
 
-rm -f "$SQLOUT"
+# El fichero lleva el objetivo: lo de 192.0.2.1 no se le atribuye a 192.0.2.2
+rm -f "$WOUT_SQL/sqli_findings_192.0.2.2.txt"
+PATH="$QSTUB:$PATH" bash "$SQLI" 192.0.2.2 443 / >/dev/null 2>&1
+eq "sqli: hallazgos por objetivo, sin arrastrar los ajenos" \
+   "$([ -f "$WOUT_SQL/sqli_findings_192.0.2.2.txt" ] && wc -l < "$WOUT_SQL/sqli_findings_192.0.2.2.txt" || echo 0)" "90"
+
+# Escenario 3: 8443 es TLS, no HTTP en claro
+cat > "$QSTUB/curl" <<'EOS'
+#!/bin/bash
+printf '%s\n' "${@: -1}" >> "$QSTUB_URLS"
+echo "200:433"
+EOS
+chmod +x "$QSTUB/curl"
+export QSTUB_URLS="$QSTUB/urls"
+: > "$QSTUB_URLS"
+PATH="$QSTUB:$PATH" bash "$SQLI" 192.0.2.9 8443 / >/dev/null 2>&1
+eq "sqli: 8443 se prueba por https" "$(grep -c '^http://' "$QSTUB_URLS")" "0"
+eq "sqli: 8443 sí sondea"           "$([ -s "$QSTUB_URLS" ] && echo si)" "si"
+
+# Escenario 4: servidor inalcanzable. NO puede decir "sin diferencias":
+# eso sería presentar un fallo de conexión como un objetivo limpio.
+cat > "$QSTUB/curl" <<'EOS'
+#!/bin/bash
+echo "000:0"
+EOS
+chmod +x "$QSTUB/curl"
+QOUT=$(PATH="$QSTUB:$PATH" bash "$SQLI" 192.0.2.7 8443 / 2>&1); QRC=$?
+eq "sqli: sin conexión no finge un objetivo limpio" "$(printf '%s' "$QOUT" | grep -c 'Sin diferencias')" "0"
+eq "sqli: sin conexión avisa"                       "$(printf '%s' "$QOUT" | grep -c 'No se pudo conectar')" "1"
+eq "sqli: sin conexión sale con error"              "$QRC" "1"
+
+rm -f "$WOUT_SQL"/sqli_findings_192.0.2.*.txt
 rm -rf "$QSTUB"
+unset QSTUB_URLS
 
 # ──────────────────────────────────────────────────────────
 section "Escáneres: stderr a errores.log"
@@ -359,6 +432,18 @@ grep -q "errores.log" "$TMPD/salida_scan" && ok "scanner: avisa de la ruta del l
 rm -f "$FW/../scans/nmap/errores.log"
 rm -rf "$ESTUB"
 
+# El log es de este run: uno heredado convierte cualquier ejecución futura en
+# "⚠️ Errores registrados" permanente, y atribuye fallos viejos al objetivo actual.
+TSTUB="$(mktemp -d)"
+printf '#!/bin/bash\nexit 0\n' > "$TSTUB/nmap"
+chmod +x "$TSTUB/nmap"
+echo "error de una ejecución anterior" > "$FW/../scans/nmap/errores.log"
+TOUT=$(PATH="$TSTUB:$PATH" bash "$FW/03_Scanners/network_scanners/nmap/nmap_smart.sh" 192.0.2.6 2>&1)
+eq "scanner: el log se trunca en cada ejecución" "$([ -s "$FW/../scans/nmap/errores.log" ] && echo con-contenido || echo vacio)" "vacio"
+eq "scanner: sin errores nuevos no avisa" "$(printf '%s' "$TOUT" | grep -c 'errores.log')" "0"
+rm -f "$FW/../scans/nmap/errores.log"
+rm -rf "$TSTUB"
+
 # ──────────────────────────────────────────────────────────
 section "run_all_scanners: resumen de logs con errores"
 RSTUB="$(mktemp -d)"
@@ -366,26 +451,47 @@ for t in nmap masscan nikto nuclei rustscan whatweb ffuf; do
     printf '#!/bin/bash\nexit 0\n' > "$RSTUB/$t"
     chmod +x "$RSTUB/$t"
 done
-mkdir -p "$FW/../scans/nmap" "$FW/../scans/nikto"
+mkdir -p "$FW/../scans/nmap" "$FW/../scans/nikto" "$FW/../scans/masscan"
 RBAK=""
-for l in nmap nikto; do
+for l in nmap nikto masscan; do
     if [[ -f "$FW/../scans/$l/errores.log" ]]; then
         mv "$FW/../scans/$l/errores.log" "$TMPD/$l.errores.bak"
         RBAK="$RBAK $l"
     fi
 done
-echo "fallo simulado de nmap" > "$FW/../scans/nmap/errores.log"
-: > "$FW/../scans/nikto/errores.log"
+# Se siembra nikto (no se ejecuta con este stub: no hay puertos web) y masscan
+# (solo corre con IP, y el objetivo es un dominio), así el run no los trunca.
+echo "fallo simulado de nikto" > "$FW/../scans/nikto/errores.log"
+: > "$FW/../scans/masscan/errores.log"
 
 PATH="$RSTUB:$PATH" bash "$FW/03_Scanners/run_all_scanners.sh" prueba.example > "$TMPD/scan_all" 2>&1
 # El hijo ya anuncia su propio log con "⚠️  Errores registrados en:", así que el
 # aserto no puede ser "la ruta aparece": tiene que ser la línea del resumen.
-eq "run_all_scanners: resume el log con contenido" "$(grep -cE '^  ⚠️  .*/scans/nmap/errores\.log \([0-9]+ líneas?\)' "$TMPD/scan_all")" "1"
-eq "run_all_scanners: no resume un log vacío"     "$(grep -cE '/scans/nikto/errores\.log \(' "$TMPD/scan_all")" "0"
+eq "run_all_scanners: resume el log con contenido" "$(grep -cE '^  ⚠️  .*/scans/nikto/errores\.log \([0-9]+ líneas?\)' "$TMPD/scan_all")" "1"
+eq "run_all_scanners: no resume un log vacío"     "$(grep -cE '/scans/masscan/errores\.log \(' "$TMPD/scan_all")" "0"
 
-rm -f "$FW/../scans/nmap/errores.log" "$FW/../scans/nikto/errores.log"
+rm -f "$FW/../scans/nmap/errores.log" "$FW/../scans/nikto/errores.log" "$FW/../scans/masscan/errores.log"
 for l in $RBAK; do mv "$TMPD/$l.errores.bak" "$FW/../scans/$l/errores.log"; done
 rm -rf "$RSTUB"
+
+# Si el descubrimiento de puertos falla, no se puede decir "no hay puertos web":
+# son dos cosas distintas y la segunda cierra el run en verde sin haber mirado.
+WSTUB2="$(mktemp -d)"
+cat > "$WSTUB2/nmap" <<'EOS'
+#!/bin/bash
+case "$*" in
+    *"-p 80,443,8080,8443"*|*"-p80,443,8080,8443"*) echo "nmap: host inalcanzable" >&2; exit 1 ;;
+    *) exit 0 ;;
+esac
+EOS
+chmod +x "$WSTUB2/nmap"
+WOUT2=$(PATH="$WSTUB2:$PATH" bash "$FW/03_Scanners/run_all_scanners.sh" prueba.example 2>&1)
+eq "run_all_scanners: distingue fallo de descubrimiento de 'sin puertos'" \
+   "$(printf '%s' "$WOUT2" | grep -c 'No se pudo descubrir')" "1"
+eq "run_all_scanners: no anuncia 'sin puertos web' cuando el sondeo falló" \
+   "$(printf '%s' "$WOUT2" | grep -c 'No se encontraron puertos web abiertos')" "0"
+rm -f "$FW/../scans/nmap/errores.log"
+rm -rf "$WSTUB2"
 
 # ──────────────────────────────────────────────────────────
 section "ffuf: contar hallazgos, no la url de la configuración"

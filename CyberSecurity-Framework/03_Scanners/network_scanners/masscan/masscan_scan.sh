@@ -18,6 +18,10 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
+# El log es de este run: sin truncar, el error de hace un mes sigue ahí y
+# todas las ejecuciones posteriores avisan sin motivo real.
+: > "$OUTPUT_DIR/errores.log"
+
 if ! command -v masscan &>/dev/null; then
     echo "❌ Masscan no instalado"
     echo "  Instalar con: sudo apt install masscan"

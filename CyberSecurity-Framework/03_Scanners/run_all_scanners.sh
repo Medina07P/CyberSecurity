@@ -34,7 +34,8 @@ if [[ -f "network_scanners/nmap/nmap_smart.sh" ]]; then
 else
     echo "  ⚠️ nmap_smart.sh no encontrado, usando nmap básico..."
     mkdir -p "$SCANS_DIR/nmap"
-    nmap -sV -sC -p- --min-rate 1000 "$TARGET" -oN "$SCANS_DIR/nmap/basic_${TARGET}.txt" 2>/dev/null
+    : > "$SCANS_DIR/nmap/errores.log"
+    nmap -sV -sC -p- --min-rate 1000 "$TARGET" -oN "$SCANS_DIR/nmap/basic_$(basename "$TARGET").txt" 2>>"$SCANS_DIR/nmap/errores.log"
 fi
 
 # Masscan (solo si es IP)
@@ -52,10 +53,17 @@ echo ""
 echo "🌐 WEB SCANNERS"
 echo "────────────────────────────────────────"
 
-# Verificar si hay puertos web abiertos
-WEB_PORTS=$(nmap -p 80,443,8080,8443 "$TARGET" 2>/dev/null | grep -E "^[0-9]+/tcp.*open" | cut -d'/' -f1 | tr '\n' ',' | sed 's/,$//')
+# Verificar si hay puertos web abiertos. El código de salida importa: un nmap
+# que falla deja WEB_PORTS vacío y "no hay puertos web" cerraría el run en verde
+# sin haber mirado nada.
+WEB_DISCOVERY=$(nmap -p 80,443,8080,8443 "$TARGET" 2>>"$SCANS_DIR/nmap/errores.log")
+WEB_RC=$?
+WEB_PORTS=$(printf '%s\n' "$WEB_DISCOVERY" | grep -E "^[0-9]+/tcp.*open" | cut -d'/' -f1 | tr '\n' ',' | sed 's/,$//')
 
-if [[ -n "$WEB_PORTS" ]]; then
+if [[ $WEB_RC -ne 0 ]]; then
+    echo "  ⚠️ No se pudo descubrir puertos web (nmap salió con $WEB_RC)"
+    echo "     Errores en: $SCANS_DIR/nmap/errores.log"
+elif [[ -n "$WEB_PORTS" ]]; then
     echo "  → Puertos web abiertos: $WEB_PORTS"
 
     # Un escaneo por puerto detectado, con el esquema correcto: nunca asumir el 80.

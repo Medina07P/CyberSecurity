@@ -16,6 +16,11 @@ if [[ -z "$URL" ]]; then
 fi
 
 OUTPUT_DIR=$(scans_dir nikto)
+
+# El log es de este run: sin truncar, el error de hace un mes sigue ahí y
+# todas las ejecuciones posteriores avisan sin motivo real.
+: > "$OUTPUT_DIR/errores.log"
+
 SLUG=$(scans_slug "$URL")
 
 if ! command -v nikto &>/dev/null; then

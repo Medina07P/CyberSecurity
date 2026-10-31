@@ -40,17 +40,21 @@ scans_signature() {
     curl -sk -o /dev/null -w '%{http_code}:%{size_download}' "$1" 2>/dev/null
 }
 
-# scans_baseline_size <url> → tamaño del relleno catch-all, o 0 si no lo hay.
-# Pide una ruta aleatoria que no debería existir: si el servidor responde 2xx/3xx
+# scans_baseline_size <url> → tamaño del relleno catch-all, o NADA (cadena
+# vacía) si el servidor responde 404/5xx o no responde.
+# Pide una ruta aleatoria que no debería existir: si el servidor contesta 2xx/3xx
 # con contenido, está sirviendo lo mismo para todo (SPA, rewrite) y ese tamaño
-# es el que hay que filtrar en el fuzzing.
+# es el que hay que filtrar en el fuzzing. Un 403 también cuenta: un WAF que
+# contesta lo mismo a cualquier ruta falsea el fuzzing igual que una SPA.
+# La señal de "no hay catch-all" NO puede ser 0, porque 0 es un tamaño legítimo
+# (un rewrite que solo redirige, sin cuerpo): por eso se devuelve vacío.
 scans_baseline_size() {
     local url="${1%/}" sig code size
     sig=$(curl -sk -o /dev/null -w '%{http_code}:%{size_download}' \
         "${url}/scans_probe_${RANDOM}${RANDOM}" 2>/dev/null)
     code=${sig%%:*}
     size=${sig#*:}
-    [[ "$code" =~ ^[23][0-9][0-9]$ ]] || { printf '0\n'; return 0; }
+    [[ "$code" =~ ^([23][0-9][0-9]|403)$ ]] || return 0
     [[ "$size" =~ ^[0-9]+$ ]] || size=0
     printf '%s\n' "$size"
 }
