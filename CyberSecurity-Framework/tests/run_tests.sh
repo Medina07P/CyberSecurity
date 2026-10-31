@@ -297,6 +297,40 @@ eq "nuclei: el nombre no cambia"             "$(ls "$FW/../scans/nuclei" | grep 
 rm -f "$FW/../scans/nmap/smart_ports_192.0.2.1".* "$FW/../scans/nuclei/nuclei_https___192.0.2.1.txt"
 rm -rf "$NSTUB"
 
+# ──────────────────────────────────────────────────────────
+section "sql_injection: línea base"
+SQLI="$FW/05_Exploitation/web/sql_injection.sh"
+SQLOUT="$FW/../scans/web/sqli_findings.txt"
+QSTUB="$(mktemp -d)"
+printf '#!/bin/bash\nexit 0\n' > "$QSTUB/sqlmap"
+chmod +x "$QSTUB/sqlmap"
+
+# Escenario 1: servidor catch-all, toda respuesta idéntica
+printf '#!/bin/bash\necho "200:433"\n' > "$QSTUB/curl"
+chmod +x "$QSTUB/curl"
+rm -f "$SQLOUT"
+PATH="$QSTUB:$PATH" bash "$SQLI" 192.0.2.1 443 / >/dev/null 2>&1
+N1=$([ -f "$SQLOUT" ] && wc -l < "$SQLOUT" || echo 0)
+eq "sqli: catch-all no genera hallazgos" "$N1" "0"
+
+# Escenario 2: servidor normal que solo cambia con la carga de inyección
+cat > "$QSTUB/curl" <<'EOS'
+#!/bin/bash
+url="${@: -1}"
+case "$url" in
+    *%27*) echo "200:999" ;;
+    *)     echo "200:433" ;;
+esac
+EOS
+chmod +x "$QSTUB/curl"
+rm -f "$SQLOUT"
+PATH="$QSTUB:$PATH" bash "$SQLI" 192.0.2.1 443 / >/dev/null 2>&1
+N2=$([ -f "$SQLOUT" ] && wc -l < "$SQLOUT" || echo 0)
+if [ "$N2" -ge 1 ]; then ok "sqli: detecta la diferencia real ($N2)"; else bad "sqli: no detectó la diferencia real" "obtenido $N2"; fi
+
+rm -f "$SQLOUT"
+rm -rf "$QSTUB"
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
