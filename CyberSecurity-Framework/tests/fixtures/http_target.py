@@ -11,6 +11,7 @@ inestable y un login JSON que exige Cookie: sid=ok.
 
 import html
 import json
+import socket
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,6 +19,8 @@ from urllib.parse import parse_qs, urlparse
 
 
 _CONTADOR = 0
+_CADUCA = 0
+_MUERE = 0
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -77,6 +80,23 @@ class Manejador(BaseHTTPRequestHandler):
                 self._responder(200, "<html><body>49</body></html>")
             else:
                 self._responder(200, "<html><body>%s</body></html>" % html.escape(valor))
+        elif ruta == "/mostrar49":
+            self._responder(200, "<html><body>Mostrando 49 resultados</body></html>")
+        elif ruta == "/caduca":
+            global _CADUCA
+            _CADUCA += 1
+            if _CADUCA > 6:
+                self._responder(401, "<html><body>sesion caducada</body></html>")
+            else:
+                self._responder(200, "<html><body>panel privado</body></html>")
+        elif ruta == "/muere":
+            global _MUERE
+            _MUERE += 1
+            if _MUERE > 6:
+                self.connection.shutdown(socket.SHUT_RDWR)
+                self.connection.close()
+                return
+            self._responder(200, "<html><body>vivo</body></html>")
         elif ruta == "/unstable":
             global _CONTADOR
             _CONTADOR += 1
@@ -91,7 +111,9 @@ class Manejador(BaseHTTPRequestHandler):
         longitud = int(self.headers.get("Content-Length") or 0)
         cuerpo = self.rfile.read(longitud).decode("utf-8", "replace")
 
-        if ruta == "/login":
+        if ruta == "/pedido":
+            self._responder(200, "<html><body>pedido registrado</body></html>")
+        elif ruta == "/login":
             if "sid=ok" not in (self.headers.get("Cookie") or ""):
                 self._responder(401, "<html><body>no autorizado</body></html>")
                 return

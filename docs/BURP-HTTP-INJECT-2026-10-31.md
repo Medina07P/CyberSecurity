@@ -82,8 +82,10 @@ En `scans/web/` (git-ignored):
 
 ## Verificación
 
-- `tests/run_tests.sh` → 196 asserts, 0 fallos (incluye servidor de prueba con login JSON,
-  catch-all, línea base inestable, par booleano, error de BD, retardo, XSS, SSTI y comandos).
+- `tests/run_tests.sh` → 209 asserts, 0 fallos (incluye servidor de prueba con login JSON,
+  catch-all, línea base inestable, par booleano, error de BD, retardo, XSS, SSTI, comandos,
+  sesión que caduca a mitad, servidor que deja de responder, tope de peticiones y un "49"
+  que ya estaba en la página).
 - `tests/run_e2e.sh` → 11/0 · `tests/run_smoke.sh` → 0 fallos · `tests/run_wizard.sh` → 58/0.
 - `bash -n` sobre los 116 `.sh` y los 6 `.bash`, con `stderr` capturado: limpio.
 - Prueba real contra el servidor de prueba: `GET /sqli?id=1` → 1 CONFIRMADO (`sqli_bool`) con
