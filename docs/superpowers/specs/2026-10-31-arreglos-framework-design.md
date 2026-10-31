@@ -2,7 +2,7 @@
 
 - **Fecha:** 2026-10-31
 - **Estado:** pendiente de aprobación
-- **Origen:** prueba real contra `el-objetivo-del-engagement` (ver `11_Reports/final_report/informe_objetivo_2026-10-31.md`)
+- **Origen:** prueba real contra la app de facturación recurrente del engagement del 2026-10-31 (host no registrado aquí; ver el informe en `11_Reports/final_report/`, que está git-ignored)
 - **Revisión:** pasó por un revisor independiente; sus objeciones están resueltas en «Resoluciones» al final.
 
 ## Intención y por qué

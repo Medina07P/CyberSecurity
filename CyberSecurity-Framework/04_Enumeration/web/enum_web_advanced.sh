@@ -41,7 +41,7 @@ for port in 80 443 8080 8443 8000 8888 9000; do
             CODE=${SIG%%:*}
             SIZE=${SIG#*:}
             [[ "$CODE" =~ ^(200|301|302|403)$ ]] || continue
-            [[ "$BASE" != "0" && "$SIZE" == "$BASE" ]] && continue
+            [[ -n "$BASE" && "$SIZE" == "$BASE" ]] && continue
             echo " 🔴 $file ($CODE)"
             echo "$URL/$file|$CODE" >> "$OUTPUT_DIR/sensitive_files_${SLUG}_${port}.txt"
         done

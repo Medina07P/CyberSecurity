@@ -105,6 +105,11 @@ echo "=== informes: se declaran plantilla ==="
 # [FECHA], [NOMBRE_CLIENTE]... Presentarlo como "generado automáticamente" tras
 # una auditoría real es lo que este aserto impide.
 run "informe: avisa en pantalla de que es plantilla" '11\n2\n--executive\n\nQ\n' "PLANTILLA"
+# Se borra antes: el fichero está git-ignored y, desde este branch, siempre
+# contiene PLANTILLA; sin borrarlo el aserto seguiría verde aunque la opción
+# 11→2 dejara de ejecutar el generador.
+rm -f "$FW/11_Reports/executive/executive_summary.md"
+printf '11\n2\n--executive\n\nQ\n' | timeout 30 bash ./cyber_framework.sh >/dev/null 2>&1
 if grep -qi "PLANTILLA" "$FW/11_Reports/executive/executive_summary.md" 2>/dev/null; then
     echo "  OK       el informe ejecutivo se declara plantilla"
 else
