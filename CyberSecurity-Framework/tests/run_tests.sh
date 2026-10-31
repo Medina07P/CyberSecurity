@@ -733,6 +733,30 @@ else
     echo "  SKIP     python3 no instalado"
 fi
 
+# ──────────────────────────────────────────────────────────
+section "http_inject: evidencia y resumen"
+if HPORT=$(iniciar_servidor_http); then
+    export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5
+    printf 'GET /sqli?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_ev.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_ev.txt" 127.0.0.1 >/dev/null 2>&1
+    EV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT
+    eq "evidencia: hay pares .req" "$(ls "$EV"/*.req 2>/dev/null | wc -l | tr -d ' ' | awk '{print ($1>0)}')" "1"
+    eq "evidencia: hay pares .resp" "$(ls "$EV"/*.resp 2>/dev/null | wc -l | tr -d ' ' | awk '{print ($1>0)}')" "1"
+    eq "evidencia: el .req lleva la línea de petición" "$(head -1 "$(ls "$EV"/*.req | head -1)" | grep -c '^GET /sqli')" "1"
+    eq "evidencia: el .resp no pasa de 64 KB" "$(find "$EV" -name '*.resp' -size +64k | wc -l | tr -d ' ')" "0"
+
+    OUT=$(HTTP_INJECT_NIVEL=fuertes bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_ev.txt" 127.0.0.1 2>&1)
+    eq "filtro fuertes: la consola omite los débiles" "$(printf '%s' "$OUT" | grep -c 'DEBIL')" "0"
+    eq "filtro fuertes: la consola sigue mostrando lo confirmado" "$(printf '%s' "$OUT" | grep -c 'CONFIRMADO')" "1"
+    TSV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT".tsv"
+    eq "filtro fuertes: el fichero conserva lo confirmado" "$(awk -F'\t' '$1=="CONFIRMADO"' "$TSV" | wc -l | tr -d ' ' | awk '{print ($1>0)}')" "1"
+    eq "resumen: cuenta por nivel" "$(printf '%s' "$OUT" | grep -cE '[0-9]+ confirmado')" "1"
+    rm -rf "$FW/../scans/web/http_inject_127.0.0.1_"*
+    kill "$HTTP_SRV_PID" 2>/dev/null
+else
+    echo "  SKIP     python3 no instalado"
+fi
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
