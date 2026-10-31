@@ -4,7 +4,8 @@
 # Uso: ./timeline_creator.sh [OUTPUT_DIR]
 # Ejemplo: ./timeline_creator.sh
 
-OUTPUT_DIR="${1:-../analysis/timeline}"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="${1:-$MODULE_DIR/analysis/timeline}"
 DATE=$(date +%Y%m%d)
 
 mkdir -p "$OUTPUT_DIR"
@@ -20,7 +21,11 @@ journalctl --since "24 hours ago" 2>/dev/null | head -100 >> "$OUTPUT_DIR/timeli
 # 2. Eventos de autenticación
 echo " → Autenticaciones..."
 echo "=== AUTENTICACIONES ===" >> "$OUTPUT_DIR/timeline_$DATE.txt"
-last -a | head -20 >> "$OUTPUT_DIR/timeline_$DATE.txt"
+if command -v last &>/dev/null; then
+    last -a | head -20 >> "$OUTPUT_DIR/timeline_$DATE.txt"
+else
+    echo "(comando 'last' no disponible en este sistema)" >> "$OUTPUT_DIR/timeline_$DATE.txt"
+fi
 
 # 3. Conexiones SSH
 echo " → Conexiones SSH..."

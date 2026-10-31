@@ -5,7 +5,9 @@
 # ============================================================
 
 DOMAIN="$1"
-OUTPUT_DIR="${2:-../emails}"
+# Salida junto al módulo, independiente del cwd desde el que se lance
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="${2:-$MODULE_DIR/emails}"
 
 if [[ -z "$DOMAIN" ]]; then
     echo "Uso: ./email_harvester.sh <dominio>"
@@ -14,6 +16,7 @@ if [[ -z "$DOMAIN" ]]; then
 fi
 
 echo "📧 Recopilando emails para: $DOMAIN"
+mkdir -p "$OUTPUT_DIR/leaks"
 
 # 1. theHarvester
 echo "  → Ejecutando theHarvester..."

@@ -6,7 +6,8 @@
 
 HANDSHAKE="$1"
 WORDLIST="${2:-/usr/share/wordlists/rockyou.txt}"
-OUTPUT_DIR="../captures/logs"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/captures/logs"
 
 if [[ -z "$HANDSHAKE" ]]; then
     echo "Uso: ./wifi_crack.sh <HANDSHAKE_FILE> [WORDLIST]"

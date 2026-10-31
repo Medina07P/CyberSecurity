@@ -5,7 +5,8 @@
 # Ejemplo: ./wifi_handshake.sh wlan0mon
 
 INTERFACE="$1"
-OUTPUT_DIR="../captures/handshakes"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/captures/handshakes"
 
 if [[ -z "$INTERFACE" ]]; then
     echo "Uso: ./wifi_handshake.sh <INTERFACE>"

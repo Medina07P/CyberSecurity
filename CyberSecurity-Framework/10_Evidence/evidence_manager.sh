@@ -6,7 +6,8 @@
 # Ejemplo: ./evidence_manager.sh --add screenshot web_login.png
 # ============================================================
 
-EVIDENCE_DIR="$(pwd)"
+EVIDENCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$EVIDENCE_DIR" || exit 1
 DATE=$(date +%Y%m%d_%H%M%S)
 
 RED='\033[0;31m'

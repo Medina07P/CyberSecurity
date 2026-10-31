@@ -5,7 +5,9 @@
 # ============================================================
 
 COMPANY="$1"
-OUTPUT_DIR="${2:-../social_media}"
+# Salida junto al módulo, independiente del cwd desde el que se lance
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="${2:-$MODULE_DIR/social_media}"
 
 if [[ -z "$COMPANY" ]]; then
     echo "Uso: ./social_media_search.sh <empresa>"

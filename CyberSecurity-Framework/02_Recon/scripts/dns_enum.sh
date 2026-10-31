@@ -15,17 +15,19 @@ fi
 
 echo "🌐 Enumerando DNS para: $DOMAIN"
 
-# Crear directorio de salida
-mkdir -p ../dns
+# Crear directorio de salida junto al módulo, no en el cwd
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/dns"
+mkdir -p "$OUTPUT_DIR"
 
 # 1. Registros básicos
 echo "  → Registros básicos..."
-dig "$DOMAIN" ANY > "../dns/dig_${DOMAIN}.txt"
+dig "$DOMAIN" ANY > "$OUTPUT_DIR/dig_${DOMAIN}.txt"
 
 # 2. Transferencia de zona (intento)
 echo "  → Intentando transferencia de zona..."
 for ns in $(dig +short NS "$DOMAIN" 2>/dev/null); do
-    dig "@$ns" "$DOMAIN" AXFR 2>/dev/null >> "../dns/zone_transfer_${DOMAIN}.txt"
+    dig "@$ns" "$DOMAIN" AXFR 2>/dev/null >> "$OUTPUT_DIR/zone_transfer_${DOMAIN}.txt"
 done
 
 # 3. Subdominios (diccionario)
@@ -34,14 +36,14 @@ SUBDOMAINS=("www" "mail" "ftp" "admin" "api" "dev" "test" "staging" "prod" "back
 for sub in "${SUBDOMAINS[@]}"; do
     if dig +short "$sub.$DOMAIN" 2>/dev/null | grep -qE '^[0-9]+'; then
         echo "    ✅ $sub.$DOMAIN existe"
-        echo "$sub.$DOMAIN|$(dig +short "$sub.$DOMAIN" 2>/dev/null)" >> "../dns/subdominios_encontrados.txt"
+        echo "$sub.$DOMAIN|$(dig +short "$sub.$DOMAIN" 2>/dev/null)" >> "$OUTPUT_DIR/subdominios_encontrados.txt"
     fi
 done
 
 # 4. Reverse DNS para IPs
 echo "  → Reverse DNS..."
 for ip in $(dig +short "$DOMAIN" 2>/dev/null); do
-    host "$ip" 2>/dev/null >> "../dns/reverse_${DOMAIN}.txt"
+    host "$ip" 2>/dev/null >> "$OUTPUT_DIR/reverse_${DOMAIN}.txt"
 done
 
 echo "✅ DNS enumeration completada"

@@ -5,7 +5,8 @@
 # Ejemplo: ./volatility_analysis.sh memory.raw
 
 MEMORY_FILE="$1"
-OUTPUT_DIR="../analysis/memory"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/analysis/memory"
 
 if [[ -z "$MEMORY_FILE" ]]; then
     echo "Uso: ./volatility_analysis.sh <MEMORY_FILE>"

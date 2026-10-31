@@ -5,7 +5,8 @@
 # Ejemplo: ./log_analyzer.sh /var/log/syslog
 
 LOG_FILE="$1"
-OUTPUT_DIR="../analysis/logs"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/analysis/logs"
 
 if [[ -z "$LOG_FILE" ]]; then
     echo "Uso: ./log_analyzer.sh <LOG_FILE>"
