@@ -992,6 +992,80 @@ eq "sqlmap_request: el Host reescrito conserva el puerto" \
 unset SQLMAP_SI
 rm -rf "$FW/../scans/sqlmap" "$SSTUB"
 
+# ──────────────────────────────────────────────────────────
+section "sqlmap_request: veredictos"
+SSTUB="$(mktemp -d)"
+export SSTUB_LOG="$TMPD/sqlmap_veredicto.txt" SQLMAP_SI=1
+
+escribir_stub() {  # <salida de sqlmap> [código de salida]
+    cat > "$SSTUB/sqlmap" <<EOS
+#!/bin/bash
+printf '%s\n' "\$*" >> "\$SSTUB_LOG"
+cat <<'FIN'
+$1
+FIN
+exit ${2:-0}
+EOS
+    chmod +x "$SSTUB/sqlmap"
+}
+
+: > "$SSTUB_LOG"
+escribir_stub "[INFO] GET parameter 'id' appears to be 'AND boolean-based blind' injectable"
+OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1); RC=$?
+eq "veredicto: inyectable sale 0" "$RC" "0"
+eq "veredicto: inyectable se anuncia" "$(printf '%s' "$OUT" | grep -ci 'INYECTABLE' )" "1"
+eq "veredicto: http normal no fuerza TLS" "$(grep -c -- '--force-ssl' "$SSTUB_LOG")" "0"
+
+# https en 443: el .req no lo dice, el puerto sí
+: > "$SSTUB_LOG"
+printf 'GET /?id=1 HTTP/1.1\nHost: app.inventado.example:443\n\n' > "$TMPD/req_sm_443.req"
+PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm_443.req" >/dev/null 2>&1
+eq "veredicto: https en 443 pasa --force-ssl" "$(grep -c -- '--force-ssl' "$SSTUB_LOG")" "1"
+: > "$SSTUB_LOG"
+PATH="$SSTUB:$PATH" SQLMAP_ESQUEMA=https bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" >/dev/null 2>&1
+eq "veredicto: SQLMAP_ESQUEMA=https fuerza TLS" "$(grep -c -- '--force-ssl' "$SSTUB_LOG")" "1"
+: > "$SSTUB_LOG"
+PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" >/dev/null 2>&1
+eq "veredicto: http en 18001 no pasa --force-ssl" "$(grep -c -- '--force-ssl' "$SSTUB_LOG")" "0"
+
+escribir_stub "[CRITICAL] all tested parameters do not appear to be injectable"
+OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1); RC=$?
+eq "veredicto: no inyectable sale 0" "$RC" "0"
+eq "veredicto: se cualifica con la técnica" "$(printf '%s' "$OUT" | grep -ci 'con --technique=B' )" "1"
+
+escribir_stub "[CRITICAL] host 'app.inventado.example' does not exist"
+OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1); RC=$?
+eq "veredicto: fallo de red es NO DETERMINADO" "$(printf '%s' "$OUT" | grep -ci 'NO DETERMINADO' )" "1"
+eq "veredicto: fallo de red sale 1" "$RC" "1"
+eq "veredicto: un fallo no se lee como no inyectable" "$(printf '%s' "$OUT" | grep -ci 'NO INYECTABLE' )" "0"
+
+escribir_stub "[INFO] all tested parameters do not appear to be injectable
+[WARNING] HTTP error codes detected during run:
+429 (Too Many Requests) - 12 times"
+OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1); RC=$?
+eq "veredicto: 429 en el log de sqlmap es NO DETERMINADO" "$(printf '%s' "$OUT" | grep -ci 'NO DETERMINADO' )" "1"
+eq "veredicto: 429 no se hereda como no inyectable" "$(printf '%s' "$OUT" | grep -ci 'NO INYECTABLE' )" "0"
+eq "veredicto: 429 sale 1" "$RC" "1"
+
+# Con sqlmap de verdad: el fixture tiene una SQLi booleana, así que la fase 1
+# tiene que concluir INYECTABLE. Es la prueba de que -r funciona de punta a punta.
+if command -v sqlmap >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    rm -rf "$FW/../scans/sqlmap"
+    SP=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
+    python3 "$FW/tests/fixtures/sql_target.py" "$SP" >/dev/null 2>&1 &
+    SPID=$!
+    for i in 1 2 3 4 5 6 7 8 9 10; do curl -s -o /dev/null "http://127.0.0.1:$SP/?id=1" && break; sleep 0.3; done
+    printf 'GET /?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$SP" > "$TMPD/req_real.req"
+    OUT=$(SQLMAP_SI=1 SQLMAP_TECNICA=B bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_real.req" 2>&1); RC=$?
+    eq "real: sqlmap confirma la inyección del fixture" "$(printf '%s' "$OUT" | grep -ci 'INYECTABLE' )" "1"
+    eq "real: sale 0" "$RC" "0"
+    kill "$SPID" 2>/dev/null
+else
+    echo "  SKIP     sqlmap o python3 no instalados"
+fi
+
+rm -rf "$FW/../scans/sqlmap" "$SSTUB"; unset SQLMAP_SI SSTUB_LOG
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
