@@ -541,6 +541,41 @@ hr_load "$TMPD/multi.txt" 2>/dev/null; eq "hr_load: rechaza multipart" "$?" "3"
 printf 'no-es-una-peticion\n' > "$TMPD/malo.txt"
 hr_load "$TMPD/malo.txt" 2>/dev/null; eq "hr_load: rechaza lo que no es petición" "$?" "2"
 
+# ──────────────────────────────────────────────────────────
+section "http_request: parámetros y sustitución"
+REQF="$TMPD/form.txt"
+printf 'POST /login HTTP/1.1\nHost: app.example\nContent-Type: application/x-www-form-urlencoded\n\nuser=ana&pass=x&remember=1' > "$REQF"
+hr_load "$REQF"
+eq "hr_params: formulario" "$(hr_params | tr '\n' ' ')" \
+   "form|user|ana form|pass|x form|remember|1 "
+eq "hr_body_with: sustituye un campo" "$(hr_body_with form pass PWNED)" "user=ana&pass=PWNED&remember=1"
+eq "hr_target_with: sin query no cambia" "$(hr_target_with form pass PWNED)" "/login"
+
+REQQ="$TMPD/query.txt"
+printf 'GET /search?q=hola&page=2 HTTP/1.1\nHost: app.example\n\n' > "$REQQ"
+hr_load "$REQQ"
+eq "hr_params: query" "$(hr_params | tr '\n' ' ')" "query|q|hola query|page|2 "
+eq "hr_target_with: sustituye en query" "$(hr_target_with query q hola2)" "/search?q=hola2&page=2"
+
+if command -v python3 >/dev/null 2>&1; then
+    REQJ="$TMPD/json.txt"
+    printf 'POST /api HTTP/1.1\nHost: app.example\nContent-Type: application/json\n\n{"user":{"email":"a@b.c"},"n":7,"ok":true,"nulo":null}' > "$REQJ"
+    hr_load "$REQJ"
+    eq "hr_params: hojas JSON" "$(hr_params | tr '\n' ' ')" \
+       "json|user.email|a@b.c json|n|7 json|ok|true json|nulo|null "
+    eq "hr_body_with: sustituye hoja anidada" \
+       "$(hr_body_with json user.email PWNED | python3 -c 'import json,sys; print(json.load(sys.stdin)["user"]["email"])')" "PWNED"
+    eq "hr_body_with: número sustituido por cadena sigue siendo JSON válido" \
+       "$(hr_body_with json n PWNED | python3 -c 'import json,sys; print(json.load(sys.stdin)["n"])')" "PWNED"
+
+    REQM="$TMPD/jsonmalo.txt"
+    printf 'POST /api HTTP/1.1\nHost: a\nContent-Type: application/json\n\n{"a":}' > "$REQM"
+    hr_load "$REQM"; hr_params >/dev/null 2>&1
+    eq "hr_params: JSON inválido no revienta" "$?" "5"
+else
+    echo "  SKIP     python3 no instalado: sin casos JSON"
+fi
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
