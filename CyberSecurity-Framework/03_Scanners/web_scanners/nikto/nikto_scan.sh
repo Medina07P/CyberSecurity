@@ -6,8 +6,8 @@
 # ============================================================
 
 URL="$1"
-SCANS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)/scans"
-OUTPUT_DIR="$SCANS_DIR/nikto"
+SCANS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../../00_Config/lib" && pwd)"
+source "$SCANS_LIB/scans.bash"
 
 if [[ -z "$URL" ]]; then
     echo "Uso: ./nikto_scan.sh <URL>"
@@ -15,7 +15,8 @@ if [[ -z "$URL" ]]; then
     exit 1
 fi
 
-mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR=$(scans_dir nikto)
+SLUG=$(scans_slug "$URL")
 
 if ! command -v nikto &>/dev/null; then
     echo "❌ Nikto no instalado"
@@ -28,7 +29,7 @@ echo "  ⚠️  Nikto puede tardar varios minutos..."
 
 # Escaneo en texto. -ssl solo en HTTPS: forzarlo contra http:// rompe la conexión.
 # Nikto añade la extensión del formato al nombre de -o, así que se pasa sin ".txt".
-NIKTO_BASE="$OUTPUT_DIR/nikto_${URL//[:\/]/_}"
+NIKTO_BASE="$OUTPUT_DIR/nikto_${SLUG}"
 NIKTO_ARGS=(-h "$URL" -o "$NIKTO_BASE" -Format txt)
 [[ "$URL" == https://* ]] && NIKTO_ARGS+=(-ssl)
 nikto "${NIKTO_ARGS[@]}" 2>/dev/null

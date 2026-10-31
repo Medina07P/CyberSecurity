@@ -267,6 +267,36 @@ eq "enum_web: cada ejecución filtra por tamaño base"  "$(grep -c -- '-fs 433' 
 rm -f "$WOUT"/headers_192.0.2.1_443.txt "$WOUT"/headers_192.0.2.2_443.txt
 rm -rf "$WSTUB"
 
+# ──────────────────────────────────────────────────────────
+section "Escáneres: nombres con objetivo"
+NSTUB="$(mktemp -d)"
+cat > "$NSTUB/nmap" <<'EOS'
+#!/bin/bash
+base=""
+while [[ $# -gt 0 ]]; do [[ "$1" == "-oA" ]] && base="$2"; shift; done
+[[ -n "$base" ]] && : > "${base}.nmap"
+exit 0
+EOS
+cat > "$NSTUB/nuclei" <<'EOS'
+#!/bin/bash
+out=""
+while [[ $# -gt 0 ]]; do [[ "$1" == "-o" ]] && out="$2"; shift; done
+[[ -n "$out" ]] && echo "stub" > "$out"
+exit 0
+EOS
+chmod +x "$NSTUB/nmap" "$NSTUB/nuclei"
+
+rm -f "$FW/../scans/nmap/smart_ports_192.0.2.1".*
+rm -f "$FW/../scans/nuclei/nuclei_https___192.0.2.1.txt"
+PATH="$NSTUB:$PATH" bash "$FW/03_Scanners/network_scanners/nmap/nmap_smart.sh" 192.0.2.1 >/dev/null 2>&1
+PATH="$NSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/nuclei/nuclei_scan.sh" https://192.0.2.1 >/dev/null 2>&1
+
+eq "nmap_smart: el nombre lleva el objetivo" "$(ls "$FW/../scans/nmap" | grep -c '^smart_ports_192\.0\.2\.1\.nmap')" "1"
+eq "nuclei: el nombre no cambia"             "$(ls "$FW/../scans/nuclei" | grep -c '^nuclei_https___192\.0\.2\.1\.txt')" "1"
+
+rm -f "$FW/../scans/nmap/smart_ports_192.0.2.1".* "$FW/../scans/nuclei/nuclei_https___192.0.2.1.txt"
+rm -rf "$NSTUB"
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
