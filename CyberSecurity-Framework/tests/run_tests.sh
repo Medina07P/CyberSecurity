@@ -48,7 +48,7 @@ esac
 section "Parser: recuentos sobre los .sh"
 # Se excluye tests/ (este mismo fichero); la librería usa extensión .bash
 total=$(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | wc -l | tr -d ' ')
-eq "114 scripts .sh en el framework" "$total" "114"
+eq "115 scripts .sh en el framework" "$total" "115"
 eq "la librería no se cuenta como script" "$(find "$FW/00_Config/lib" -name '*.sh' | wc -l | tr -d ' ')" "0"
 
 dos=0
@@ -59,7 +59,7 @@ for f in $(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | sort); do
     o=$(params_slots "$f" | awk -F'|' '$3=="obligatorio"' | wc -l | tr -d ' ')
     [ "$o" -ge 2 ] && oblig=$((oblig + 1))
 done
-eq "36 scripts con 2+ huecos" "$dos" "36"
+eq "37 scripts con 2+ huecos" "$dos" "37"
 eq "8 scripts con 2+ obligatorios" "$oblig" "8"
 
 # ──────────────────────────────────────────────────────────
@@ -604,6 +604,66 @@ printf 'You have an error in your SQL syntax near x' > "$TMPD/err"
 eq "hr_db_error: detecta MySQL" "$(hr_db_error "$TMPD/err")" "MySQL"
 printf '<p>todo bien</p>' > "$TMPD/ok"
 hr_db_error "$TMPD/ok" >/dev/null; eq "hr_db_error: página normal no coincide" "$?" "1"
+
+# ──────────────────────────────────────────────────────────
+section "http_inject: arranque y guardas"
+# Helper compartido por las secciones de las tareas 4-7
+iniciar_servidor_http() {
+    command -v python3 >/dev/null 2>&1 || return 1
+    local p i
+    p=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
+    python3 "$FW/tests/fixtures/http_target.py" "$p" >/dev/null 2>&1 &
+    HTTP_SRV_PID=$!
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        curl -s -o /dev/null "http://127.0.0.1:$p/safe" && break
+        sleep 0.3
+    done
+    printf '%s\n' "$p"
+}
+
+if HPORT=$(iniciar_servidor_http); then
+    export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5
+
+    # El directorio de configuración se puede aislar: sin esto, el aviso de
+    # alcance dependería del scope.yaml real del operador.
+    mkdir -p "$TMPD/conf"; printf 'scope:\n  allowed_hosts:\n    - 10.0.0.0/8\n' > "$TMPD/conf/scope.yaml"
+    eq "session: SESSION_CONFIG_DIR se puede aislar" \
+       "$(SESSION_CONFIG_DIR="$TMPD/conf" bash -c "source '$FW/00_Config/lib/session.bash'; printf '%s' \"\$SESSION_CONFIG_DIR\"")" "$TMPD/conf"
+
+    printf 'GET /echo?q=hola HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_echo.txt"
+    OUT=$(SESSION_CONFIG_DIR="$TMPD/conf" SESSION_FILE="$TMPD/.session" \
+          bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_echo.txt" 127.0.0.1 2>&1)
+    eq "http_inject: sale 0 con petición válida" "$?" "0"
+    eq "http_inject: informa del objetivo" "$(printf '%s' "$OUT" | grep -q '127.0.0.1' && echo si || echo no)" "si"
+    eq "http_inject: escribe el informe" "$(ls "$FW/../scans/web/"http_inject_127.0.0.1_"$HPORT".txt 2>/dev/null | wc -l | tr -d ' ')" "1"
+    eq "http_inject: avisa si el objetivo está fuera de alcance" "$(printf '%s' "$OUT" | grep -ci 'alcance')" "1"
+
+    printf 'GET /safe?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_safe.txt"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_safe.txt" 127.0.0.1 2>&1)
+    eq "http_inject: catch-all detectado" "$(printf '%s' "$OUT" | grep -ci 'catch-all')" "1"
+
+    printf 'GET /echo HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_noparams.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_noparams.txt" 127.0.0.1 >/dev/null 2>&1
+    eq "http_inject: sin parámetros sale 1" "$?" "1"
+
+    printf 'POST /login HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"user":"ana"}' "$HPORT" > "$TMPD/req_post.txt"
+    OUT=$(HTTP_INJECT_SI= bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_post.txt" 127.0.0.1 2>&1 <<< 'n')
+    eq "http_inject: pide confirmación con POST" "$(printf '%s' "$OUT" | grep -c 'POST')" "1"
+    eq "http_inject: si se niega, no envía nada" "$(printf '%s' "$OUT" | grep -ci 'cancelad\|no se ha enviado')" "1"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_post.txt" 127.0.0.1 2>&1)
+    eq "http_inject: avisa de posible sesión caducada (401)" "$(printf '%s' "$OUT" | grep -ci 'sesi')" "1"
+
+    printf 'GET /unstable?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_unstable.txt"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_unstable.txt" 127.0.0.1 2>&1)
+    eq "http_inject: avisa de línea base inestable" "$(printf '%s' "$OUT" | grep -ci 'inestable')" "1"
+
+    eq "dangerous.txt incluye http_inject" "$(grep -cxF '05_Exploitation/web/http_inject.sh' "$FW/00_Config/lib/dangerous.txt")" "1"
+    eq "http_inject se declara en modo slots" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_mode '$FW/05_Exploitation/web/http_inject.sh'")" "slots"
+    kill "$HTTP_SRV_PID" 2>/dev/null
+    rm -f "$FW/../scans/web/http_inject_127.0.0.1_"*.txt
+else
+    echo "  SKIP     python3 no instalado: sin servidor de prueba"
+fi
 
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'

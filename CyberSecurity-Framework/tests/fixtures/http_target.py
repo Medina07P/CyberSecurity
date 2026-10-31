@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Servidor de pruebas para http_inject.sh.
+
+Uso: python3 http_target.py <puerto>
+
+Escucha en 127.0.0.1 y ofrece los casos que las suites necesitan:
+reflejo sin escapar, reflejo escapado, endpoint que ignora el parámetro
+(catch-all), par booleano de SQLi, error de BD, retardo, SSTI, respuesta
+inestable y un login JSON que exige Cookie: sid=ok.
+"""
+
+import html
+import json
+import random
+import sys
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+
+class Manejador(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *args):
+        pass
+
+    def _responder(self, codigo, cuerpo, tipo="text/html; charset=utf-8"):
+        datos = cuerpo.encode("utf-8")
+        self.send_response(codigo)
+        self.send_header("Content-Type", tipo)
+        self.send_header("Content-Length", str(len(datos)))
+        self.end_headers()
+        self.wfile.write(datos)
+
+    def _valor(self):
+        consulta = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+        for clave in ("q", "id", "name"):
+            if clave in consulta:
+                return consulta[clave][0]
+        return ""
+
+    def do_GET(self):
+        ruta = urlparse(self.path).path
+        valor = self._valor()
+
+        if ruta in ("/echo", "/xss"):
+            self._responder(200, "<html><body>reflejo: %s</body></html>" % valor)
+        elif ruta == "/esc":
+            self._responder(200, "<html><body>reflejo: %s</body></html>" % html.escape(valor))
+        elif ruta == "/safe":
+            self._responder(200, "<html><body>pagina fija</body></html>")
+        elif ruta == "/sqli":
+            if "AND '1'='1" in valor:
+                self._responder(200, "<html><body>lista con 3 filas</body></html>")
+            elif "AND '1'='2" in valor:
+                self._responder(200, "<html><body>no hay resultados</body></html>")
+            else:
+                self._responder(200, "<html><body>pagina normal</body></html>")
+        elif ruta == "/err":
+            if "'" in valor:
+                self._responder(500, "You have an error in your SQL syntax near '%s'" % valor)
+            else:
+                self._responder(200, "<html><body>ok</body></html>")
+        elif ruta == "/time":
+            if "sleep" in valor.lower():
+                time.sleep(1)
+            self._responder(200, "<html><body>listo</body></html>")
+        elif ruta == "/ssti":
+            if "{{7*7}}" in valor:
+                self._responder(200, "<html><body>49</body></html>")
+            else:
+                self._responder(200, "<html><body>%s</body></html>" % html.escape(valor))
+        elif ruta == "/unstable":
+            relleno = "x" * random.randint(10, 400)
+            self._responder(200, "<html><body>%s</body></html>" % relleno)
+        else:
+            self._responder(404, "no encontrado")
+
+    def do_POST(self):
+        ruta = urlparse(self.path).path
+        longitud = int(self.headers.get("Content-Length") or 0)
+        cuerpo = self.rfile.read(longitud).decode("utf-8", "replace")
+
+        if ruta == "/login":
+            if "sid=ok" not in (self.headers.get("Cookie") or ""):
+                self._responder(401, "<html><body>no autorizado</body></html>")
+                return
+            try:
+                datos = json.loads(cuerpo) if cuerpo else {}
+            except ValueError:
+                datos = {}
+            usuario = datos.get("user", "")
+            self._responder(200, "<html><body>bienvenido %s</body></html>" % html.escape(str(usuario)))
+        else:
+            self._responder(404, "no encontrado")
+
+
+if __name__ == "__main__":
+    puerto = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    servidor = ThreadingHTTPServer(("127.0.0.1", puerto), Manejador)
+    servidor.serve_forever()
