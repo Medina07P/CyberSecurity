@@ -37,7 +37,7 @@ echo "   Puertos: $PORTS"
 masscan -p"$PORTS" --rate=10000 "$TARGET" \
     -oJ "$OUTPUT_DIR/masscan_${TARGET//\//_}.json" \
     -oG "$OUTPUT_DIR/masscan_${TARGET//\//_}.grep" \
-    -oL "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt" 2>/dev/null
+    -oL "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt" 2>>"$OUTPUT_DIR/errores.log"
 
 # Mostrar resultados
 if [[ -f "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt" ]]; then
@@ -50,4 +50,10 @@ if [[ -f "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt" ]]; then
     cat "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt"
 else
     echo "❌ No se encontraron puertos abiertos o el escaneo falló"
+fi
+
+# El stderr de la herramienta no se descarta: un "0 hallazgos" no debe
+# poder ser en realidad un fallo de ejecucion.
+if [[ -s "$OUTPUT_DIR/errores.log" ]]; then
+    echo "⚠️  Errores registrados en: $OUTPUT_DIR/errores.log"
 fi

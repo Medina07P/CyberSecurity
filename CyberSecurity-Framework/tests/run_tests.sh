@@ -331,6 +331,50 @@ if [ "$N2" -ge 1 ]; then ok "sqli: detecta la diferencia real ($N2)"; else bad "
 rm -f "$SQLOUT"
 rm -rf "$QSTUB"
 
+# ──────────────────────────────────────────────────────────
+section "Escáneres: stderr a errores.log"
+ESTUB="$(mktemp -d)"
+cat > "$ESTUB/nmap" <<'EOS'
+#!/bin/bash
+echo "fallo simulado de nmap" >&2
+exit 1
+EOS
+chmod +x "$ESTUB/nmap"
+rm -f "$FW/../scans/nmap/errores.log"
+PATH="$ESTUB:$PATH" bash "$FW/03_Scanners/network_scanners/nmap/nmap_smart.sh" 192.0.2.9 > "$TMPD/salida_scan" 2>&1
+[ -s "$FW/../scans/nmap/errores.log" ] && ok "scanner: el error queda en el log" || bad "scanner: el error no quedó en el log"
+grep -q "errores.log" "$TMPD/salida_scan" && ok "scanner: avisa de la ruta del log" || bad "scanner: no avisa de la ruta del log"
+rm -f "$FW/../scans/nmap/errores.log"
+rm -rf "$ESTUB"
+
+# ──────────────────────────────────────────────────────────
+section "run_all_scanners: resumen de logs con errores"
+RSTUB="$(mktemp -d)"
+for t in nmap masscan nikto nuclei rustscan whatweb ffuf; do
+    printf '#!/bin/bash\nexit 0\n' > "$RSTUB/$t"
+    chmod +x "$RSTUB/$t"
+done
+mkdir -p "$FW/../scans/nmap" "$FW/../scans/nikto"
+RBAK=""
+for l in nmap nikto; do
+    if [[ -f "$FW/../scans/$l/errores.log" ]]; then
+        mv "$FW/../scans/$l/errores.log" "$TMPD/$l.errores.bak"
+        RBAK="$RBAK $l"
+    fi
+done
+echo "fallo simulado de nmap" > "$FW/../scans/nmap/errores.log"
+: > "$FW/../scans/nikto/errores.log"
+
+PATH="$RSTUB:$PATH" bash "$FW/03_Scanners/run_all_scanners.sh" prueba.example > "$TMPD/scan_all" 2>&1
+# El hijo ya anuncia su propio log con "⚠️  Errores registrados en:", así que el
+# aserto no puede ser "la ruta aparece": tiene que ser la línea del resumen.
+eq "run_all_scanners: resume el log con contenido" "$(grep -cE '^  ⚠️  .*/scans/nmap/errores\.log \([0-9]+ líneas?\)' "$TMPD/scan_all")" "1"
+eq "run_all_scanners: no resume un log vacío"     "$(grep -cE '/scans/nikto/errores\.log \(' "$TMPD/scan_all")" "0"
+
+rm -f "$FW/../scans/nmap/errores.log" "$FW/../scans/nikto/errores.log"
+for l in $RBAK; do mv "$TMPD/$l.errores.bak" "$FW/../scans/$l/errores.log"; done
+rm -rf "$RSTUB"
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"

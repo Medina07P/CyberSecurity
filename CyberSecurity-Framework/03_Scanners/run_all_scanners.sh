@@ -88,3 +88,25 @@ echo ""
 echo "════════════════════════════════════════════════════════"
 echo "  ✅ ESCANEOS COMPLETADOS"
 echo "════════════════════════════════════════════════════════"
+
+# ─── Resumen de errores ──────────────────────────────────
+# Un "0 hallazgos" puede ser en realidad un fallo de ejecución: cada escáner
+# escribe su stderr en <scans>/<herramienta>/errores.log. Se listan aquí los
+# que quedaron con contenido para no cerrar el run dando por buenos los vacíos.
+LOGS_ERRORES=()
+for log in "$SCANS_DIR"/*/errores.log "$SCANS_DIR"/*/*/errores.log; do
+    [[ -s "$log" ]] || continue
+    LOGS_ERRORES+=("$log")
+done
+
+if (( ${#LOGS_ERRORES[@]} )); then
+    echo ""
+    echo "📋 LOGS CON ERRORES"
+    echo "────────────────────────────────────────"
+    for log in "${LOGS_ERRORES[@]}"; do
+        N=$(wc -l < "$log" 2>/dev/null | tr -d ' ')
+        [[ "$N" == "1" ]] && UNIDAD="línea" || UNIDAD="líneas"
+        echo "  ⚠️  $log ($N $UNIDAD)"
+    done
+    echo "  Revisa esos logs antes de dar por buenos los resultados vacíos."
+fi

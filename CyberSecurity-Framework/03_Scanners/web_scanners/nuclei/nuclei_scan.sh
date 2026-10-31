@@ -29,11 +29,11 @@ echo "🔬 Escaneando con Nuclei: $URL"
 
 # Escaneo básico sin flags problemáticos
 nuclei -u "$URL" -severity critical,high,medium \
-    -o "$OUTPUT_DIR/nuclei_${SLUG}.txt" 2>/dev/null
+    -o "$OUTPUT_DIR/nuclei_${SLUG}.txt" 2>>"$OUTPUT_DIR/errores.log"
 
 # Escaneo de CVEs específicos
 nuclei -u "$URL" -t cves/ \
-    -o "$OUTPUT_DIR/nuclei_cves_${SLUG}.txt" 2>/dev/null
+    -o "$OUTPUT_DIR/nuclei_cves_${SLUG}.txt" 2>>"$OUTPUT_DIR/errores.log"
 
 if [[ -f "$OUTPUT_DIR/nuclei_${SLUG}.txt" ]]; then
     echo ""
@@ -44,4 +44,10 @@ if [[ -f "$OUTPUT_DIR/nuclei_${SLUG}.txt" ]]; then
     echo "📁 Resultados completos: $OUTPUT_DIR/nuclei_*_${SLUG}.txt"
 else
     echo "  ⚠️ No se encontraron vulnerabilidades"
+fi
+
+# El stderr de la herramienta no se descarta: un "0 hallazgos" no debe
+# poder ser en realidad un fallo de ejecucion.
+if [[ -s "$OUTPUT_DIR/errores.log" ]]; then
+    echo "⚠️  Errores registrados en: $OUTPUT_DIR/errores.log"
 fi
