@@ -696,6 +696,43 @@ else
     echo "  SKIP     python3 no instalado"
 fi
 
+# ──────────────────────────────────────────────────────────
+section "http_inject: XSS, comandos y SSTI"
+if HPORT=$(iniciar_servidor_http); then
+    export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5
+    TSV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT".tsv"
+    printf 'GET /xss?q=hola HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_xss.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_xss.txt" 127.0.0.1 >/dev/null 2>&1
+    eq "xss: los tres payloads reflejados sin escapar son CONFIRMADO" "$(awk -F'\t' '$1=="CONFIRMADO" && $3=="xss"' "$TSV" | wc -l | tr -d ' ')" "3"
+
+    printf 'GET /esc?q=hola HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_esc.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_esc.txt" 127.0.0.1 >/dev/null 2>&1
+    eq "xss: reflejo escapado se queda en FUERTE" "$(awk -F'\t' '$1=="FUERTE" && $3=="xss"' "$TSV" | wc -l | tr -d ' ')" "3"
+    eq "xss: reflejo escapado no es CONFIRMADO" "$(awk -F'\t' '$1=="CONFIRMADO" && $3=="xss"' "$TSV" | wc -l | tr -d ' ')" "0"
+
+    printf 'GET /echo?q=hola HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_echo2.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_echo2.txt" 127.0.0.1 >/dev/null 2>&1
+    eq "cmd: sin retardo no hay hallazgo" "$(awk -F'\t' '$3=="cmd"' "$TSV" | wc -l | tr -d ' ')" "0"
+    eq "ssti: sin 49 no hay hallazgo" "$(awk -F'\t' '$3=="ssti"' "$TSV" | wc -l | tr -d ' ')" "0"
+
+    printf 'GET /cmd?c=hola HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_cmd.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_cmd.txt" 127.0.0.1 >/dev/null 2>&1
+    eq "cmd: los cuatro payloads con retardo son CONFIRMADO" "$(awk -F'\t' '$1=="CONFIRMADO" && $3=="cmd"' "$TSV" | wc -l | tr -d ' ')" "4"
+
+    printf 'GET /ssti?name=x HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_ssti.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_ssti.txt" 127.0.0.1 >/dev/null 2>&1
+    eq "ssti: 49 es CONFIRMADO" "$(awk -F'\t' '$1=="CONFIRMADO" && $3=="ssti"' "$TSV" | wc -l | tr -d ' ')" "1"
+
+    # Testigo de la tarea 4: con payloads reales, el catch-all sigue sin confirmar nada.
+    printf 'GET /safe?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_safe3.txt"
+    bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_safe3.txt" 127.0.0.1 >/dev/null 2>&1
+    eq "catch-all: ningún hallazgo CONFIRMADO" "$(awk -F'\t' '$1=="CONFIRMADO"' "$TSV" | wc -l | tr -d ' ')" "0"
+    rm -f "$FW/../scans/web/http_inject_127.0.0.1_"*
+    kill "$HTTP_SRV_PID" 2>/dev/null
+else
+    echo "  SKIP     python3 no instalado"
+fi
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
