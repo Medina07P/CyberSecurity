@@ -228,7 +228,7 @@ rm -rf "$STUBD" "$(scans_dir pruebatool)"
 # ──────────────────────────────────────────────────────────
 section "Librería: portable bajo zsh"
 if command -v zsh >/dev/null 2>&1; then
-    for par in "session:SESSION_LIB_DIR" "params:PARAMS_LIB_DIR" "phase_status:PHASE_LIB_DIR" "prompt:PROMPT_LIB_DIR" "scans:SCANS_LIB_DIR"; do
+    for par in "session:SESSION_LIB_DIR" "params:PARAMS_LIB_DIR" "phase_status:PHASE_LIB_DIR" "prompt:PROMPT_LIB_DIR" "scans:SCANS_LIB_DIR" "http_request:HR_LIB_DIR"; do
         libf="${par%%:*}"; var="${par##*:}"
         got=$(zsh -c "cd '$FW' && source '00_Config/lib/$libf.bash' >/dev/null 2>&1; printf '%s' \"\${$var}\"" 2>/dev/null)
         eq "zsh: $libf.bash resuelve bajo 00_Config/lib" "$got" "$FW/00_Config/lib"
