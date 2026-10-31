@@ -6,7 +6,9 @@ Uso: python3 http_target.py <puerto>
 Escucha en 127.0.0.1 y ofrece los casos que las suites necesitan:
 reflejo sin escapar, reflejo escapado, endpoint que ignora el parámetro
 (catch-all), par booleano de SQLi, error de BD, retardo, SSTI, respuesta
-inestable y un login JSON que exige Cookie: sid=ok.
+inestable, un login JSON que exige Cookie: sid=ok y cinco formas de freno
+(429 con Retry-After numérico, en fecha, desmedido, a mitad de tanda y
+desde la primera petición).
 """
 
 import html
@@ -21,6 +23,9 @@ from urllib.parse import parse_qs, urlparse
 _CONTADOR = 0
 _CADUCA = 0
 _MUERE = 0
+_FRENO_UNA = 0
+_FRENO_FECHA = 0
+_FRENA_LUEGO = 0
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -36,6 +41,13 @@ class Manejador(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(datos)))
         self.end_headers()
         self.wfile.write(datos)
+
+    def _frenar(self, espera):
+        """429 con Retry-After y sin cuerpo, como un WAF que estrangula."""
+        self.send_response(429)
+        self.send_header("Retry-After", espera)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _valor(self):
         # El primer valor de la query, sea cual sea el nombre del parámetro.
@@ -103,6 +115,35 @@ class Manejador(BaseHTTPRequestHandler):
             relleno = ("nuevo", "viejo", "medio", "alto", "bajo", "raro",
                        "verde", "azul", "rojo", "gris")[_CONTADOR % 10]
             self._responder(200, "<html><body>estado: %s</body></html>" % relleno)
+        elif ruta in ("/frena", "/frena-fecha"):
+            # Un solo 429: el reintento tiene que encontrar la puerta abierta.
+            global _FRENO_UNA, _FRENO_FECHA
+            if ruta == "/frena":
+                _FRENO_UNA += 1
+                frenar = _FRENO_UNA == 1
+                espera = "0"
+            else:
+                _FRENO_FECHA += 1
+                frenar = _FRENO_FECHA == 1
+                espera = "Sun, 06 Nov 1994 08:49:37 GMT"
+            if frenar:
+                self._frenar(espera)
+            else:
+                self._responder(200, "<html><body>libre</body></html>")
+        elif ruta == "/frena-largo":
+            # Pide una hora: el cliente no debe dormirla, debe cortar.
+            self._frenar("3600")
+        elif ruta == "/frena-luego":
+            # Tres respuestas para la línea base y después freno sin fin: el
+            # corte tiene que llegar a mitad de tanda.
+            global _FRENA_LUEGO
+            _FRENA_LUEGO += 1
+            if _FRENA_LUEGO > 3:
+                self._frenar("0")
+            else:
+                self._responder(200, "<html><body>libre</body></html>")
+        elif ruta == "/frena-base":
+            self._frenar("0")
         else:
             self._responder(404, "no encontrado")
 

@@ -884,6 +884,47 @@ else
     echo "  SKIP     python3 no instalado"
 fi
 
+# ──────────────────────────────────────────────────────────
+section "http_inject: freno por 429/503"
+if HPORT=$(iniciar_servidor_http); then
+    export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5 HTTP_INJECT_ESPERA=0
+    TSV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT".tsv"
+
+    printf 'GET /frena?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_frena.txt"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_frena.txt" 127.0.0.1 2>&1); RC=$?
+    eq "freno: un 429 se reintenta y la tanda termina" "$RC" "0"
+    eq "freno: avisa de que reintenta" "$(printf '%s' "$OUT" | grep -ci 'reintent')" "1"
+    eq "freno: el 429 no se puntúa" "$(awk -F'\t' '$5=="429"' "$TSV" | wc -l | tr -d ' ')" "0"
+
+    printf 'GET /frena-fecha?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_frenaf.txt"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_frenaf.txt" 127.0.0.1 2>&1); RC=$?
+    eq "freno: Retry-After en fecha HTTP no rompe" "$RC" "0"
+    eq "freno: fecha pasada no hace esperar" "$(printf '%s' "$OUT" | grep -ci 'reintent')" "1"
+
+    printf 'GET /frena-largo?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_frenal.txt"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_frenal.txt" 127.0.0.1 2>&1); RC=$?
+    eq "freno: pide más del tope y se corta sin dormir" "$(printf '%s' "$OUT" | grep -ci 'no se reintenta\|supera' )" "1"
+    eq "freno: por encima del tope sale 1" "$RC" "1"
+
+    printf 'GET /frena-luego?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_frena2.txt"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_frena2.txt" 127.0.0.1 2>&1); RC=$?
+    eq "freno: si insiste, corta la tanda" "$RC" "1"
+    eq "freno: el corte se anuncia" "$(printf '%s' "$OUT" | grep -ci 'frenando' )" "1"
+    eq "freno: tras el corte no hay hallazgos" "$(awk -F'\t' '$1=="FUERTE" || $1=="CONFIRMADO"' "$TSV" | wc -l | tr -d ' ')" "0"
+
+    printf 'GET /frena-base?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_frenab.txt"
+    OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_frenab.txt" 127.0.0.1 2>&1); RC=$?
+    eq "freno: en la línea base lo dice" "$(printf '%s' "$OUT" | grep -ci 'antes de empezar' )" "1"
+    eq "freno: línea base frenada sale 1" "$RC" "1"
+    eq "freno: línea base frenada no puntúa" "$(awk -F'\t' '$1=="FUERTE" || $1=="CONFIRMADO"' "$TSV" | wc -l | tr -d ' ')" "0"
+
+    rm -rf "$FW/../scans/web/http_inject_127.0.0.1_"*
+    unset HTTP_INJECT_ESPERA
+    kill "$HTTP_SRV_PID" 2>/dev/null
+else
+    echo "  SKIP     python3 no instalado"
+fi
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
