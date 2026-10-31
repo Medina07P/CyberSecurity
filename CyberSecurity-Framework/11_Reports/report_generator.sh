@@ -27,6 +27,9 @@ generate_executive() {
     cat > executive/executive_summary.md << 'EOF'
 # INFORME EJECUTIVO DE AUDITORÍA
 
+> ⚠️ **PLANTILLA**: este esqueleto no consume los resultados de `scans/`.
+> Los huecos `[ASÍ]` se rellenan a mano con lo que se haya verificado.
+
 ## Resumen Ejecutivo
 - **Fecha:** [FECHA]
 - **Auditor:** [NOMBRE_AUDITOR]
@@ -69,7 +72,7 @@ generate_executive() {
 3. [Paso 3]
 
 ---
-*Informe generado automáticamente por CTF Toolkit Pro*
+*Plantilla generada por CTF Toolkit Pro — rellenar a mano*
 EOF
 
     sed -i "s/\[FECHA\]/$TIMESTAMP/g"           executive/executive_summary.md
@@ -78,6 +81,7 @@ EOF
     sed -i "s/\[DESCRIPCIÓN_ALCANCE\]/Escaneo de red y aplicaciones web/g" executive/executive_summary.md
 
     echo "  ✅ Informe ejecutivo generado: executive/executive_summary.md"
+    echo "  ⚠️  PLANTILLA: no consume scans/; los huecos se rellenan a mano."
 }
 
 generate_technical() {
@@ -88,6 +92,9 @@ generate_technical() {
 
     cat > technical/technical_report.md << 'EOF'
 # INFORME TÉCNICO DE AUDITORÍA
+
+> ⚠️ **PLANTILLA**: este esqueleto no consume los resultados de `scans/`.
+> Los huecos `[ASÍ]` se rellenan a mano con lo que se haya verificado.
 
 ## Metodología
 La auditoría se realizó siguiendo las siguientes fases:
@@ -153,10 +160,11 @@ La auditoría se realizó siguiendo las siguientes fases:
 - [Tiempo por fase]
 
 ---
-*Informe técnico generado automáticamente*
+*Plantilla generada por CTF Toolkit Pro — rellenar a mano*
 EOF
 
     echo "  ✅ Informe técnico generado: technical/technical_report.md"
+    echo "  ⚠️  PLANTILLA: no consume scans/; los huecos se rellenan a mano."
 }
 
 generate_final() {
@@ -168,6 +176,9 @@ generate_final() {
     {
         echo "# INFORME FINAL DE AUDITORÍA"
         echo ""
+        echo '> ⚠️ **PLANTILLA**: este esqueleto no consume los resultados de `scans/`.'
+        echo '> Los huecos `[ASÍ]` se rellenan a mano con lo que se haya verificado.'
+        echo ""
         cat executive/executive_summary.md
         echo ""
         echo "---"
@@ -176,6 +187,7 @@ generate_final() {
     } > final_report/final_report.md
 
     echo "  ✅ Informe final generado: final_report/final_report.md"
+    echo "  ⚠️  PLANTILLA: no consume scans/; los huecos se rellenan a mano."
 }
 
 generate_html() {

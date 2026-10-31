@@ -1,5 +1,8 @@
 # INFORME TÉCNICO DE AUDITORÍA
 
+> ⚠️ **PLANTILLA**: este esqueleto no consume los resultados de `scans/`.
+> Los huecos `[ASÍ]` se rellenan a mano con lo que se haya verificado.
+
 ## Metodología
 La auditoría se realizó siguiendo las siguientes fases:
 1. Recopilación de Información (OSINT)
@@ -64,4 +67,4 @@ La auditoría se realizó siguiendo las siguientes fases:
 - [Tiempo por fase]
 
 ---
-*Informe técnico generado automáticamente*
+*Plantilla generada por CTF Toolkit Pro — rellenar a mano*
