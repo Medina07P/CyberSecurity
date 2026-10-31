@@ -75,19 +75,14 @@ wz_yes() {
 
 # Objetivos actuales, en tabla compacta.
 wz_show_targets() {
-    local linea host puerto proto prio resto encontrado=0
+    local linea host puerto proto desc prio encontrado=0
     if [[ -s "$TARGETS_FILE" ]]; then
         while IFS= read -r linea; do
+            linea="${linea%$'\r'}"
             [[ "$linea" =~ ^[[:space:]]*# ]] && continue
             [[ "$linea" == *"|"* ]] || continue
             [[ "${linea^^}" == *EXCLUIDO* ]] && continue
-            host="${linea%%|*}"
-            resto="${linea#*|}"
-            puerto="${resto%%|*}"
-            resto="${resto#*|}"
-            proto="${resto%%|*}"
-            resto="${resto#*|}"
-            prio="${resto%%|*}"
+            IFS='|' read -r host puerto proto desc prio <<< "$linea"
             printf '  %-16s %-6s %-12s %s\n' "$host" "$puerto" "$proto" "$prio"
             encontrado=1
         done < "$TARGETS_FILE"
@@ -133,41 +128,59 @@ EOF
 }
 
 # Vuelca WZ_LINES al fichero según WZ_MODE (1 añadir / 2 lista nueva).
+# Todo el contenido se compone en un temporal y solo al final sustituye al
+# original: o se escribe entero, o no se escribe nada.
 wz_write() {
-    local f="$TARGETS_FILE" tmp="$TARGETS_FILE.tmp" linea
+    local f="$TARGETS_FILE" tmp="$TARGETS_FILE.wz.tmp" linea rc
 
     mkdir -p "$(dirname "$f")" 2>/dev/null
 
-    if [[ "$WZ_MODE" == "2" ]]; then
-        if ! { wz_header; for linea in "${WZ_LINES[@]}"; do printf '%s\n' "$linea"; done; } > "$tmp"; then
-            echo "❌ No se pudo escribir $tmp"
-            rm -f "$tmp"
-            return 1
-        fi
-        # Copia de seguridad antes de sustituir: el original no desaparece
-        # hasta que el temporal está completo.
-        [[ -f "$f" ]] && cp -f "$f" "$f.bak"
-        if ! mv -f "$tmp" "$f"; then
-            echo "❌ No se pudo sustituir $f (la copia sigue en $f.bak)"
-            rm -f "$tmp"
-            return 1
-        fi
-    else
-        if [[ ! -f "$f" ]]; then
-            wz_header > "$f"
-        elif [[ -s "$f" ]] && [[ "$(tail -c1 "$f")" != "" ]]; then
+    {
+        if [[ "$WZ_MODE" == "2" ]]; then
+            wz_header
+        elif [[ -s "$f" ]]; then
+            cat "$f"
             # El fichero no acaba en salto: la línea nueva no debe pegarse.
-            echo >> "$f"
+            [[ "$(tail -c1 "$f")" != "" ]] && echo
+            printf '# ─── AÑADIDOS POR config_wizard (%s) ───\n' "$(date '+%Y-%m-%d %H:%M')"
+        else
+            wz_header
+            printf '# ─── AÑADIDOS POR config_wizard (%s) ───\n' "$(date '+%Y-%m-%d %H:%M')"
         fi
-        printf '# ─── AÑADIDOS POR config_wizard (%s) ───\n' "$(date '+%Y-%m-%d %H:%M')" >> "$f"
         for linea in "${WZ_LINES[@]}"; do
-            printf '%s\n' "$linea" >> "$f"
+            printf '%s\n' "$linea"
         done
+    } > "$tmp"
+    rc=$?
+    if [[ "$rc" -ne 0 || ! -s "$tmp" ]]; then
+        echo "❌ No se pudo preparar el contenido nuevo en $tmp"
+        rm -f "$tmp"
+        return 1
+    fi
+
+    if [[ "$WZ_MODE" == "2" && -f "$f" ]]; then
+        if [[ -e "$f.bak" && ! -f "$f.bak" ]]; then
+            echo "❌ $f.bak existe y no es un fichero; no se ha modificado $f"
+            rm -f "$tmp"
+            return 1
+        fi
+        if ! cp -f "$f" "$f.bak"; then
+            echo "❌ No se pudo crear la copia de seguridad $f.bak"
+            echo "   $f no se ha modificado."
+            rm -f "$tmp"
+            return 1
+        fi
+        echo "   Copia de la lista anterior: $f.bak"
+    fi
+
+    if ! mv -f "$tmp" "$f"; then
+        echo "❌ No se pudo sustituir $f"
+        rm -f "$tmp"
+        return 1
     fi
 
     echo ""
     echo "✅ Objetivos escritos en $f"
-    [[ "$WZ_MODE" == "2" ]] && echo "   Copia de la lista anterior: $f.bak"
 
     if command -v python3 >/dev/null 2>&1; then
         # Ruta absoluta: parse_targets.py resuelve las relativas contra su directorio.
@@ -175,7 +188,7 @@ wz_write() {
     fi
 
     echo ""
-    echo "Recuerda validar la configuración: ./scripts/validate_config.sh"
+    echo "Recuerda validar la configuración: $SCRIPT_DIR/validate_config.sh"
 }
 
 main() {
