@@ -1214,6 +1214,11 @@ eq "rate_limit: avisa de un segundo campo de contraseña" "$(printf '%s' "$OUT" 
 eq "rate_limit: se declara en modo slots" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_mode '$FW/05_Exploitation/web/rate_limit_probe.sh'")" "slots"
 eq "rate_limit: el ejemplo no estorba al parser" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_slots '$FW/05_Exploitation/web/rate_limit_probe.sh' | grep -c '|'")" "2"
 
+# Tope duro de intentos: 500 se rechaza, no se recorta en silencio a 200
+OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl.req" 500 2>&1); RC=$?
+eq "rate_limit: el tope duro de intentos es 200" "$(printf '%s' "$OUT" | grep -ci '200')" "1"
+eq "rate_limit: por encima del tope sale 1" "$RC" "1"
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
