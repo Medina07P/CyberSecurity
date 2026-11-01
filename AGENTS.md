@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Red-team / pentest framework: 117 Bash scripts (plus 4 more under `tests/`) plus a few Python helpers, targeted at Kali Linux. `README.md` is the pitch; this file is the working knowledge.
+Red-team / pentest framework: 118 Bash scripts (plus 4 more under `tests/`) plus a few Python helpers, targeted at Kali Linux. `README.md` is the pitch; this file is the working knowledge.
 
 ## Current state (2026-10-31)
 
@@ -14,11 +14,13 @@ La misma jornada se cerró la fase que el spec anterior dejó abierta («POST/JS
 
 Y encima de esa base, los dos huecos que aquel documento dejó anotados. `http_inject.sh` ya no puntúa un `429`/`503`: reintenta una vez respetando `Retry-After` (segundos o fecha HTTP) y, si insiste, corta la tanda y sale 1 sin escribir hallazgos. `05_Exploitation/web/sqlmap_request.sh` lleva el `.req` ya validado a sqlmap en tres fases (`--dbs`, `--tables`, `--dump`) con **tres permisos separados** (`SQLMAP_SI`, `SQLMAP_ENUMERAR`, `SQLMAP_TABLA`) y traduce su salida a `INYECTABLE` / `NO INYECTABLE` / `NO DETERMINADO`: el «no inyectable» que sqlmap concluye ante un 429 no se hereda. El volcado es una muestra de 50 filas. `docs/SQLMAP-Y-FRENOS-2026-10-31.md` lo documenta.
 
+Para cerrar el hallazgo ALTO de aquel informe (20 × `401` y cero `429` en el login, medido a mano), `05_Exploitation/web/rate_limit_probe.sh` repite la petición de login capturada N veces (20 por defecto, tope duro 200) variando **solo el campo de contraseña** con `wrong-1…wrong-N` —no hay diccionario—, deja una fila por intento en un `.tsv` con código, ms, tamaño y `Retry-After`, y emite `FRENADO` / `FRENADO (por retardo)` / `SIN FRENO` / `NO DETERMINADO`. Corta en el primer freno (no manda el intento siguiente), copia el `Retry-After` literal sin dormirlo, y un `403`, un `200` con credenciales falsas o un `000` son `NO DETERMINADO`, nunca `FRENADO`. Está en `dangerous.txt` (pide confirmación: la cuenta se puede bloquear) y su fixture tiene ocho logins, uno por cada forma de frenar. `docs/RATE-LIMIT-2026-10-31.md` lo documenta.
+
 ## Where it runs
 
 - On Kali it runs for real (this clone, `/home/kali/Documentos/CyberSecurity`). Tooling gaps as of 2026-10-31: `rustscan`, `volatility3`, `foremost` and `nmap-vulners` are not installed; `masscan` needs root; no WiFi/Bluetooth adapter.
 - The Windows checkout cannot run it. Scripts need Linux tooling (`nmap`, `sudo masscan`, `dig`, `md5sum`, `apt`) that is not installed there. WSL has no distro; Git Bash (`C:\Program Files\Git\bin\bash.exe`) only enables syntax checks.
-- Verification available without running a tool: `bash -n <file>` (all 121 `.sh` — 117 outside `tests/` plus the 4 under it — and the 6 `.bash` currently pass), and `python -m py_compile` for the `.py` files (all 8 pass). The four suites under `tests/` are the real check for the manager. Do not claim a scan or audit result you did not produce.
+- Verification available without running a tool: `bash -n <file>` (all 122 `.sh` — 118 outside `tests/` plus the 4 under it — and the 6 `.bash` currently pass), and `python -m py_compile` for the `.py` files (all 8 pass). The four suites under `tests/` are the real check for the manager. Do not claim a scan or audit result you did not produce.
 - `bash -n` exits 0 on an **unterminated heredoc** — it only prints a warning to stderr. Two scripts (`01_OSINT/scripts/social_media_search.sh`, `05_Exploitation/web/reverse_shell_php.sh`) were truncated that way until 2026-10-30. When verifying, capture stderr, not just the exit code.
 - Keep `.sh`/`.py` LF — `core.autocrlf=true` is set in this clone.
 
@@ -65,7 +67,7 @@ Two rules worth keeping:
 - Any function that returns a value to a caller must print **only** the value to stdout. This is the bug that made the manager unusable: it printed the prompt to stdout and the caller captured the whole block.
 - A `Uso:` line with `--flags` or a bare first token (`monitor` in `interface_manager.sh`) is passed through in **manual mode**: the manager shows the usage and you type the whole argument line. It never guesses positions for those.
 
-Verify with `tests/run_tests.sh` (library, 92 asserts), `tests/run_e2e.sh` (a script really receives the typed value, 11 asserts), `tests/run_smoke.sh` (menu navigation with piped input) and `tests/run_wizard.sh` (58 asserts). All run on Windows/Git Bash without a terminal, and they pass in a clean clone (no `scans/` present) because the phase tests build their own fixture.
+Verify with `tests/run_tests.sh` (library and scripts, 311 asserts), `tests/run_e2e.sh` (a script really receives the typed value, 11 asserts), `tests/run_smoke.sh` (menu navigation with piped input) and `tests/run_wizard.sh` (58 asserts). All run on Windows/Git Bash without a terminal, and they pass in a clean clone (no `scans/` present) because the phase tests build their own fixture.
 
 ## Running a script
 
@@ -94,6 +96,7 @@ Verify with `tests/run_tests.sh` (library, 92 asserts), `tests/run_e2e.sh` (a sc
 - La petición capturada es la entrada de `http_inject.sh`: nunca inventes parámetros cuando el operador ya tiene la petición real. Los valores de query y formulario se codifican al sustituir; los de JSON, no.
 - `http_inject.sh` deja `contexto.txt` (`esquema=`, `host=`, `metodo=`) junto a cada par `.req`/`.resp`; `sqlmap_request.sh` lo lee para no adivinar el TLS, porque sqlmap deduce el esquema del puerto (`443`→https, resto→http). Sus tres permisos (`SQLMAP_SI`, `SQLMAP_ENUMERAR`, `SQLMAP_TABLA`) son independientes a propósito: repetir no autoriza enumerar y enumerar no autoriza volcar.
 - Un `429`/`503` no es un diferencial: cualquier sonda nueva debe tratarlo como corte (reintento con `Retry-After` y, si insiste, salir sin puntuar), no como hallazgo.
+- En una prueba de login se varía **solo el campo de contraseña** (`wrong-1`, `wrong-2`, …) y nunca un diccionario: un bloqueo por intentos fallidos deja fuera al usuario de verdad, así que es una demostración acotada, no un ataque de credenciales.
 - Output names carry the target: `SLUG=$(scans_slug "$TARGET")` and files go to `<tool>_${SLUG}.txt`. Without it two runs overwrite each other and the last target wins. Ports and schemes build the URL, the slug names the file.
 - Use the shared library instead of hand-built paths. `source` `00_Config/lib/scans.bash` and use `OUTPUT_DIR=$(scans_dir <tool>)` (creates it), `scans_slug`, `scans_signature <url>` → `code:size`, `scans_ffuf_count <json>` → real hits from `results`, and `scans_baseline_size <url>` → the catch-all body size, `0` when the server 404s properly. Any fuzzing or injection probe must compare against a baseline first: against a SPA that answers `200` to everything, an unbaselined probe reports every candidate as a finding (90 false positives on the 2026-10-31 engagement).
 - No script may hardcode a home path (`~/CyberSecurity-Framework`, `~/Documentos/...`). The library resolves the repo root from its own location, so `scans_dir` works from any `cwd`. If you must resolve a path by hand: `SCANS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)/scans"` — one `..` per directory level between the script and the parent of `CyberSecurity-Framework/`, so `03_Scanners/<cat>/<tool>/x.sh` needs four, `<module>/<sub>/x.sh` needs three, `<module>/x.sh` needs two. Python uses `Path(__file__).resolve().parents[2]`. Every stale absolute path was removed on 2026-10-30 — do not reintroduce them.
