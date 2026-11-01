@@ -1111,6 +1111,77 @@ fi
 
 rm -rf "$FW/../scans/sqlmap" "$SSTUB"; unset SQLMAP_SI SSTUB_LOG
 
+# ──────────────────────────────────────────────────────────
+section "sqlmap_request: volcado"
+SSTUB="$(mktemp -d)"
+cat > "$SSTUB/sqlmap" <<'EOS'
+#!/bin/bash
+printf '%s\n' "$*" >> "${SSTUB_LOG:-/dev/null}"
+case " $* " in
+    *" --dbs "*)    echo "[INFO] available databases [1]:"; echo "[*] clientes" ;;
+    *" --tables "*) echo "Database: clientes"; echo "[2 tables]"; echo "| clientes |"; echo "| pedidos |" ;;
+    *" --dump "*)   echo "Database: clientes"; echo "Table: clientes"; echo "[2 entries]"; echo "+----+--------+"; echo "| id | nombre |"; echo "+----+--------+"; echo "| 1  | ana    |"; echo "| 2  | luis   |"; echo "+----+--------+" ;;
+    *)              echo "[INFO] GET parameter 'id' appears to be 'AND boolean-based blind - WHERE or HAVING clause' injectable" ;;
+esac
+exit 0
+EOS
+chmod +x "$SSTUB/sqlmap"
+export SSTUB_LOG="$TMPD/sqlmap_dump.txt" SQLMAP_SI=1 SQLMAP_ENUMERAR=1 SQLMAP_DB=clientes
+: > "$SSTUB_LOG"
+
+# Sin SQLMAP_TABLA: no se vuelca nada
+rm -rf "$FW/../scans/sqlmap"
+OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1)
+RESUMEN=$(find "$FW/../scans/sqlmap" -name 'sqlmap_*.txt' | head -1)
+eq "volcado: sin SQLMAP_TABLA no se vuelca nada" "$(grep -c -- '--dump' "$SSTUB_LOG")" "0"
+eq "volcado: el resumen dice que no se volcó" "$(grep -ci 'no se volcó' "$RESUMEN")" "1"
+
+# Con tabla: --dump acotado y con su -D/-T
+: > "$SSTUB_LOG"
+rm -rf "$FW/../scans/sqlmap"
+OUT=$(SQLMAP_TABLA=clientes.clientes PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1)
+RESUMEN=$(find "$FW/../scans/sqlmap" -name 'sqlmap_*.txt' | head -1)
+eq "volcado: con tabla sí hay --dump" "$(grep -c -- '--dump' "$SSTUB_LOG")" "1"
+eq "volcado: lleva el tope de filas" "$(grep -c -- '--stop=50' "$SSTUB_LOG")" "1"
+eq "volcado: usa -D y -T" "$(grep -c -- '-D clientes -T clientes' "$SSTUB_LOG")" "1"
+eq "volcado: cuenta las filas" "$(grep -ci '2 filas' "$RESUMEN")" "1"
+eq "volcado: con menos filas que el tope se dice completa" "$(grep -ci 'completa' "$RESUMEN")" "1"
+
+# Con el tope igual al número de filas, la muestra puede tener más detrás
+: > "$SSTUB_LOG"
+rm -rf "$FW/../scans/sqlmap"
+SQLMAP_FILAS=2 SQLMAP_TABLA=clientes.clientes PATH="$SSTUB:$PATH" \
+    bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" >/dev/null 2>&1
+RESUMEN=$(find "$FW/../scans/sqlmap" -name 'sqlmap_*.txt' | head -1)
+eq "volcado: al llegar al tope se dice muestra" "$(grep -ci 'muestra' "$RESUMEN")" "1"
+
+# SQLMAP_FILAS=0: sin tope
+: > "$SSTUB_LOG"
+rm -rf "$FW/../scans/sqlmap"
+SQLMAP_FILAS=0 SQLMAP_TABLA=clientes.clientes PATH="$SSTUB:$PATH" \
+    bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" >/dev/null 2>&1
+eq "volcado: SQLMAP_FILAS=0 quita el tope" "$(grep -c -- '--stop=' "$SSTUB_LOG")" "0"
+
+# Tope de reloj: el volcado se corta y NO se dice que está completo
+cat > "$SSTUB/sqlmap" <<'EOS'
+#!/bin/bash
+printf '%s\n' "$*" >> "${SSTUB_LOG:-/dev/null}"
+case " $* " in *" --dump "*) sleep 5 ;; esac
+echo "[INFO] GET parameter 'id' appears to be injectable"
+exit 0
+EOS
+chmod +x "$SSTUB/sqlmap"
+: > "$SSTUB_LOG"
+rm -rf "$FW/../scans/sqlmap"
+OUT=$(SQLMAP_MAX_SEG=1 SQLMAP_TABLA=clientes.clientes PATH="$SSTUB:$PATH" \
+      bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1); RC=$?
+RESUMEN=$(find "$FW/../scans/sqlmap" -name 'sqlmap_*.txt' | head -1)
+eq "volcado: cortado por tiempo se marca como cortado" "$(printf '%s' "$OUT" | grep -ci 'cortad' )" "1"
+eq "volcado: cortado no se anuncia como completo" "$(grep -ci 'completa' "$RESUMEN")" "0"
+eq "volcado: cortado sale 1" "$RC" "1"
+
+rm -rf "$FW/../scans/sqlmap" "$SSTUB"; unset SQLMAP_SI SQLMAP_ENUMERAR SQLMAP_DB SSTUB_LOG
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
