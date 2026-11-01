@@ -14,6 +14,7 @@
 05_Exploitation/network/ssh_bruteforce.sh
 05_Exploitation/web/http_inject.sh
 05_Exploitation/web/sql_injection.sh
+05_Exploitation/web/sqlmap_request.sh
 05_Exploitation/web/web_attack.sh
 05_Exploitation/web/xss.sh
 05_Exploitation/wireless/wifi_attack.sh

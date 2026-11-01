@@ -946,6 +946,9 @@ chmod +x "$SSTUB/sqlmap"
 export SSTUB_LOG="$TMPD/sqlmap_llamadas.txt"; : > "$SSTUB_LOG"
 export SQLMAP_SI=1
 
+eq "dangerous.txt incluye sqlmap_request" "$(grep -cxF '05_Exploitation/web/sqlmap_request.sh' "$FW/00_Config/lib/dangerous.txt")" "1"
+eq "sqlmap_request se declara en modo slots" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_mode '$FW/05_Exploitation/web/sqlmap_request.sh'")" "slots"
+
 printf 'GET /?id=1 HTTP/1.1\nHost: 127.0.0.1:18001\n\n' > "$TMPD/req_sm.req"
 OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1)
 eq "sqlmap_request: pasa --ignore-stdin" "$(grep -c -- '--ignore-stdin' "$SSTUB_LOG")" "1"
