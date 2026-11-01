@@ -1255,6 +1255,67 @@ else
     echo "  SKIP     python3 no instalado"
 fi
 
+# ──────────────────────────────────────────────────────────
+section "rate_limit_probe: freno"
+if command -v python3 >/dev/null 2>&1; then
+    rl_servidor
+    printf 'POST /login-freno HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_freno.req"
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_freno.req" 20 2>&1); RC=$?
+    RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
+    RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
+    eq "freno: veredicto FRENADO" "$(grep -c 'Veredicto: FRENADO' "$RLTXT")" "1"
+    eq "freno: se para en el intento 4" "$(awk -F'\t' 'NR>1' "$RLTSV" | wc -l | tr -d ' ')" "4"
+    eq "freno: no hay intento 5" "$(awk -F'\t' '$1==5' "$RLTSV" | wc -l | tr -d ' ')" "0"
+    eq "freno: el resumen dice que pidió 7s" "$(grep -c 'Retry-After: 7' "$RLTXT")" "1"
+    eq "freno: sale 0 (veredicto obtenido)" "$RC" "0"
+
+    # Ya frenado desde el primer intento: no se manda el segundo
+    printf 'POST /login-freno-siempre HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_siempre.req"
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_siempre.req" 20 2>&1)
+    RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
+    eq "freno: si ya frena, se para en el 1" "$(awk -F'\t' 'NR>1' "$RLTSV" | wc -l | tr -d ' ')" "1"
+
+    # Retry-After en fecha: se reporta literal, sin interpretarlo
+    printf 'POST /login-freno-fecha HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_fecha.req"
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_fecha.req" 20 2>&1)
+    RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
+    eq "freno: la fecha de Retry-After se copia tal cual" "$(grep -c '06 Nov 1994 08:49:37' "$RLTXT")" "1"
+
+    # Código distinto del de rechazo sin ser freno: no se llama FRENADO
+    printf 'POST /login-cambia HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_cambia.req"
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_cambia.req" 20 2>&1); RC=$?
+    eq "freno: un 403 a mitad es NO DETERMINADO, no FRENADO" "$(printf '%s' "$OUT" | grep -c 'NO DETERMINADO')" "1"
+    eq "freno: el cambio de código sale 1" "$RC" "1"
+
+    # Un 2xx con credenciales falsas tampoco es SIN FRENO: es otro hallazgo
+    printf 'POST /login-acepta HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_acepta.req"
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_acepta.req" 20 2>&1); RC=$?
+    RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
+    eq "freno: un 200 con credenciales falsas es NO DETERMINADO" "$(printf '%s' "$OUT" | grep -c 'NO DETERMINADO')" "1"
+    eq "freno: el 200 se avisa como otro hallazgo" "$(printf '%s' "$OUT" | grep -ci 'aceptado')" "1"
+    eq "freno: el 200 no manda más intentos" "$(awk -F'\t' 'NR>1' "$RLTSV" | wc -l | tr -d ' ')" "1"
+    eq "freno: el 200 sale 1" "$RC" "1"
+
+    printf 'POST /login-lento HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_lento.req"
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_lento.req" 12 2>&1)
+    RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
+    eq "freno: el retardo creciente cuenta como FRENADO" "$(grep -c 'Veredicto: FRENADO (por retardo)' "$RLTXT")" "1"
+    # La columna de ms es la que sostiene el freno por retardo: si curl imprime
+    # «0,023» (locale con coma) y se trunca, aquí salen doce ceros.
+    RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
+    eq "freno: los ms de /login-lento no son 0" "$(awk -F'\t' 'NR>1 && $3+0 > 0' "$RLTSV" | wc -l | tr -d ' ')" "12"
+    eq "freno: el último intento lento se midió (>100 ms)" "$(awk -F'\t' 'NR>1 { m=$3+0 } END { print (m > 100) ? "si" : "no" }' "$RLTSV")" "si"
+
+    printf 'POST /login-caido HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_caido.req"
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_caido.req" 20 2>&1); RC=$?
+    eq "freno: conexión caída es NO DETERMINADO" "$(printf '%s' "$OUT" | grep -ci 'NO DETERMINADO')" "1"
+    eq "freno: conexión caída sale 1" "$RC" "1"
+
+    rm -rf "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT"*; kill "$RL_SRV" 2>/dev/null
+else
+    echo "  SKIP     python3 no instalado"
+fi
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"

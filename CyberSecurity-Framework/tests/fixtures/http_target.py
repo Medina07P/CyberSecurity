@@ -9,6 +9,11 @@ reflejo sin escapar, reflejo escapado, endpoint que ignora el parámetro
 inestable, un login JSON que exige Cookie: sid=ok, un login que rechaza
 siempre sin frenar y cinco formas de freno (429 con Retry-After numérico,
 en fecha, desmedido, a mitad de tanda y desde la primera petición).
+
+Para rate_limit_probe.sh añade logins que frenan de formas distintas: a mitad
+de tanda con Retry-After numérico, desde la primera petición, con Retry-After
+en fecha, cambiando de código sin frenar, con retardo creciente, cerrando la
+conexión, y uno que acepta credenciales falsas con un 200.
 """
 
 import html
@@ -26,6 +31,10 @@ _MUERE = 0
 _FRENO_UNA = 0
 _FRENO_FECHA = 0
 _FRENA_LUEGO = 0
+_RL_FRENO = 0
+_RL_FECHA = 0
+_RL_CAMBIA = 0
+_RL_LENTO = 0
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -167,6 +176,45 @@ class Manejador(BaseHTTPRequestHandler):
         elif ruta == "/login-sin-freno":
             self._responder(401, '{"error":"Credenciales incorrectas"}',
                             "application/json")
+        elif ruta == "/login-freno":
+            global _RL_FRENO
+            _RL_FRENO += 1
+            if _RL_FRENO >= 4:
+                self._frenar("7")
+            else:
+                self._responder(401, '{"error":"Credenciales incorrectas"}',
+                                "application/json")
+        elif ruta == "/login-freno-siempre":
+            self._frenar("3")
+        elif ruta == "/login-freno-fecha":
+            global _RL_FECHA
+            _RL_FECHA += 1
+            if _RL_FECHA >= 2:
+                self._frenar("Sun, 06 Nov 1994 08:49:37 GMT")
+            else:
+                self._responder(401, '{"error":"Credenciales incorrectas"}',
+                                "application/json")
+        elif ruta == "/login-cambia":
+            global _RL_CAMBIA
+            _RL_CAMBIA += 1
+            if _RL_CAMBIA >= 3:
+                self._responder(403, '{"error":"bloqueado"}', "application/json")
+            else:
+                self._responder(401, '{"error":"Credenciales incorrectas"}',
+                                "application/json")
+        elif ruta == "/login-lento":
+            global _RL_LENTO
+            _RL_LENTO += 1
+            time.sleep(0.05 * _RL_LENTO)
+            self._responder(401, '{"error":"Credenciales incorrectas"}',
+                            "application/json")
+        elif ruta == "/login-acepta":
+            # Credenciales falsas aceptadas: no es un freno, es otro hallazgo.
+            self._responder(200, '{"sesion":"ok"}', "application/json")
+        elif ruta == "/login-caido":
+            self.connection.shutdown(socket.SHUT_RDWR)
+            self.connection.close()
+            return
         else:
             self._responder(404, "no encontrado")
 
