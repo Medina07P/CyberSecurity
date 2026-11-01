@@ -1218,6 +1218,13 @@ rm -rf "$FW/../scans/web/rate_limit_127.0.0.1_18001"*
 eq "rate_limit: se declara en modo slots" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_mode '$FW/05_Exploitation/web/rate_limit_probe.sh'")" "slots"
 eq "rate_limit: el ejemplo no estorba al parser" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_slots '$FW/05_Exploitation/web/rate_limit_probe.sh' | grep -c '|'")" "2"
 
+# Repetir un login puede bloquear la cuenta de verdad: el script está en la lista
+# de peligrosos, así que el gestor pide confirmación y no rellena el ejemplo. El
+# aserto va por params_is_dangerous y no por params_example_values: el ejemplo sí
+# cuadra con los dos huecos, y ese aserto habría fallado sin que nada estuviera mal.
+eq "dangerous.txt incluye rate_limit_probe" "$(grep -cxF '05_Exploitation/web/rate_limit_probe.sh' "$FW/00_Config/lib/dangerous.txt")" "1"
+eq "rate_limit: el gestor lo marca como intrusivo" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_is_dangerous '05_Exploitation/web/rate_limit_probe.sh' && echo si")" "si"
+
 # Tope duro de intentos: 500 se rechaza, no se recorta en silencio a 200
 OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl.req" 500 2>&1); RC=$?
 eq "rate_limit: el tope duro de intentos es 200" "$(printf '%s' "$OUT" | grep -ci '200')" "1"
