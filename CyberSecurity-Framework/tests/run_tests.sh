@@ -1066,6 +1066,51 @@ fi
 
 rm -rf "$FW/../scans/sqlmap" "$SSTUB"; unset SQLMAP_SI SSTUB_LOG
 
+# ──────────────────────────────────────────────────────────
+section "sqlmap_request: enumeración"
+SSTUB="$(mktemp -d)"
+cat > "$SSTUB/sqlmap" <<'EOS'
+#!/bin/bash
+printf '%s\n' "$*" >> "${SSTUB_LOG:-/dev/null}"
+case " $* " in
+    *" --dbs "*)    echo "[INFO] available databases [1]:"; echo "[*] clientes" ;;
+    *" --tables "*) echo "Database: clientes"; echo "[2 tables]"; echo "| clientes |"; echo "| pedidos |" ;;
+    *)              echo "[INFO] GET parameter 'id' appears to be 'AND boolean-based blind - WHERE or HAVING clause' injectable" ;;
+esac
+exit 0
+EOS
+chmod +x "$SSTUB/sqlmap"
+export SSTUB_LOG="$TMPD/sqlmap_enum.txt" SQLMAP_SI=1
+: > "$SSTUB_LOG"
+
+# Sin permiso: no enumera, y el resumen lo dice
+rm -rf "$FW/../scans/sqlmap"
+OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1)
+RESUMEN=$(find "$FW/../scans/sqlmap" -name 'sqlmap_*.txt' | head -1)
+eq "enumeración: sin SQLMAP_ENUMERAR no se ejecuta --dbs" "$(grep -c -- '--dbs' "$SSTUB_LOG")" "0"
+eq "enumeración: sin permiso el resumen lo dice" "$(grep -ci 'no se enumeró' "$RESUMEN")" "1"
+
+# Con permiso: --dbs, base elegida y --tables
+: > "$SSTUB_LOG"
+rm -rf "$FW/../scans/sqlmap"
+OUT=$(SQLMAP_ENUMERAR=1 PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm.req" 2>&1)
+RESUMEN=$(find "$FW/../scans/sqlmap" -name 'sqlmap_*.txt' | head -1)
+eq "enumeración: con SQLMAP_ENUMERAR sí hay --dbs" "$(grep -c -- '--dbs' "$SSTUB_LOG")" "1"
+eq "enumeración: la base aparece en el resumen" "$(grep -c '^- Bases: clientes' "$RESUMEN")" "1"
+eq "enumeración: --tables usa la base elegida" "$(grep -c -- '-D clientes' "$SSTUB_LOG")" "1"
+
+# Con terminal y respuesta negativa: el permiso se pide y se respeta
+if command -v script >/dev/null 2>&1; then
+    : > "$SSTUB_LOG"
+    rm -rf "$FW/../scans/sqlmap"
+    printf 'n\n' | script -qec "SQLMAP_SI=1 PATH=$SSTUB:\$PATH bash $FW/05_Exploitation/web/sqlmap_request.sh $TMPD/req_sm.req" /dev/null >/dev/null 2>&1
+    eq "enumeración: con terminal y 'n' no enumera" "$(grep -c -- '--dbs' "$SSTUB_LOG")" "0"
+else
+    echo "  SKIP     script(1) no instalado: sin caso de terminal simulada"
+fi
+
+rm -rf "$FW/../scans/sqlmap" "$SSTUB"; unset SQLMAP_SI SSTUB_LOG
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"
