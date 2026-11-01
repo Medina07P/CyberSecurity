@@ -1266,6 +1266,14 @@ if command -v python3 >/dev/null 2>&1; then
     eq "sonda: guarda la respuesta del primer intento" "$(find "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT" -name '*_001.resp' | wc -l | tr -d ' ')" "1"
     eq "sonda: no hay diccionario, los valores son wrong-N" "$(grep -c 'wrong-' "$RLTXT")" "1"
 
+    # Un scope.yaml que se lee pero no cubre el objetivo no es «ilegible»: es
+    # «sin regla aplicable», y el aviso tiene que decirlo así.
+    mkdir -p "$TMPD/conf_dominios"
+    printf 'scope:\n  domains:\n    - example.com\n' > "$TMPD/conf_dominios/scope.yaml"
+    OUT=$(SESSION_CONFIG_DIR="$TMPD/conf_dominios" RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno.req" 1 2>&1)
+    eq "sonda: el aviso de alcance habla de regla, no de fichero ilegible" "$(printf '%s' "$OUT" | grep -c 'no tiene una regla aplicable')" "1"
+    eq "sonda: el aviso ya no dice ilegible" "$(printf '%s' "$OUT" | grep -ci 'ilegible')" "0"
+
     rm -rf "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT"*; kill "$RL_SRV" 2>/dev/null
 else
     echo "  SKIP     python3 no instalado"
