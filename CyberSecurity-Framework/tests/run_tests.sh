@@ -48,7 +48,7 @@ esac
 section "Parser: recuentos sobre los .sh"
 # Se excluye tests/ (este mismo fichero); la librería usa extensión .bash
 total=$(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | wc -l | tr -d ' ')
-eq "117 scripts .sh en el framework" "$total" "117"
+eq "118 scripts .sh en el framework" "$total" "118"
 eq "la librería no se cuenta como script" "$(find "$FW/00_Config/lib" -name '*.sh' | wc -l | tr -d ' ')" "0"
 
 dos=0
@@ -59,7 +59,7 @@ for f in $(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | sort); do
     o=$(params_slots "$f" | awk -F'|' '$3=="obligatorio"' | wc -l | tr -d ' ')
     [ "$o" -ge 2 ] && oblig=$((oblig + 1))
 done
-eq "38 scripts con 2+ huecos" "$dos" "38"
+eq "39 scripts con 2+ huecos" "$dos" "39"
 eq "8 scripts con 2+ obligatorios" "$oblig" "8"
 
 # ──────────────────────────────────────────────────────────
@@ -1184,6 +1184,35 @@ eq "volcado: cortado no se anuncia como completo" "$(grep -ci 'completa' "$RESUM
 eq "volcado: cortado sale 1" "$RC" "1"
 
 rm -rf "$FW/../scans/sqlmap" "$SSTUB"; unset SQLMAP_SI SQLMAP_ENUMERAR SQLMAP_DB SSTUB_LOG
+
+# ──────────────────────────────────────────────────────────
+section "rate_limit_probe: arranque"
+RLREQ="$TMPD/req_rl.req"
+printf 'POST /login-sin-freno HTTP/1.1\nHost: 127.0.0.1:18001\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' > "$RLREQ"
+printf 'POST /login-sin-freno HTTP/1.1\nHost: 127.0.0.1:18001\nContent-Type: application/json\n\n{"email":"ana@example.com"}' > "$TMPD/req_rl_sin_campo.req"
+printf 'POST /login-sin-freno HTTP/1.1\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' > "$TMPD/req_rl_sin_host.req"
+
+OUT=$(bash "$FW/05_Exploitation/web/rate_limit_probe.sh" 2>&1); RC=$?
+eq "rate_limit: sin argumentos da uso" "$(printf '%s' "$OUT" | grep -c 'Uso:')" "1"
+eq "rate_limit: sin argumentos sale 1" "$RC" "1"
+
+OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/no-existe.req" 2>&1); RC=$?
+eq "rate_limit: petición ilegible sale 1" "$RC" "1"
+
+OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sin_campo.req" 2>&1); RC=$?
+eq "rate_limit: sin campo de contraseña no adivina" "$(printf '%s' "$OUT" | grep -ci 'no se encontró.*contraseña\|campo de contraseña')" "1"
+eq "rate_limit: sin campo sale 1" "$RC" "1"
+
+OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sin_host.req" 2>&1); RC=$?
+eq "rate_limit: sin Host y sin objetivo sale 1" "$RC" "1"
+
+# Dos campos que parecen contraseña: elige el primero y avisa del segundo
+printf 'POST /login-sin-freno HTTP/1.1\nHost: 127.0.0.1:18001\nContent-Type: application/json\n\n{"email":"a@b.c","password":"x","password2":"y"}' > "$TMPD/req_rl_dos.req"
+OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_INTENTOS=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_dos.req" 2>&1)
+eq "rate_limit: avisa de un segundo campo de contraseña" "$(printf '%s' "$OUT" | grep -ci 'password2\|segundo campo')" "1"
+
+eq "rate_limit: se declara en modo slots" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_mode '$FW/05_Exploitation/web/rate_limit_probe.sh'")" "slots"
+eq "rate_limit: el ejemplo no estorba al parser" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_slots '$FW/05_Exploitation/web/rate_limit_probe.sh' | grep -c '|'")" "2"
 
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
