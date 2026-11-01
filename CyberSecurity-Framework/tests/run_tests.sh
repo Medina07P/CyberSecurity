@@ -1210,6 +1210,10 @@ eq "rate_limit: sin Host y sin objetivo sale 1" "$RC" "1"
 printf 'POST /login-sin-freno HTTP/1.1\nHost: 127.0.0.1:18001\nContent-Type: application/json\n\n{"email":"a@b.c","password":"x","password2":"y"}' > "$TMPD/req_rl_dos.req"
 OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_INTENTOS=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_dos.req" 2>&1)
 eq "rate_limit: avisa de un segundo campo de contraseña" "$(printf '%s' "$OUT" | grep -ci 'password2\|segundo campo')" "1"
+# Con la sonda implementada este caso envía una petición de verdad a 18001
+# (no escucha nadie: código 000) y deja sus ficheros: se limpian aquí para que
+# la suite no acumule evidencia de un puerto que solo sirve de relleno.
+rm -rf "$FW/../scans/web/rate_limit_127.0.0.1_18001"*
 
 eq "rate_limit: se declara en modo slots" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_mode '$FW/05_Exploitation/web/rate_limit_probe.sh'")" "slots"
 eq "rate_limit: el ejemplo no estorba al parser" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_slots '$FW/05_Exploitation/web/rate_limit_probe.sh' | grep -c '|'")" "2"
@@ -1218,6 +1222,38 @@ eq "rate_limit: el ejemplo no estorba al parser" "$(bash -c "source '$FW/00_Conf
 OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl.req" 500 2>&1); RC=$?
 eq "rate_limit: el tope duro de intentos es 200" "$(printf '%s' "$OUT" | grep -ci '200')" "1"
 eq "rate_limit: por encima del tope sale 1" "$RC" "1"
+
+# ──────────────────────────────────────────────────────────
+section "rate_limit_probe: sonda"
+# Arranca el fixture sin el defecto de `iniciar_servidor_http`: aquí el PID se
+# guarda en el shell padre (nada de $(...)), para que el kill funcione.
+rl_servidor() {
+    RLPORT=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
+    python3 "$FW/tests/fixtures/http_target.py" "$RLPORT" >/dev/null 2>&1 &
+    RL_SRV=$!
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        curl -s -o /dev/null "http://127.0.0.1:$RLPORT/safe" && break
+        sleep 0.3
+    done
+}
+if command -v python3 >/dev/null 2>&1; then
+    rl_servidor
+    printf 'POST /login-sin-freno HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_sinfreno.req"
+
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno.req" 20 2>&1); RC=$?
+    RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
+    RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
+    eq "sonda: 20 intentos se registran" "$(($(wc -l < "$RLTSV") - 1))" "20"
+    eq "sonda: veredicto SIN FRENO" "$(grep -c 'Veredicto: SIN FRENO' "$RLTXT")" "1"
+    eq "sonda: sale 0" "$RC" "0"
+    eq "sonda: cada intento con su código" "$(awk -F'\t' 'NR>1 && $2==401' "$RLTSV" | wc -l | tr -d ' ')" "20"
+    eq "sonda: guarda la respuesta del primer intento" "$(find "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT" -name '*_001.resp' | wc -l | tr -d ' ')" "1"
+    eq "sonda: no hay diccionario, los valores son wrong-N" "$(grep -c 'wrong-' "$RLTXT")" "1"
+
+    rm -rf "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT"*; kill "$RL_SRV" 2>/dev/null
+else
+    echo "  SKIP     python3 no instalado"
+fi
 
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'

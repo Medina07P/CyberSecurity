@@ -6,9 +6,9 @@ Uso: python3 http_target.py <puerto>
 Escucha en 127.0.0.1 y ofrece los casos que las suites necesitan:
 reflejo sin escapar, reflejo escapado, endpoint que ignora el parámetro
 (catch-all), par booleano de SQLi, error de BD, retardo, SSTI, respuesta
-inestable, un login JSON que exige Cookie: sid=ok y cinco formas de freno
-(429 con Retry-After numérico, en fecha, desmedido, a mitad de tanda y
-desde la primera petición).
+inestable, un login JSON que exige Cookie: sid=ok, un login que rechaza
+siempre sin frenar y cinco formas de freno (429 con Retry-After numérico,
+en fecha, desmedido, a mitad de tanda y desde la primera petición).
 """
 
 import html
@@ -164,6 +164,9 @@ class Manejador(BaseHTTPRequestHandler):
                 datos = {}
             usuario = datos.get("user", "")
             self._responder(200, "<html><body>bienvenido %s</body></html>" % html.escape(str(usuario)))
+        elif ruta == "/login-sin-freno":
+            self._responder(401, '{"error":"Credenciales incorrectas"}',
+                            "application/json")
         else:
             self._responder(404, "no encontrado")
 
