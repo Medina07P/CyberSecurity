@@ -1227,8 +1227,17 @@ eq "rate_limit: el gestor lo marca como intrusivo" "$(bash -c "source '$FW/00_Co
 
 # Tope duro de intentos: 500 se rechaza, no se recorta en silencio a 200
 OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl.req" 500 2>&1); RC=$?
-eq "rate_limit: el tope duro de intentos es 200" "$(printf '%s' "$OUT" | grep -ci '200')" "1"
+eq "rate_limit: el tope duro de intentos es 200" "$(printf '%s' "$OUT" | grep -c 'tope duro es 200')" "1"
 eq "rate_limit: por encima del tope sale 1" "$RC" "1"
+
+# Un intento con cero a la izquierda no es octal: «08» no revienta y «0310» no
+# se lee como 200 (octal), sino como 310, por encima del tope duro.
+OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sin_campo.req" 08 2>&1)
+eq "rate_limit: «08» no revienta la aritmética (base 10)" "$(printf '%s' "$OUT" | grep -ci 'value too great for base')" "0"
+eq "rate_limit: «08» se acepta y llega al campo de contraseña" "$(printf '%s' "$OUT" | grep -ci 'campo de contraseña')" "1"
+OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl.req" 0310 2>&1); RC=$?
+eq "rate_limit: «0310» se lee como 310, no como octal 200" "$(printf '%s' "$OUT" | grep -c 'se pidieron 310')" "1"
+eq "rate_limit: «0310» por encima del tope sale 1" "$RC" "1"
 
 # ──────────────────────────────────────────────────────────
 section "rate_limit_probe: sonda"
@@ -1275,12 +1284,38 @@ if command -v python3 >/dev/null 2>&1; then
     eq "freno: no hay intento 5" "$(awk -F'\t' '$1==5' "$RLTSV" | wc -l | tr -d ' ')" "0"
     eq "freno: el resumen dice que pidió 7s" "$(grep -c 'Retry-After: 7' "$RLTXT")" "1"
     eq "freno: sale 0 (veredicto obtenido)" "$RC" "0"
+    eq "freno: guarda la respuesta que frenó" "$(find "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT" -name 'freno_004.resp' | wc -l | tr -d ' ')" "1"
+    # Tras un corte temprano el resumen no promete valores que no se enviaron
+    eq "freno: el resumen promete solo lo enviado, no lo planeado" "$(grep -cF 'wrong-1…wrong-4 (se planeaban 20)' "$RLTXT")" "1"
 
     # Ya frenado desde el primer intento: no se manda el segundo
     printf 'POST /login-freno-siempre HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_siempre.req"
     OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_siempre.req" 20 2>&1)
     RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
     eq "freno: si ya frena, se para en el 1" "$(awk -F'\t' 'NR>1' "$RLTSV" | wc -l | tr -d ' ')" "1"
+
+    # Un 503 con Retry-After también es un freno: se corta en el primer intento
+    printf 'POST /login-503 HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_503.req"
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_503.req" 20 2>&1); RC=$?
+    RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
+    RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
+    eq "freno: un 503 es FRENADO" "$(grep -c 'Veredicto: FRENADO' "$RLTXT")" "1"
+    eq "freno: el 503 corta en el primer intento" "$(awk -F'\t' 'NR>1' "$RLTSV" | wc -l | tr -d ' ')" "1"
+    eq "freno: el 503 sale 0" "$RC" "0"
+
+    # Freno en el último (y único) intento planeado: no anuncia un intento más
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_503.req" 1 2>&1)
+    RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
+    eq "freno: frenar en el último intento no anuncia uno más" "$(grep -c 'no se envió el intento 2' "$RLTXT")" "0"
+
+    # Cuota agotada (X-RateLimit-Remaining: 0) sin 429/503: también es freno
+    printf 'POST /login-cuota HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_cuota.req"
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_cuota.req" 20 2>&1); RC=$?
+    RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
+    RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
+    eq "freno: la cuota a 0 es FRENADO" "$(grep -c 'Veredicto: FRENADO' "$RLTXT")" "1"
+    eq "freno: la cuota a 0 corta en el primer intento" "$(awk -F'\t' 'NR>1' "$RLTSV" | wc -l | tr -d ' ')" "1"
+    eq "freno: la cuota a 0 sale 0" "$RC" "0"
 
     # Retry-After en fecha: se reporta literal, sin interpretarlo
     printf 'POST /login-freno-fecha HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_fecha.req"
@@ -1317,6 +1352,19 @@ if command -v python3 >/dev/null 2>&1; then
     OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_caido.req" 20 2>&1); RC=$?
     eq "freno: conexión caída es NO DETERMINADO" "$(printf '%s' "$OUT" | grep -ci 'NO DETERMINADO')" "1"
     eq "freno: conexión caída sale 1" "$RC" "1"
+
+    # Con menos de 10 intentos el freno por retardo no se evalúa y se dice
+    printf 'POST /login-sin-freno HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_sinfreno5.req"
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno5.req" 5 2>&1)
+    RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
+    eq "freno: con menos de 10 intentos se avisa de que el retardo no se evaluó" "$(grep -c 'requiere ≥10 intentos' "$RLTXT")" "1"
+
+    # Un login con la contraseña en la query no debe filtrarla al informe
+    printf 'GET /safe?password=supersecreto HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$RLPORT" > "$TMPD/req_rl_query.req"
+    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_query.req" 5 2>&1)
+    RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
+    eq "freno: la contraseña real de la query no se filtra" "$(grep -c 'supersecreto' "$RLTXT")" "0"
+    eq "freno: el target se redacta con ***" "$(grep -cF 'password=***' "$RLTXT")" "1"
 
     rm -rf "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT"*; kill "$RL_SRV" 2>/dev/null
 else

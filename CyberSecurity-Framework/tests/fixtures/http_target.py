@@ -58,6 +58,23 @@ class Manejador(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _frenar503(self):
+        """503 con Retry-After y sin cuerpo, como un proxy que estrangula."""
+        self.send_response(503)
+        self.send_header("Retry-After", "2")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _cuota(self):
+        """401 con la cuota agotada: X-RateLimit-Remaining: 0."""
+        datos = b'{"error":"Credenciales incorrectas"}'
+        self.send_response(401)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-RateLimit-Remaining", "0")
+        self.send_header("Content-Length", str(len(datos)))
+        self.end_headers()
+        self.wfile.write(datos)
+
     def _valor(self):
         # El primer valor de la query, sea cual sea el nombre del parámetro.
         consulta = parse_qs(urlparse(self.path).query, keep_blank_values=True)
@@ -186,6 +203,10 @@ class Manejador(BaseHTTPRequestHandler):
                                 "application/json")
         elif ruta == "/login-freno-siempre":
             self._frenar("3")
+        elif ruta == "/login-503":
+            self._frenar503()
+        elif ruta == "/login-cuota":
+            self._cuota()
         elif ruta == "/login-freno-fecha":
             global _RL_FECHA
             _RL_FECHA += 1
