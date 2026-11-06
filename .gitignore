@@ -71,6 +71,8 @@ CyberSecurity-Framework/10_Evidence/credentials/found/
 CyberSecurity-Framework/10_Evidence/*.zip
 
 # 11_Reports: informes generados (las plantillas de templates/ se conservan)
+CyberSecurity-Framework/11_Reports/generated/
+CyberSecurity-Framework/11_Reports/.report_profile
 CyberSecurity-Framework/11_Reports/final_report/*
 !CyberSecurity-Framework/11_Reports/final_report/.gitkeep
 # report_generator.sh reescribe estos dos en cada ejecución (fecha, usuario,

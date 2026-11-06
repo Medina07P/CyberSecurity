@@ -60,8 +60,10 @@ phase_state() {
             fi
             ;;
         11_Reports)
-            if _has_files "$PHASE_FW_DIR/11_Reports/final_report" ||
-               _has_files "$PHASE_FW_DIR/11_Reports/technical"; then
+            if compgen -G "$PHASE_FW_DIR/11_Reports/generated/*/findings.json" >/dev/null 2>&1; then
+                printf 'done\n'
+            elif _has_files "$PHASE_FW_DIR/11_Reports/final_report" ||
+                 _has_files "$PHASE_FW_DIR/11_Reports/technical"; then
                 printf 'done\n'
             else
                 printf 'pending\n'
