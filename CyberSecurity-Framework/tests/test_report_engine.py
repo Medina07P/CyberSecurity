@@ -51,5 +51,29 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(finding_from_dict(finding_to_dict(f)), f)
 
 
+from lib.catalog import KNOWN_RULES, build
+
+class CatalogTests(unittest.TestCase):
+    def test_every_rule_has_real_texts(self):
+        for rule in KNOWN_RULES:
+            f = build(rule, key="k", activo="a", evidencia=[Evidence("f", 1, "e")])
+            for campo in (f.titulo, f.descripcion, f.impacto_cliente, f.recomendacion):
+                self.assertTrue(campo.strip(), rule)
+                self.assertNotIn("[", campo); self.assertNotIn("TODO", campo)
+
+    def test_rule_defaults_set_severity_and_confidence(self):
+        f = build("sqlmap.sqli", key="k", activo="a", evidencia=[])
+        self.assertEqual((f.severidad, f.confianza), ("critica", "confirmado"))
+        self.assertEqual(build("ssh.password_auth", key="k", activo="a", evidencia=[]).confianza, "observacion")
+
+    def test_variables_are_substituted(self):
+        f = build("rate_limit.no_throttle", key="k", activo="a", evidencia=[], variables={"endpoint": "/login"})
+        self.assertIn("/login", f.descripcion)
+
+    def test_unknown_rule_fails_loudly(self):
+        with self.assertRaises(KeyError):
+            build("no.existe", key="k", activo="a", evidencia=[])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
