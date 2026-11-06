@@ -40,6 +40,10 @@ source "$COPIA/cyber_framework.sh"
 
 # Sesión aislada
 export SESSION_FILE="$BASE/.session"
+export SESSION_SCOPE_FILE="$BASE/scope.yaml"
+export SESSION_TARGETS_FILE="$BASE/targets.txt"
+printf 'targets:\n  ips:\n    - "10.0.0.0/8"\n' > "$SESSION_SCOPE_FILE"
+: > "$SESSION_TARGETS_FILE"
 source "$COPIA/00_Config/lib/session.bash"
 
 limpiar() { : > "$REGISTRO/llamadas.txt"; }

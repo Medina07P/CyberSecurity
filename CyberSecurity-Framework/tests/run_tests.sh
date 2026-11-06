@@ -181,6 +181,15 @@ eq "parse_targets.py lo entiende" \
    "$(python3 -c "import json;d=json.load(open('$TMPD/t.json'));print([t['port'] for t in d if t['ip']=='example.com'][0])")" "None"
 
 # ──────────────────────────────────────────────────────────
+section "session_set_target registra en los dos ficheros"
+printf 'targets:\n  ips:\n    - "192.168.1.0/24"\n  domains:\n    - "base.com"\n' > "$TMPD/scope2.yaml"
+: > "$TMPD/targets2.txt"
+SESSION_SCOPE_FILE="$TMPD/scope2.yaml" SESSION_TARGETS_FILE="$TMPD/targets2.txt" \
+    session_set_target integra.com
+eq "scope.yaml recibe el dominio"  "$(grep -c 'integra.com' "$TMPD/scope2.yaml")" "2"
+eq "targets.txt recibe el dominio" "$(grep -c '^integra\.com|' "$TMPD/targets2.txt")" "1"
+
+# ──────────────────────────────────────────────────────────
 section "Sesión"
 session_set_target "10.0.0.9" && ok "guarda el objetivo"
 eq "lo devuelve" "$(session_target)" "10.0.0.9"
@@ -311,7 +320,10 @@ if command -v zsh >/dev/null 2>&1; then
     SESS_BAK=""
     if [ -f "$SESS_REAL" ]; then SESS_BAK="$TMPD/session.bak"; cp "$SESS_REAL" "$SESS_BAK"; fi
     rm -f "$FW/../.session" "$SESS_REAL"
-    zsh -c "cd '$FW'; unset SESSION_FILE SESSION_TARGETS_FILE; source '00_Config/lib/session.bash' >/dev/null 2>&1; session_set_target prueba.example >/dev/null 2>&1" 2>/dev/null
+    # Se deja sin SESSION_FILE a propósito (así se comprueba dónde resuelve
+    # el .session), pero los otros dos sí se heredan: si no, este test
+    # escribiría en el targets.txt y el scope.yaml reales.
+    zsh -c "cd '$FW'; unset SESSION_FILE; source '00_Config/lib/session.bash' >/dev/null 2>&1; session_set_target prueba.example >/dev/null 2>&1" 2>/dev/null
     [ -f "$FW/../.session" ] && bad "zsh: .session no debe acabar en la raíz del repo" || ok "zsh: .session no acaba en la raíz del repo"
     [ -f "$SESS_REAL" ] && ok "zsh: .session aterriza en 00_Config" || bad "zsh: .session no llegó a 00_Config"
     rm -f "$FW/../.session" "$SESS_REAL"
