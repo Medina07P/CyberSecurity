@@ -158,6 +158,30 @@ py poner h8mail hibp hibp-nueva-123456 >/dev/null 2>&1
 eq "h8mail: conserva dehashed ajena" "$(python3 -c "import configparser;c=configparser.ConfigParser(interpolation=None);c.read('$INI');print(c['h8mail']['dehashed_key'])")" "dehashed-ajena-123456"
 eq "h8mail: actualiza hibp" "$(python3 -c "import configparser;c=configparser.ConfigParser(interpolation=None);c.read('$INI');print(c['h8mail']['hibp'])")" "hibp-nueva-123456"
 
+echo ""; echo "=== amass (v5) ==="
+py poner amass shodan.key amass-shodan-123456 >/dev/null 2>&1; eq "sin fichero: código 3" "$?" "3"
+[[ -e "$HOME/.config/amass/datasources.yaml" ]] && ko "no inventa el fichero" || ok "no inventa el fichero"
+mkdir -p "$HOME/.config/amass"
+cat > "$HOME/.config/amass/datasources.yaml" <<'EOS'
+datasources:
+  - name: shodan
+    ttl: 4320
+    creds:
+      key: ""
+  - name: censys
+    ttl: 4320
+    creds:
+      id: ""
+      secret: ""
+  - name: crtsh
+    ttl: 4320
+EOS
+py poner amass shodan.key amass-shodan-123456 >/dev/null 2>&1
+eq "fusiona creds.key" "$(python3 -c "import yaml;d=yaml.safe_load(open('$HOME/.config/amass/datasources.yaml'));print([x for x in d['datasources'] if x['name']=='shodan'][0]['creds']['key'])")" "amass-shodan-123456"
+eq "no toca otras fuentes" "$(python3 -c "import yaml;d=yaml.safe_load(open('$HOME/.config/amass/datasources.yaml'));print(len(d['datasources']))")" "3"
+py poner amass securitytrails.key st-123456 >/dev/null 2>&1
+eq "fuente desconocida: no se inventa" "$(python3 -c "import yaml;d=yaml.safe_load(open('$HOME/.config/amass/datasources.yaml'));print(len(d['datasources']))")" "3"
+
 echo ""
 echo "pasan: $pasan  fallan: $fallan"
 [[ "$fallan" -eq 0 ]] && exit 0 || exit 1
