@@ -9,7 +9,7 @@
 
 REPORT_PROFILE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPORT_PROFILE_FW_DIR="$(cd "$REPORT_PROFILE_LIB_DIR/../.." && pwd)"
-REPORT_PROFILE_FILE="${REPORT_PROFILE_FILE:-$REPORT_PROFILE_FW_DIR/11_Reports/.report_profile}"
+REPORT_PROFILE_FILE="${REPORT_PROFILE:-${REPORT_PROFILE_FILE:-$REPORT_PROFILE_FW_DIR/11_Reports/.report_profile}}"
 
 # report_profile_path → imprime la ruta del fichero de perfil
 report_profile_path() {
