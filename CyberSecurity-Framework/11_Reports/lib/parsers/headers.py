@@ -38,7 +38,6 @@ REQUIRED: tuple[tuple[str, str], ...] = (
 
 _PREFIJO = "security_headers_"
 _GUARD_RE = re.compile(r"^HTTP/\S+\s+[23]\d\d")
-_PISTAS_HTTPS = ("https", "443", "8443")
 
 
 def _lineas(path: Path) -> list[str]:
@@ -60,19 +59,18 @@ def _es_https(path: Path) -> bool:
     
     Usa tokens exactos para evitar falsos positivos: `4430` no es https.
     """
-    import re as _re
     nombre = path.name.lower()
     # Token exacto: "https" como palabra completa o sufijo
     if "https" in nombre:
         # Verificar que es un token completo, no parte de otro
-        if _re.search(r'\bhttps\b', nombre):
+        if re.search(r'\bhttps\b', nombre):
             return True
     # Tokens de puerto exactos: _443, _8443, o fin de sufijo
     # Buscar patrones como _443, _8443, o que termine en 443 o 8443
-    if _re.search(r'[_\-]443(?:\D|$)', nombre) or _re.search(r'[_\-]8443(?:\D|$)', nombre):
+    if re.search(r'[_\-]443(?:\D|$)', nombre) or re.search(r'[_\-]8443(?:\D|$)', nombre):
         return True
     # Si termina en 443 o 8443 (sin más dígitos después)
-    if _re.search(r'(?:^|[_\-])443$', nombre) or _re.search(r'(?:^|[_\-])8443$', nombre):
+    if re.search(r'(?:^|[_\-])443$', nombre) or re.search(r'(?:^|[_\-])8443$', nombre):
         return True
     return False
 
