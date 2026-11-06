@@ -264,6 +264,11 @@ class FfufTests(unittest.TestCase):
         r = ffuf.parse(write("web/ffuf_c.json", ffuf_json("", [{"status":200,"length":1,"url":"u"}])), ROOT)
         self.assertEqual(r.findings, []); self.assertTrue(r.no_evaluable)
 
+    def test_valid_empty_results_is_an_evaluable_zero(self):
+        r = ffuf.parse(write("web/ffuf_d.json", ffuf_json("", [])), ROOT)
+        self.assertEqual(r.findings, []); self.assertEqual(r.no_evaluable, [])
+        self.assertTrue(r.evaluado)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

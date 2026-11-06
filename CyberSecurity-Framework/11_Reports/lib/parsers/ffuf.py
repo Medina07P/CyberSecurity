@@ -8,11 +8,13 @@ resultado parece un hallazgo. El JSON de ffuf guarda la orden completa en
 `commandline`; cuando la tanda se lanzó con `-fs N` ese `N` es el tamaño del
 eco del servidor y `baseline_from_commandline` lo recupera.
 
-La regla es dura a propósito: sin `-fs` no se evalúa nada (ni un hallazgo ni
-un descarte) porque no hay forma de distinguir el eco del servidor. Un
-resultado del tamaño de la línea base es catch-all y va a `descartados`. Solo
-un `2xx` o `3xx` con un tamaño distinto es una observación de inventario
-(`ffuf.resource`): un recurso accesible no es una vulnerabilidad.
+La regla es dura a propósito: con resultados y sin `-fs` no se evalúa nada (ni
+un hallazgo ni un descarte) porque no hay forma de distinguir el eco del
+servidor. Una tanda válida sin resultados es un cero evaluable: ffuf terminó y
+no encontró candidatos. Un resultado del tamaño de la línea base es catch-all y
+va a `descartados`. Solo un `2xx` o `3xx` con un tamaño distinto es una
+observación de inventario (`ffuf.resource`): un recurso accesible no es una
+vulnerabilidad.
 
 Solo biblioteca estándar, como el resto del motor.
 """
@@ -89,14 +91,11 @@ def _vacio(archivo: str) -> ParseResult:
 def _sin_baseline(archivo: str, resultados: list) -> ParseResult:
     """Sin `-fs` no se puede separar el eco del servidor: no se evalúa.
 
-    Se deja un `no_evaluable` por resultado (o uno para el fichero si la
-    tanda no encontró nada), nunca un hallazgo.
+    Se deja un `no_evaluable` por resultado, nunca un hallazgo. Solo se llama
+    con resultados: una tanda válida sin resultados es un cero evaluable.
     """
     motivo = "sin línea base (-fs): no se puede distinguir el eco del servidor"
-    if resultados:
-        no_evaluable = [{"fuente": archivo, "motivo": motivo} for _ in resultados]
-    else:
-        no_evaluable = [{"fuente": archivo, "motivo": motivo}]
+    no_evaluable = [{"fuente": archivo, "motivo": motivo} for _ in resultados]
     return ParseResult(evaluado=False, no_evaluable=no_evaluable)
 
 
@@ -171,12 +170,14 @@ def parse(path: Path, repo_root: Path) -> ParseResult:
             no_evaluable=[{"fuente": archivo, "motivo": "results no es una lista"}],
         )
 
+    # Una tanda válida sin resultados es un cero evaluable, haya o no `-fs`:
+    # ffuf terminó y no hay candidatos que confundir con el eco del servidor.
+    if not resultados:
+        return ParseResult()
+
     baseline = baseline_from_commandline(datos.get("commandline"))
     if baseline is None:
         return _sin_baseline(archivo, resultados)
-
-    if not resultados:
-        return ParseResult()
 
     url_orden = _url_de_la_orden(datos.get("commandline"))
     findings: list[Finding] = []
