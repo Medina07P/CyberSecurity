@@ -156,6 +156,54 @@ printf 'targets:\r\n  domains:\r\n    - "crlf.com"\r\n' > "$TMPD/crlf.yaml"
 SESSION_SCOPE_FILE="$TMPD/crlf.yaml" scope_add_target crlf.com
 eq "no duplica con CRLF"             "$(grep -c '^ *- "crlf\.com"' "$TMPD/crlf.yaml")" "1"
 eq "y añade el comodín"              "$(grep -c '^ *- "\*\.crlf\.com"' "$TMPD/crlf.yaml")" "1"
+
+# Revisión: clave domains: anidada y sangrías distintas de la de la plantilla
+cat > "$TMPD/anidado.yaml" <<'EOS'
+targets:
+  domains:
+    - "a.com"
+  excluded:
+    domains:
+      - "intranet.a.com"
+EOS
+SESSION_SCOPE_FILE="$TMPD/anidado.yaml" scope_add_target c.com
+eq "inserta con domains: anidada"    "$?" "0"
+eq "no toca el bloque anidado"       "$(sed -n '/^  excluded:/,$p' "$TMPD/anidado.yaml" | grep -c 'c\.com')" "0"
+eq "la anidada sigue parseando"      "$(python3 -c 'import yaml,sys;yaml.safe_load(open(sys.argv[1]))' "$TMPD/anidado.yaml" >/dev/null 2>&1; echo $?)" "0"
+printf 'targets:\n    ips:\n        - "10.0.0.0/8"\n    domains:\n        - "a.com"\n' > "$TMPD/sangria.yaml"
+SESSION_SCOPE_FILE="$TMPD/sangria.yaml" scope_add_target d.com
+eq "inserta con sangría de 4"        "$?" "0"
+eq "respeta la sangría existente"    "$(grep -c '^ *- "d\.com"$' "$TMPD/sangria.yaml")" "1"
+eq "la sangría sigue parseando"      "$(python3 -c 'import yaml,sys;yaml.safe_load(open(sys.argv[1]))' "$TMPD/sangria.yaml" >/dev/null 2>&1; echo $?)" "0"
+
+# Revisión: scope_allows no debe leer excluded ni el email de contacto
+cat > "$TMPD/reglas.yaml" <<'EOS'
+targets:
+  domains:
+    - "ok.com"
+  excluded:
+    - "malo.com"
+contact:
+  email: "x@contacto.com"
+EOS
+eq "acepta el dominio de targets"    "$(SESSION_SCOPE_FILE="$TMPD/reglas.yaml" scope_allows ok.com; echo $?)" "0"
+eq "rechaza el dominio excluido"     "$(SESSION_SCOPE_FILE="$TMPD/reglas.yaml" scope_allows malo.com; echo $?)" "1"
+eq "rechaza el dominio del contacto" "$(SESSION_SCOPE_FILE="$TMPD/reglas.yaml" scope_allows contacto.com; echo $?)" "1"
+
+# Revisión: sin PyYAML se escribe y se avisa, no se falla en silencio
+mkdir -p "$TMPD/nopy"
+printf '#!/bin/bash\nexit 1\n' > "$TMPD/nopy/python3"
+chmod +x "$TMPD/nopy/python3"
+printf 'targets:\n  domains:\n    - "w.com"\n' > "$TMPD/sinvalidador.yaml"
+PATH="$TMPD/nopy:$PATH" SESSION_SCOPE_FILE="$TMPD/sinvalidador.yaml" scope_add_target x.com
+eq "sin PyYAML escribe igualmente"   "$?" "0"
+eq "y añade las dos entradas"        "$(grep -c 'x\.com' "$TMPD/sinvalidador.yaml")" "2"
+
+# Revisión: el fichero no debe perder sus permisos al reescribirlo
+printf 'targets:\n  domains:\n    - "p.com"\n' > "$TMPD/perm.yaml"
+chmod 640 "$TMPD/perm.yaml"
+SESSION_SCOPE_FILE="$TMPD/perm.yaml" scope_add_target q.com
+eq "conserva los permisos"           "$(stat -c '%a' "$TMPD/perm.yaml")" "640"
 export SESSION_SCOPE_FILE="$TMPD/scope.yaml"
 
 # ──────────────────────────────────────────────────────────
@@ -783,6 +831,7 @@ if HPORT=$(iniciar_servidor_http); then
 
     printf 'GET /echo?q=hola HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_echo.txt"
     OUT=$(SESSION_CONFIG_DIR="$TMPD/conf" SESSION_FILE="$TMPD/.session" \
+          SESSION_SCOPE_FILE="$TMPD/conf/scope.yaml" \
           bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_echo.txt" 127.0.0.1 2>&1)
     eq "http_inject: sale 0 con petición válida" "$?" "0"
     eq "http_inject: informa del objetivo" "$(printf '%s' "$OUT" | grep -q '127.0.0.1' && echo si || echo no)" "si"

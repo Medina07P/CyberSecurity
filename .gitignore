@@ -25,6 +25,8 @@ CyberSecurity-Framework/07_Wireless/captures/
 
 # 01_OSINT: dominios, subdominios, emails, metadatos y redes sociales
 CyberSecurity-Framework/01_OSINT/domains/*.txt
+CyberSecurity-Framework/01_OSINT/domains/*.json
+CyberSecurity-Framework/01_OSINT/domains/*.xml
 CyberSecurity-Framework/01_OSINT/emails/*.txt
 CyberSecurity-Framework/01_OSINT/emails/*.html
 CyberSecurity-Framework/01_OSINT/emails/*.json
@@ -40,6 +42,8 @@ CyberSecurity-Framework/01_OSINT/subdomains/*
 CyberSecurity-Framework/01_OSINT/*.txt
 CyberSecurity-Framework/01_OSINT/*.json
 CyberSecurity-Framework/01_OSINT/*.xml
+# stderr de los hijos de run_all_osint.sh (puede citar rutas y hosts reales)
+CyberSecurity-Framework/01_OSINT/*.log
 
 # 02_Recon: un directorio por ejecución y sus volcados
 CyberSecurity-Framework/02_Recon/recon_*/
