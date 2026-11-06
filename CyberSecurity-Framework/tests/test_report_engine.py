@@ -185,6 +185,29 @@ class NmapTests(unittest.TestCase):
         self.assertTrue(r.no_evaluable)
 
 
+from lib.parsers import nuclei
+
+JSONL = '{"template-id":"CVE-2021-1","info":{"name":"X","severity":"high","classification":{"cve-id":["CVE-2021-1"]}},"matched-at":"https://127.0.0.1:8443/a"}\n'
+
+class NucleiTests(unittest.TestCase):
+    def test_jsonl_maps_severity_and_asset(self):
+        r = nuclei.parse_jsonl(write("nuclei/a.jsonl", JSONL), ROOT)
+        f = r.findings[0]
+        self.assertEqual((f.severidad, f.confianza, f.activo), ("alta", "confirmado", "https://127.0.0.1:8443/a"))
+        self.assertEqual(f.cve, "CVE-2021-1")
+
+    def test_txt_standard_lines_and_garbage(self):
+        txt = "[tech] [http] [info] http://127.0.0.1:8080/\r\nlinea rota\r\n[CVE-2] [http] [medium] http://127.0.0.1:8080/x\r\n"
+        r = nuclei.parse_txt(write("nuclei/b.txt", txt), ROOT)
+        self.assertEqual(len(r.findings), 2)
+        self.assertEqual([f.severidad for f in r.findings], ["info", "media"])
+        self.assertEqual(len(r.no_evaluable), 1)
+
+    def test_jsonl_bad_line_is_no_evaluable_and_crlf_ok(self):
+        r = nuclei.parse_jsonl(write("nuclei/c.jsonl", JSONL.replace("\n", "\r\n") + "no-json\n"), ROOT)
+        self.assertEqual(len(r.findings), 1); self.assertTrue(r.no_evaluable)
+
+
 class CollectTests(unittest.TestCase):
     def test_evidence_paths_are_repo_relative(self):
         tmpdir = Path(tmp())
