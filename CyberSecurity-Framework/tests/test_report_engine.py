@@ -97,5 +97,65 @@ class AttributionTests(unittest.TestCase):
         self.assertEqual(normalize_host("https://u:p@10.1.2.3:8443/x"), "10.1.2.3")
 
 
+from lib.engine import collect, filter_findings
+from lib.sources import discover
+
+class SourceTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tmp()) / "scans"
+        files = {
+            "nmap/a.xml": "<x/>", "nuclei/a.jsonl": "{}", "nuclei/a.txt": "[x] [http] [high] u",
+            "nikto/a.txt": "+ ok", "web/ffuf_a.json": "{}", "web/http_inject_a.tsv": "nivel\tparam",
+            "web/sqlmap_a.txt": "- Veredicto: x", "web/sqli_findings_a.txt": "u|200:1|base:200:2",
+            "web/rate_limit_a.txt": "- Veredicto: x", "web/security_headers_a.txt": "",
+            "web/headers_a.txt": "HTTP/1.1 200 OK", "web/technologies_a.txt": "x",
+            "api/methods.txt": "x", "ssh/auth_methods.txt": "x", "database/anon.txt": "",
+            "nmap/errores.log": "e", "web/robots_a.txt": "User-agent: *",
+            "web/suelto.txt": "password inject CVE-2024-1234",
+        }
+        for rel, txt in files.items():
+            write_at(self.root, rel, txt)
+
+    def kind(self, rel):
+        for s in discover(self.root):
+            if str(s.path).endswith(rel):
+                return s.kind
+        return None
+
+    def test_known_patterns_are_classified(self):
+        esperado = {"nmap/a.xml": "nmap", "nuclei/a.jsonl": "nuclei_jsonl",
+                    "nuclei/a.txt": "nuclei_txt", "nikto/a.txt": "nikto",
+                    "web/ffuf_a.json": "ffuf", "web/http_inject_a.tsv": "http_inject",
+                    "web/sqlmap_a.txt": "sqlmap", "web/sqli_findings_a.txt": "sqli_findings",
+                    "web/rate_limit_a.txt": "rate_limit", "web/security_headers_a.txt": "security_headers",
+                    "web/headers_a.txt": "headers", "web/technologies_a.txt": "technologies",
+                    "api/methods.txt": "api", "ssh/auth_methods.txt": "ssh",
+                    "database/anon.txt": "db", "nmap/errores.log": "errores"}
+        for rel, kind in esperado.items():
+            self.assertEqual(self.kind(rel), kind, rel)
+
+    def test_unrelated_and_keyword_files_are_ignored(self):
+        self.assertEqual(self.kind("web/robots_a.txt"), "ignored")
+        self.assertEqual(self.kind("web/suelto.txt"), "ignored")
+
+    def mk(self, activo):
+        return Finding(rule="r", key="k"+activo, titulo="t", categoria="web", severidad="info",
+                       confianza="observacion", activo=activo, tecnica="x", descripcion="d",
+                       impacto_cliente="i", recomendacion="r", esfuerzo="medio", cve=None, cvss=None,
+                       evidencia=[], referencias=[])
+
+    def test_filter_keeps_only_the_target_and_drops_unattributable(self):
+        fs = [self.mk("https://127.0.0.1:8080"), self.mk("https://127.0.0.10/"), self.mk("")]
+        out = filter_findings(fs, "127.0.0.1", False, False)
+        self.assertEqual([f.activo for f in out], ["https://127.0.0.1:8080"])
+        self.assertEqual(len(filter_findings(fs, "127.0.0.1", True, False)), 2)
+        self.assertEqual(len(filter_findings(fs, "127.0.0.1", False, True)), 3)
+
+    def test_errores_log_is_an_incident_not_a_finding(self):
+        c = collect(self.root, ROOT, "127.0.0.1")
+        self.assertEqual(c.findings, [])
+        self.assertEqual(len(c.incidencias), 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
