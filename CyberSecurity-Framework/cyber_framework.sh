@@ -696,7 +696,8 @@ show_help() {
     echo -e "  Con ${GREEN}R${NC} generas los informes técnico y de cliente desde lo ya escaneado."
     echo ""
     echo -e "${YELLOW}📖 DOCUMENTACIÓN:${NC}"
-    echo -e "  Manual completo del gestor en ${DIM}docs/MANUAL-GESTOR.md${NC}"
+    echo -e "  Manual completo del gestor: ${DIM}../docs/MANUAL-GESTOR.md${NC}"
+    echo -e "  ${DIM}(o ejecuta desde la raíz del repo: less docs/MANUAL-GESTOR.md)${NC}"
     echo ""
     echo -e "${YELLOW}ℹ️  MARCAS EN LA LISTA:${NC}"
     echo -e "  ${RED}[intrusiva]${NC}  pide confirmación extra antes de ejecutarse"
@@ -738,7 +739,7 @@ main_menu() {
     echo -e "  ${CYAN}99${NC}  ${WHITE}🚀 Ejecutar Flujo Completo${NC}"
     echo -e "  ${CYAN}R ${NC}  ${WHITE}📊 Informe rápido${NC}"
     echo -e "  ${CYAN}T ${NC}  ${WHITE}🎯 Cambiar objetivo${NC} ${DIM}(actual: ${target:-sin definir})${NC}"
-    echo -e "  ${CYAN}??${NC}  ${WHITE}📖 Ayuda y Comandos Útiles${NC}"
+    echo -e "  ${CYAN}? ${NC}  ${WHITE}📖 Ayuda y Comandos Útiles${NC}"
     echo -e "  ${CYAN}Q ${NC}  ${RED}Salir${NC}"
     echo ""
 
@@ -786,7 +787,7 @@ main() {
             99) full_workflow ;;
             R|r) quick_report ;;
             T|t) change_target ;;
-            \?|help|HELP|H|h) show_help ;;
+            \?|\?\?|help|HELP|H|h) show_help ;;
             Q|q|salir|exit)
                 echo -e "\n${GREEN}👋 ¡Hasta luego!${NC}"
                 exit 0
