@@ -330,5 +330,28 @@ class HeadersTests(unittest.TestCase):
         self.assertEqual(rules, {"headers.missing.xfo", "headers.missing.xcto"})
 
 
+from lib.parsers import host_sources
+
+class HostSourceTests(unittest.TestCase):
+    def test_api_mutating_methods_are_low_observations_and_unattributable(self):
+        r = host_sources.parse_api(write("api/methods.txt", " ✅ GET (404)\n ✅ PUT (200)\n ✅ DELETE (501)\n"), ROOT)
+        self.assertEqual(len(r.findings), 1)
+        self.assertEqual((r.findings[0].severidad, r.findings[0].activo), ("baja", ""))
+
+    def test_ssh_password_auth_with_host(self):
+        txt = "Nmap scan report for localhost (127.0.0.1)\n| ssh-auth-methods:\n|     publickey\n|_    password\n"
+        r = host_sources.parse_ssh(write("ssh/auth_methods.txt", txt), ROOT)
+        self.assertEqual((r.findings[0].rule, r.findings[0].activo), ("ssh.password_auth", "127.0.0.1"))
+
+    def test_db_anon_empty_is_no_evaluable(self):
+        self.assertTrue(host_sources.parse_db(write("database/anon.txt", ""), ROOT).no_evaluable)
+        r = host_sources.parse_db(write("database/anon.txt", "version()\n8.0.36\n"), ROOT)
+        self.assertEqual((r.findings[0].rule, r.findings[0].severidad), ("db.anonymous", "alta"))
+
+    def test_technologies_enrich_without_findings(self):
+        r = host_sources.parse_technologies(write("web/technologies_8080.txt", "http://127.0.0.1:8080 [200 OK] Server[SimpleHTTP/0.6]\n"), ROOT)
+        self.assertEqual(r.findings, []); self.assertTrue(r.activos)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
