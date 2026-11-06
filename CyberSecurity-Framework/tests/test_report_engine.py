@@ -700,6 +700,25 @@ class CliTests(unittest.TestCase):
         self.assertEqual(_default_scans_dir().name, "scans")
         self.assertEqual(_default_scans_dir().parent, _REPO_ROOT)
 
+    def test_same_inputs_produce_identical_documents(self):
+        out1 = self.tmp / "out1"
+        out2 = self.tmp / "out2"
+        argv = ["--scans", str(self.scans), "--objetivo", "127.0.0.1",
+                "--salida", str(out1)]
+        self.assertEqual(run(argv), 0)
+        self.assertEqual(run(["--scans", str(self.scans), "--objetivo", "127.0.0.1",
+                              "--salida", str(out2)]), 0)
+        # Los cuatro documentos: idénticos byte a byte (misma fecha en meta)
+        for name in ("informe_tecnico.md", "informe_tecnico.html",
+                     "informe_cliente.md", "informe_cliente.html"):
+            self.assertEqual((out1 / name).read_bytes(), (out2 / name).read_bytes(), name)
+        # JSON: todo igual salvo la marca de tiempo
+        d1 = json.loads((out1 / "findings.json").read_text())
+        d2 = json.loads((out2 / "findings.json").read_text())
+        d1["meta"].pop("generado_en")
+        d2["meta"].pop("generado_en")
+        self.assertEqual(d1, d2)
+
 
 from lib.parsers import nmap
 

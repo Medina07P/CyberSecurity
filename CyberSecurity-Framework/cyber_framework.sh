@@ -19,6 +19,7 @@ source "$LIB_DIR/session.bash"
 source "$LIB_DIR/phase_status.bash"
 source "$LIB_DIR/prompt.bash"
 source "$LIB_DIR/report_profile.bash"
+source "$LIB_DIR/scans.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -610,17 +611,24 @@ quick_report() {
     echo ""
     echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-    # Listar ficheros generados
-    local out_dir
-    if [[ -d "11_Reports/generated" ]]; then
-        echo -e "${GREEN}📁 Informes generados:${NC}"
-        find 11_Reports/generated -type f \( -name '*.md' -o -name '*.html' -o -name '*.json' \) 2>/dev/null | \
+    # Listar solo los ficheros recién escritos de este objetivo
+    # (la salida por defecto del motor es generated/<slug del objetivo>)
+    local slug out_dir
+    if [[ -n "$target" ]]; then
+        slug="$(scans_slug "$target")"
+    else
+        slug="sin_objetivo"
+    fi
+    out_dir="11_Reports/generated/$slug"
+    if [[ -d "$out_dir" ]]; then
+        echo -e "${GREEN}📁 Informes generados${NC}${DIM} ($out_dir)${NC}:"
+        find "$out_dir" -maxdepth 1 -type f \( -name '*.md' -o -name '*.html' -o -name '*.json' \) 2>/dev/null | \
             while read -r f; do echo "  $f"; done
     fi
 
-    # Ofrecer abrir el HTML
+    # Ofrecer abrir el HTML recién generado de este objetivo
     local html_file
-    html_file=$(find 11_Reports/generated -name '*.html' -type f 2>/dev/null | head -1)
+    html_file=$(find "$out_dir" -maxdepth 1 -name '*.html' -type f 2>/dev/null | head -1)
     if [[ -n "$html_file" ]]; then
         echo ""
         echo -ne "${BOLD}¿Abrir informe HTML? (s/N): ${NC}"
@@ -686,7 +694,6 @@ show_help() {
     echo ""
     echo -e "${YELLOW}📝 INFORMES:${NC}"
     echo -e "  Con ${GREEN}R${NC} generas los informes técnico y de cliente desde lo ya escaneado."
-    echo -e "  El manual completo del gestor está en ${DIM}docs/MANUAL-GESTOR.md${NC}"
     echo ""
     echo -e "${YELLOW}📖 DOCUMENTACIÓN:${NC}"
     echo -e "  Manual completo del gestor en ${DIM}docs/MANUAL-GESTOR.md${NC}"
