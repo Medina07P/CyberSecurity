@@ -378,25 +378,57 @@ class RenderTests(unittest.TestCase):
         self.assertIn("Candidatos", md); self.assertIn("No evaluable", md)
         self.assertIn("Incidencias de ejecución", md); self.assertIn("Descartados", md)
         self.assertIn("Activos", md)
+        self.assertIn("Técnica", md)
+        html = (out / "informe_tecnico.html").read_text()
+        self.assertIn("Técnica", html)
 
     def test_client_has_no_internal_paths_or_payloads(self):
         out = Path(tmp()); write_reports(self.collected(), {"cliente": "ACME", "auditor": "Ana"}, out, ["cliente"])
         text = (out / "informe_cliente.md").read_text() + (out / "informe_cliente.html").read_text()
-        for prohibido in ("scans/", "INYECTABLE", "sqlmap", "payload"):
+        for prohibido in ("scans/", "INYECTABLE", "CONFIRMADO", "sqlmap", "payload"):
             self.assertNotIn(prohibido, text)
         self.assertIn("30/60/90", text); self.assertIn("ACME", text)
 
     def test_html_is_self_contained_and_escaped(self):
         c = self.collected(); c.findings[0].titulo = "<script>x</script>"
         out = Path(tmp()); write_reports(c, {}, out, ["tecnico", "cliente"])
-        html = (out / "informe_tecnico.html").read_text()
-        self.assertIn("<style", html); self.assertNotIn("cdn", html.lower())
-        self.assertIn("&lt;script&gt;", html); self.assertNotIn("<script>x", html)
+        html_tecnico = (out / "informe_tecnico.html").read_text()
+        html_cliente = (out / "informe_cliente.html").read_text()
+        self.assertIn("<style", html_tecnico); self.assertNotIn("cdn", html_tecnico.lower())
+        self.assertIn("&lt;script&gt;", html_tecnico); self.assertNotIn("<script>x", html_tecnico)
+        self.assertIn("<style", html_cliente); self.assertNotIn("cdn", html_cliente.lower())
+        self.assertIn("&lt;script&gt;", html_cliente); self.assertNotIn("<script>x", html_cliente)
 
     def test_roundtrip_json(self):
         c = self.collected(); data = to_json(c, {"cliente": "ACME"})
         c2, meta = from_json(data)
         self.assertEqual(len(c2.findings), 2); self.assertEqual(meta["cliente"], "ACME")
+
+    def test_client_singular_plural_pruebas(self):
+        # With 1 candidate, should say "1 prueba requiere"
+        from lib.engine import Collected
+        f = Finding(rule="r", key="k", titulo="t", categoria="web", severidad="critica",
+                    confianza="confirmado", activo="h", tecnica="x", descripcion="d",
+                    impacto_cliente="i", recomendacion="r", esfuerzo="medio",
+                    cve=None, cvss=None, evidencia=[], referencias=[])
+        c = Finding(rule="r2", key="k2", titulo="t2", categoria="web", severidad="media",
+                    confianza="candidato", activo="h", tecnica="x", descripcion="d",
+                    impacto_cliente="i", recomendacion="r", esfuerzo="medio",
+                    cve=None, cvss=None, evidencia=[], referencias=[])
+        col = Collected([f, c], {}, [], [], ["h"], True)
+        out = Path(tmp()); write_reports(col, {"cliente": "X"}, out, ["cliente"])
+        md = (out / "informe_cliente.md").read_text()
+        self.assertIn("1 prueba requiere", md)
+
+        # With 2 candidates, should say "2 pruebas requieren"
+        c2 = Finding(rule="r3", key="k3", titulo="t3", categoria="web", severidad="baja",
+                     confianza="candidato", activo="h", tecnica="x", descripcion="d",
+                     impacto_cliente="i", recomendacion="r", esfuerzo="medio",
+                     cve=None, cvss=None, evidencia=[], referencias=[])
+        col2 = Collected([f, c, c2], {}, [], [], ["h"], True)
+        out2 = Path(tmp()); write_reports(col2, {"cliente": "X"}, out2, ["cliente"])
+        md2 = (out2 / "informe_cliente.md").read_text()
+        self.assertIn("2 pruebas requieren", md2)
 
 
 if __name__ == "__main__":
