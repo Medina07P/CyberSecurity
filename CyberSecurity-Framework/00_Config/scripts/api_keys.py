@@ -13,6 +13,15 @@ from pathlib import Path
 import yaml
 
 
+class _ArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser que trata los errores de uso como código 1, no 2."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        print(f"❌ {message}", file=sys.stderr)
+        sys.exit(1)
+
+
 # ─── Registro ───
 
 def _framework_root():
@@ -175,6 +184,9 @@ def cargar_registro():
         sys.exit(2)
     if data is None:
         return {"version": 1}
+    if not isinstance(data, dict):
+        print("❌ Registro ilegible: el contenido no es un diccionario", file=sys.stderr)
+        sys.exit(2)
     return data
 
 
@@ -312,7 +324,7 @@ def _mostrar_estado(reg):
 
 
 def main():
-    parser = argparse.ArgumentParser(
+    parser = _ArgumentParser(
         description="Registro centralizado de claves de API",
     )
     subparsers = parser.add_subparsers(dest="orden")

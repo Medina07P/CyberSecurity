@@ -41,6 +41,17 @@ py poner theharvester shodan.key otro-valor >/dev/null 2>&1; eq "registro ilegib
 eq "registro ilegible intacto" "$(cat "$KEYS_FILE")" "esto: [no es yaml"
 cp "$TMPD/registro.bueno" "$KEYS_FILE"
 
+# Errores de uso deben salir con 1, no con 2
+py poner theharvester shodan.key >/dev/null 2>&1; eq "falta valor: uso sale 1" "$?" "1"
+py poner >/dev/null 2>&1; eq "sin argumentos: uso sale 1" "$?" "1"
+
+# Registro que parsea a no-dict se trata como ilegible (sale 2, intacto)
+printf -- '- uno\n- dos\n' > "$KEYS_FILE"
+py poner theharvester shodan.key valor >/dev/null 2>&1; eq "registro no-dict: 2" "$?" "2"
+eq "registro no-dict intacto" "$(cat "$KEYS_FILE")" "- uno
+- dos"
+cp "$TMPD/registro.bueno" "$KEYS_FILE"
+
 echo ""
 echo "pasan: $pasan  fallan: $fallan"
 [[ "$fallan" -eq 0 ]] && exit 0 || exit 1
