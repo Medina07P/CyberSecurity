@@ -62,8 +62,10 @@ eq "espejo: censys.secret" "$(python3 -c "import yaml;print(yaml.safe_load(open(
 [[ "$(stat -c %a "$HT")" == "600" ]] && ok "proyección 600" || ko "proyección 600"
 # Gana ~ sobre el /etc simulado
 mkdir -p "$TMPD/etc"; printf 'apikeys:\n  shodan:\n    key: del-etc\n' > "$TMPD/etc/api-keys.yaml"
+MD5_ETC=$(md5sum "$TMPD/etc/api-keys.yaml" | cut -d' ' -f1)
 py poner theharvester shodan.key sk-propia-123456 >/dev/null 2>&1
 eq "~ gana al /etc" "$(python3 -c "import yaml;print(yaml.safe_load(open('$HT'))['apikeys']['shodan']['key'])")" "sk-propia-123456"
+eq "/etc simulado intacto" "$(md5sum "$TMPD/etc/api-keys.yaml" | cut -d' ' -f1)" "$MD5_ETC"
 # Un valor ajeno no vacío que el registro no conoce se conserva y se ingiere
 py poner theharvester dehashed.key - >/dev/null 2>&1
 python3 - "$HT" <<'EOS'
@@ -79,6 +81,33 @@ eq "importar la trae" "$(python3 -c "import yaml;print(yaml.safe_load(open('$KEY
 # Valor con caracteres que rompen YAML
 py poner theharvester hunter.key 'a#b:c "d"' >/dev/null 2>&1
 eq "valor con # y comillas" "$(python3 -c "import yaml;print(yaml.safe_load(open('$HT'))['apikeys']['hunter']['key'])")" 'a#b:c "d"'
+# Estado por defecto (sin KEYS_HARVESTER_DIRS): aunque exista /etc, escribe en ~
+SAVED_DIRS="$KEYS_HARVESTER_DIRS"
+unset KEYS_HARVESTER_DIRS
+rm -rf "$HOME/.theHarvester"
+py poner theharvester censys.id default-censys-id >/dev/null 2>&1
+[[ -f "$HOME/.theHarvester/api-keys.yaml" ]] && ok "default escribe en ~" || ko "default escribe en ~"
+export KEYS_HARVESTER_DIRS="$SAVED_DIRS"
+# Fallo de proyección: advertencia y exit 3, registro igualmente guardado
+rm -rf "$HOME/.theHarvester"
+mkdir -p "$HOME/.theHarvester"
+chmod 500 "$HOME/.theHarvester"
+out=$(py poner theharvester shodan.key sk-falla-123456 2>&1)
+code=$?
+chmod 700 "$HOME/.theHarvester"
+eq "fallo de proyección: exit 3" "$code" "3"
+[[ "$out" == *"theHarvester: no se pudo escribir"* ]] && ok "fallo de proyección: aviso" || ko "fallo de proyección: aviso"
+eq "fallo de proyección: registro guardado" "$(python3 -c "import yaml;print(yaml.safe_load(open('$KEYS_FILE'))['theharvester']['shodan']['key'])")" "sk-falla-123456"
+# Proyección no-dict: aviso en español, no revienta, no sobrescribe
+printf -- '- uno\n' > "$HOME/.theHarvester/api-keys.yaml"
+chmod 600 "$HOME/.theHarvester/api-keys.yaml"
+md5_antes=$(md5sum "$HOME/.theHarvester/api-keys.yaml" | cut -d' ' -f1)
+out=$(py sincronizar theharvester 2>&1)
+code=$?
+eq "proyección no-dict: exit 3" "$code" "3"
+[[ "$out" == *"no contiene un diccionario"* ]] && ok "proyección no-dict: mensaje" || ko "proyección no-dict: mensaje"
+md5_despues=$(md5sum "$HOME/.theHarvester/api-keys.yaml" | cut -d' ' -f1)
+eq "proyección no-dict: sin sobrescribir" "$md5_despues" "$md5_antes"
 
 echo ""
 echo "pasan: $pasan  fallan: $fallan"

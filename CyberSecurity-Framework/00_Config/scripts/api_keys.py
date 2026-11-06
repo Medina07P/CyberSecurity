@@ -104,6 +104,10 @@ def harvester_dirs():
     ]
 
 
+class _ProyeccionIlegible(Exception):
+    """La proyección existe pero no se puede parsear."""
+
+
 class _TheHarvesterAdapter:
     """Adaptador de proyección/ingesta para theHarvester."""
 
@@ -135,28 +139,33 @@ class _TheHarvesterAdapter:
         return completa
 
     def _destino(self):
-        for d in harvester_dirs():
-            candidate = d / "api-keys.yaml"
-            if candidate.exists():
-                return candidate
-        dest = harvester_dirs()[0] / "api-keys.yaml"
-        dest.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
-        return dest
+        """El destino de escritura es siempre ~/.theHarvester/api-keys.yaml."""
+        return harvester_dirs()[0] / "api-keys.yaml"
 
     def _leer_existente(self, dest):
         if not dest.exists():
             return {}
         try:
             with open(dest) as f:
-                data = yaml.safe_load(f) or {}
-        except yaml.YAMLError:
-            return {}
+                data = yaml.safe_load(f)
+        except yaml.YAMLError as exc:
+            raise _ProyeccionIlegible(
+                f"theHarvester: {dest} no es YAML válido: {exc}"
+            )
+        if not isinstance(data, dict):
+            raise _ProyeccionIlegible(
+                f"theHarvester: {dest} no contiene un diccionario"
+            )
         return data.get("apikeys", {})
 
     def proyectar(self, reg):
         """Vuelca el registro a ~/.theHarvester/api-keys.yaml conservando ajenos."""
         dest = self._destino()
-        existente = self._leer_existente(dest)
+        try:
+            existente = self._leer_existente(dest)
+        except _ProyeccionIlegible as exc:
+            print(f"⚠️  {exc}", file=sys.stderr)
+            return False, str(exc)
         plantilla = self._plantilla(reg, existente)
         reg_section = reg.get("theharvester", {})
 
@@ -181,11 +190,11 @@ class _TheHarvesterAdapter:
                     else:
                         contenido["apikeys"][slot][leaf] = ""
 
-        if dest.exists():
-            shutil.copy2(dest, dest.with_suffix(".bak"))
-
         tmp_path = dest.with_suffix(".tmp")
         try:
+            dest.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+            if dest.exists():
+                shutil.copy2(dest, dest.with_suffix(".bak"))
             fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             try:
                 with os.fdopen(fd, "w") as f:
@@ -223,11 +232,10 @@ class _TheHarvesterAdapter:
             if not candidate.exists():
                 continue
             try:
-                with open(candidate) as f:
-                    data = yaml.safe_load(f) or {}
-            except yaml.YAMLError:
+                existente = self._leer_existente(candidate)
+            except _ProyeccionIlegible as exc:
+                print(f"⚠️  {exc}", file=sys.stderr)
                 continue
-            existente = data.get("apikeys", {})
             plantilla = self._plantilla(reg, existente)
             for slot, leaves in plantilla.items():
                 if not isinstance(leaves, dict):
