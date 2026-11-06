@@ -86,6 +86,10 @@ dirá que está fuera de alcance. Para deshacerlo no hay comando: borra a mano l
 > Ojo: como el gestor registra lo que fijas, la comprobación de alcance pasa a ser un
 > **registro** de lo que has usado, no una barrera. La autorización real es el documento de
 > `authorization.document` en `scope.yaml`.
+>
+> Y ojo también con git: `scope.yaml` y `targets.txt` **están versionados**, así que el dominio
+> real de un cliente aparecerá en `git status` en cuanto lo fijes. No hagas `git add -A` a
+> ciegas en este repo.
 
 Si defines varios objetivos en `00_Config/targets.txt`, el gestor te los ofrece como lista. Puedes cambiarlo en cualquier momento con `T`.
 

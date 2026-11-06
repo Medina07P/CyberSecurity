@@ -50,7 +50,7 @@ targets:
 - **Idempotente**: se compara sin comillas, sin comentario, sin `\r` y sin distinguir
   mayúsculas. Repetir el objetivo no añade nada ni crea `.bak`.
 - **No inventa**: si el `scope.yaml` no tiene la clave, no se escribe y se avisa; lo mismo si
-  el YAML resultante no parsea, en cuyo caso se restaura `scope.yaml.bak`.
+  el YAML resultante no parsea, en cuyo caso se descarta el temporal y el original queda intacto (`.bak` guarda el estado previo al último cambio bueno).
 - **Un fallo no cancela la sesión**: el aviso va a stderr y `.session` ya está escrito.
 - **Puerto y protocolo desconocidos** se escriben como `—`, el marcador que
   `00_Config/scripts/parse_targets.py` traduce a `null`. Inventar `443` sería mentir sobre el
@@ -68,7 +68,7 @@ registra antes de que nadie compruebe nada. La comprobación de alcance pasa a s
 
 ## Evidencia
 
-`tests/run_tests.sh` pasó de 344 a **374 asserts**, con tres secciones nuevas:
+`tests/run_tests.sh` pasó de 344 a **386 asserts**, con tres secciones nuevas:
 
 - «El objetivo se registra en scope.yaml»: dominio pelado + comodín, IP a `ips`, idempotencia,
   mayúsculas, `.bak`, YAML válido, comentarios preservados, valor inválido, fichero sin la
@@ -91,11 +91,36 @@ Suites tras el cambio:
 
 | Suite | Resultado |
 |---|---|
-| `tests/run_tests.sh` | 374 pasan, 0 fallan |
+| `tests/run_tests.sh` | 386 pasan, 0 fallan |
 | `tests/run_e2e.sh` | 11 pasan, 0 fallan |
 | `tests/run_smoke.sh` | 0 fallos |
 
 ## Deshacerlo
 
 No hay comando de borrado: se quita a mano la línea de `targets.txt` y las entradas de
-`scope.yaml` (o se restaura `scope.yaml.bak`). Documentado en `docs/MANUAL-GESTOR.md`.
+`scope.yaml` (o se restaura `scope.yaml.bak`, que es el estado previo al último cambio bueno).
+Documentado en `docs/MANUAL-GESTOR.md`.
+
+## Lo que encontró la revisión y se corrigió
+
+La revisión independiente del branch encontró un fallo crítico y cuatro importantes, ya
+cerrados con test RED→GREEN:
+
+1. **La escritura asumía la plantilla de dos espacios.** Con una clave `domains:` anidada
+   (p. ej. `targets.excluded.domains`) o con sangría de cuatro espacios, la inserción caía en
+   el bloque equivocado y el YAML dejaba de parsear: el gestor avisaba «código 2» para siempre
+   en ese fichero. Ahora la clave y la sangría se localizan por nivel (se toma la del primer
+   hijo de `targets:` y la de la última entrada) y hay fixtures para ambos casos.
+2. **`scope_allows` leía dominios de todo el fichero**, así que una regla en `excluded:` o el
+   email de contacto autorizaban. Ahora lee solo `targets.domains`. Además, «había reglas y
+   ninguna encaja» devuelve 1 (fuera de alcance) y no 2.
+3. **`mv -f` reseteaba los permisos** del `scope.yaml` a los del `umask`. Ahora se copian con
+   `chmod --reference` antes de sustituir (test con `640`).
+4. **PyYAML ausente se confundía con YAML roto.** Se sondea `import yaml` por separado: si
+   falta, se escribe y se avisa; solo un `safe_load` fallido aborta.
+5. **La suite filtraba `SESSION_SCOPE_FILE`** al test que aísla `SESSION_CONFIG_DIR`, y ese
+   assert pasaba por el motivo equivocado. Corregido en la llamada de `http_inject.sh`.
+
+Diferidos (menores, en el ledger): finales de línea mixtos en ficheros CRLF, cabecera «una por
+día» en lugar de «una por tanda», duplicado si la línea existente lleva espacios delante, y la
+marca `# auto: gestor` que el spec prometía y el plan no escribió.

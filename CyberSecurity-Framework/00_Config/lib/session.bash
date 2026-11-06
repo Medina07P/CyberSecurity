@@ -77,12 +77,68 @@ _scope_normalize() {
     printf '%s' "$v"
 }
 
+# _scope_block_values <clave> → líneas "- ..." de targets.<clave>
+# Solo las de primer nivel dentro de targets: una clave anidada (por ejemplo
+# targets.excluded.domains) no cuenta, y tampoco el email de contacto.
+_scope_block_values() {
+    local f="${2:-$SESSION_SCOPE_FILE}"
+    awk -v key="$1" '
+        function indent() { match($0, /^[[:space:]]*/); return RLENGTH }
+        BEGIN { intargets = 0; cind = -1; inkey = 0 }
+        /^targets:[[:space:]]*$/ { intargets = 1; next }
+        !intargets { next }
+        /^[[:space:]]*$/ || /^[[:space:]]*#/ { next }
+        {
+            ind = indent()
+            if (cind < 0) {
+                if (ind == 0) { intargets = 0; next }
+                cind = ind
+            }
+            if (ind < cind) { intargets = 0; inkey = 0; next }
+            if (ind == cind && $0 ~ ("^[[:space:]]*" key ":[[:space:]]*$")) { inkey = 1; next }
+            if (inkey && ind > cind && $0 ~ /^[[:space:]]*-/) { print; next }
+            if (ind <= cind) inkey = 0
+        }
+    ' "$f"
+}
+# La sangría se toma de la última entrada de la clave; si está vacía, la de
+# la clave más dos. Vacío si la clave no existe dentro de targets.
+_scope_insert_point() {
+    awk -v key="$1" '
+        function indent() { match($0, /^[[:space:]]*/); return RLENGTH }
+        BEGIN { intargets = 0; cind = -1; inkey = 0; last = 0; pad = "" }
+        /^targets:[[:space:]]*$/ { intargets = 1; next }
+        !intargets { next }
+        /^[[:space:]]*$/ || /^[[:space:]]*#/ { next }
+        {
+            ind = indent()
+            if (cind < 0) {
+                if (ind == 0) { intargets = 0; next }
+                cind = ind
+            }
+            if (ind < cind) { intargets = 0; inkey = 0; next }
+            if (ind == cind && $0 ~ ("^[[:space:]]*" key ":[[:space:]]*$")) {
+                inkey = 1; last = NR
+                pad = sprintf("%" (ind + 2) "s", "")
+                next
+            }
+            if (inkey && ind > cind && $0 ~ /^[[:space:]]*-/) {
+                last = NR
+                pad = substr($0, 1, ind)
+                next
+            }
+            if (ind <= cind) inkey = 0
+        }
+        END { if (last) printf "%d|%s\n", last, pad }
+    ' "$SESSION_SCOPE_FILE"
+}
+
 # scope_add_target <ip|dominio>
 #   0 añadido o ya estaba · 1 valor no válido · 2 no se pudo escribir
 # Un dominio añade dos entradas: él mismo y su comodín *.dominio, que es lo
 # que scope_allows necesita para autorizar sus subdominios.
 scope_add_target() {
-    local value="$1" key ins tmp e have found i
+    local value="$1" key ins ins_line pad tmp e have found i
     local -a entries=() existing=() missing=()
     validate_target "$value" || return 1
     [[ -f "$SESSION_SCOPE_FILE" ]] || return 2
@@ -95,13 +151,12 @@ scope_add_target() {
         entries=("$value" "*.$value")
     fi
 
-    # Entradas que ya tiene esa clave dentro de targets:
-    mapfile -t existing < <(awk -v key="$key" '
-        /^[^[:space:]]/ { intargets = ($0 ~ /^targets:/); inkey = 0 }
-        intargets && $0 ~ ("^[[:space:]]+" key ":") { inkey = 1; next }
-        intargets && inkey && $0 ~ /^[[:space:]]+-[[:space:]]/ { print; next }
-        intargets && inkey && $0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*#/ { inkey = 0 }
-    ' "$SESSION_SCOPE_FILE")
+    # Lectura línea a línea: esta librería se sourcea también desde zsh, donde
+    # mapfile no existe.
+    local linea
+    while IFS= read -r linea; do
+        [[ -n "$linea" ]] && existing+=("$linea")
+    done < <(_scope_block_values "$key")
 
     for e in "${entries[@]}"; do
         found=0
@@ -113,35 +168,45 @@ scope_add_target() {
     done
     ((${#missing[@]})) || return 0
 
-    # Última línea de la clave (o la de la propia clave si está vacía).
-    ins=$(awk -v key="$key" '
-        /^[^[:space:]]/ { intargets = ($0 ~ /^targets:/); inkey = 0 }
-        intargets && $0 ~ ("^[[:space:]]+" key ":") { inkey = 1; last = NR; next }
-        intargets && inkey && $0 ~ /^[[:space:]]+-[[:space:]]/ { last = NR; next }
-        intargets && inkey && $0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*#/ { inkey = 0 }
-        END { if (last) print last }
-    ' "$SESSION_SCOPE_FILE")
+    ins=$(_scope_insert_point "$key")
     [[ -n "$ins" ]] || return 2
+    ins_line="${ins%%|*}"
+    pad="${ins#*|}"
 
     tmp="$SESSION_SCOPE_FILE.auto.tmp"
-    cp -f "$SESSION_SCOPE_FILE" "$SESSION_SCOPE_FILE.bak" || return 2
-    if ! awk -v ins="$ins" -v add="$(printf '%s\n' "${missing[@]}")" '
+    if ! awk -v ins="$ins_line" -v pad="$pad" -v add="$(printf '%s\n' "${missing[@]}")" '
         { print }
         NR == ins {
             n = split(add, a, "\n")
-            for (i = 1; i <= n; i++) if (a[i] != "") printf "    - \"%s\"\n", a[i]
+            for (i = 1; i <= n; i++) if (a[i] != "") printf "%s- \"%s\"\n", pad, a[i]
         }
     ' "$SESSION_SCOPE_FILE" > "$tmp"; then
         rm -f "$tmp"
         return 2
     fi
 
-    # Si el YAML deja de parsear, se deshace: el alcance no puede quedar roto.
-    if command -v python3 >/dev/null 2>&1 &&
-       ! python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))' "$tmp" >/dev/null 2>&1; then
-        rm -f "$tmp"
-        return 2
+    # No es lo mismo «el YAML está roto» que «no hay con qué mirarlo».
+    local puede_validar=0
+    if command -v python3 >/dev/null 2>&1; then
+        if python3 -c 'import yaml' >/dev/null 2>&1; then
+            puede_validar=1
+        else
+            printf '   ⚠️  PyYAML no está: no se pudo validar scope.yaml\n' >&2
+        fi
+    else
+        printf '   ⚠️  python3 no está: no se pudo validar scope.yaml\n' >&2
     fi
+    if (( puede_validar )); then
+        if ! python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))' "$tmp" >/dev/null 2>&1; then
+            rm -f "$tmp"
+            return 2
+        fi
+    fi
+
+    # La copia se hace justo antes de sustituir: .bak es siempre el estado
+    # previo al último cambio bueno, no el de un intento fallido.
+    cp -f "$SESSION_SCOPE_FILE" "$SESSION_SCOPE_FILE.bak" || { rm -f "$tmp"; return 2; }
+    chmod --reference="$SESSION_SCOPE_FILE" "$tmp" 2>/dev/null
     mv -f "$tmp" "$SESSION_SCOPE_FILE" || return 2
 
     for i in "${missing[@]}"; do
@@ -228,9 +293,14 @@ scope_allows() {
     local target="$1" scope="$SESSION_SCOPE_FILE"
     [[ -f "$scope" ]] || return 2
 
-    local allowed domains
+    local allowed domains="" d
     allowed=$(grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?' "$scope" 2>/dev/null)
-    domains=$(grep -oE '[A-Za-z0-9*.-]+\.(com|net|org|local|lan|io)' "$scope" 2>/dev/null)
+    # Los dominios salen solo de targets.domains: una regla excluida o el email
+    # de contacto no autorizan nada.
+    while IFS= read -r d; do
+        d=$(_scope_normalize "$d")
+        [[ -n "$d" ]] && domains+="$d"$'\n'
+    done < <(_scope_block_values domains "$scope")
 
     # Sin ninguna regla interpretable no se puede opinar (2 = no determinado).
     [[ -z "$allowed" && -z "$domains" ]] && return 2
@@ -272,5 +342,7 @@ scope_allows() {
             [[ "${target,,}" == "${dom,,}" ]] && return 0
         fi
     done <<< "$domains"
+    # Había reglas y ninguna encaja: está fuera (1), no «no determinado» (2).
+    [[ -n "$domains" ]] && return 1
     return 2
 }
