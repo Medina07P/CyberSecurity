@@ -100,12 +100,15 @@ if [ -f "$QR_TMP/.report_profile" ]; then
 else
     bad "quick_report: el perfil temporal no existe"
 fi
-if [ -f "$FW/11_Reports/.report_profile" ]; then
+# Aislamiento: el perfil real del repo NO debe haber sido ni creado ni
+# modificado por los tests. Cuando existía antes, lo comprueba el bloque
+# global del final (snapshot antes/después); aquí solo importa que no
+# nazca de una ejecución de la suite.
+if [ "$HAD_REAL_PROFILE" -eq 0 ] && [ -f "$FW/11_Reports/.report_profile" ]; then
     bad "quick_report: el perfil real del repo fue contaminado" \
         "$(cat "$FW/11_Reports/.report_profile")"
-    rm -f "$FW/11_Reports/.report_profile"
 else
-    ok "quick_report: el perfil real del repo no fue tocado"
+    ok "quick_report: el perfil real del repo no fue creado"
 fi
 
 # ──────────────────────────────────────────────────────────
@@ -208,30 +211,27 @@ fi
 python3 tests/test_report_engine.py
 PY_RC=$?
 
-rm -rf "$TMPD"
-
-# Verificar que el perfil real no fue modificado
+# Verificar que el perfil real no fue modificado (ANTES de borrar el snapshot)
 if [ "$HAD_REAL_PROFILE" -eq 1 ]; then
     if [ -f "$REAL_PROFILE" ]; then
         if diff -q "$TMPD/.report_profile.snapshot" "$REAL_PROFILE" >/dev/null 2>&1; then
             ok "perfil real no fue modificado"
         else
             bad "perfil real fue modificado"
-            FAIL=$((FAIL + 1))
         fi
     else
         bad "perfil real fue eliminado"
-        FAIL=$((FAIL + 1))
     fi
 else
     # Si no había perfil, verificar que no se creó uno
     if [ -f "$REAL_PROFILE" ]; then
         bad "se creó un perfil real cuando no existía"
-        FAIL=$((FAIL + 1))
     else
         ok "no se creó perfil real"
     fi
 fi
+
+rm -rf "$TMPD"
 
 printf '\n────────────────────────────────────────\n'
 printf 'shell: pasan %s  fallan %s\n' "$PASS" "$FAIL"
