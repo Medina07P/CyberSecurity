@@ -11,7 +11,7 @@ import html
 import json
 from pathlib import Path
 
-from .model import Finding, finding_to_dict, finding_from_dict, SEVERITY_ORDER
+from .model import finding_to_dict, finding_from_dict
 from .engine import Collected
 
 __all__ = ["write_reports", "to_json", "from_json"]
@@ -126,6 +126,7 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
             lines.append("")
             lines.append(f"**Severidad:** {f.severidad}")
             lines.append(f"**Activo:** {f.activo}")
+            lines.append(f"**Técnica:** {f.tecnica}")
             if f.evidencia:
                 for e in f.evidencia:
                     linea_str = f":{e.linea}" if e.linea else ""
@@ -271,10 +272,11 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
     confirmados = [f for f in collected.findings if f.confianza == "confirmado"]
     if confirmados:
         for f in confirmados:
-            sev_class = f.severidad
+            sev_class = html.escape(f.severidad)
             html_parts.append(f"<h3>{html.escape(f.titulo)}</h3>")
             html_parts.append(f"<p><strong>Severidad:</strong> <span class='{sev_class}'>{html.escape(f.severidad)}</span></p>")
             html_parts.append(f"<p><strong>Activo:</strong> {html.escape(f.activo)}</p>")
+            html_parts.append(f"<p><strong>Técnica:</strong> {html.escape(f.tecnica)}</p>")
             if f.evidencia:
                 html_parts.append("<ul>")
                 for e in f.evidencia:
@@ -474,7 +476,11 @@ def _render_cliente_md(collected: Collected, meta: dict) -> str:
     lines.append("")
     candidatos = [f for f in collected.findings if f.confianza == "candidato"]
     if candidatos:
-        lines.append(f"{len(candidatos)} pruebas requieren revisión manual para confirmar su impacto real.")
+        n = len(candidatos)
+        if n == 1:
+            lines.append("1 prueba requiere revisión manual para confirmar su impacto real.")
+        else:
+            lines.append(f"{n} pruebas requieren revisión manual para confirmar su impacto real.")
     else:
         lines.append("Todas las pruebas se completaron y se presentan en este informe.")
     lines.append("")
@@ -614,7 +620,11 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
     # Límites
     html_parts.append("<h2>Límites</h2>")
     if candidatos:
-        html_parts.append(f"<p>{len(candidatos)} pruebas requieren revisión manual para confirmar su impacto real.</p>")
+        n = len(candidatos)
+        if n == 1:
+            html_parts.append("<p>1 prueba requiere revisión manual para confirmar su impacto real.</p>")
+        else:
+            html_parts.append(f"<p>{n} pruebas requieren revisión manual para confirmar su impacto real.</p>")
     else:
         html_parts.append("<p>Todas las pruebas se completaron y se presentan en este informe.</p>")
 
