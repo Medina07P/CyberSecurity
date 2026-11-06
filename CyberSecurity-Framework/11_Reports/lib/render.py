@@ -366,6 +366,50 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
 # Informe cliente
 # ---------------------------------------------------------------------------
 
+def _client_limitations(collected: Collected) -> list[str]:
+    """Limitaciones ejecutivas compartidas por Markdown y HTML.
+
+    Solo una evaluación sin candidatos, fuentes pendientes, incidencias ni
+    cortes relevantes puede afirmar que todas las pruebas se completaron.
+    """
+    limitations: list[str] = []
+
+    candidates = sum(f.confianza == "candidato" for f in collected.findings)
+    if candidates == 1:
+        limitations.append("1 prueba requiere revisión manual para confirmar su impacto real.")
+    elif candidates:
+        limitations.append(f"{candidates} pruebas requieren revisión manual para confirmar su impacto real.")
+
+    pending = len(collected.no_evaluable)
+    if pending == 1:
+        limitations.append("1 fuente no pudo evaluarse y requiere revisión.")
+    elif pending:
+        limitations.append(f"{pending} fuentes no pudieron evaluarse y requieren revisión.")
+
+    incidents = len(collected.incidencias)
+    if incidents == 1:
+        limitations.append("1 incidencia de ejecución limita las conclusiones.")
+    elif incidents:
+        limitations.append(f"{incidents} incidencias de ejecución limitan las conclusiones.")
+
+    relevant = ("429", "503", "timeout", "no determinado")
+    inconclusive = sum(
+        any(token in str(item.get("motivo", "")).lower() for token in relevant)
+        for item in collected.descartados
+    )
+    if inconclusive == 1:
+        limitations.append("1 resultado inconcluso exige repetir o revisar la prueba.")
+    elif inconclusive:
+        limitations.append(f"{inconclusive} resultados inconclusos exigen repetir o revisar las pruebas.")
+
+    if not collected.evaluado:
+        limitations.append("No hubo fuentes evaluables; no se acredita que las pruebas se completaran.")
+
+    if not limitations:
+        limitations.append("Todas las pruebas se completaron y se presentan en este informe.")
+    return limitations
+
+
 def _render_cliente_md(collected: Collected, meta: dict) -> str:
     """Genera el informe cliente en Markdown."""
     lines: list[str] = []
@@ -474,15 +518,8 @@ def _render_cliente_md(collected: Collected, meta: dict) -> str:
     # Límites
     lines.append("## Límites")
     lines.append("")
-    candidatos = [f for f in collected.findings if f.confianza == "candidato"]
-    if candidatos:
-        n = len(candidatos)
-        if n == 1:
-            lines.append("1 prueba requiere revisión manual para confirmar su impacto real.")
-        else:
-            lines.append(f"{n} pruebas requieren revisión manual para confirmar su impacto real.")
-    else:
-        lines.append("Todas las pruebas se completaron y se presentan en este informe.")
+    for limitation in _client_limitations(collected):
+        lines.append(f"- {limitation}")
     lines.append("")
 
     # Glosario
@@ -506,7 +543,6 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
     alcance = html.escape(str(meta.get("alcance", "No especificado")))
 
     confirmados = [f for f in collected.findings if f.confianza == "confirmado"]
-    candidatos = [f for f in collected.findings if f.confianza == "candidato"]
     observaciones = [f for f in collected.findings if f.confianza == "observacion"]
 
     html_parts: list[str] = [
@@ -619,14 +655,8 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
 
     # Límites
     html_parts.append("<h2>Límites</h2>")
-    if candidatos:
-        n = len(candidatos)
-        if n == 1:
-            html_parts.append("<p>1 prueba requiere revisión manual para confirmar su impacto real.</p>")
-        else:
-            html_parts.append(f"<p>{n} pruebas requieren revisión manual para confirmar su impacto real.</p>")
-    else:
-        html_parts.append("<p>Todas las pruebas se completaron y se presentan en este informe.</p>")
+    for limitation in _client_limitations(collected):
+        html_parts.append(f"<p>{html.escape(limitation)}</p>")
 
     # Glosario
     html_parts.append("<h2>Glosario</h2>")
