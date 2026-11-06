@@ -159,6 +159,28 @@ eq "y añade el comodín"              "$(grep -c '^ *- "\*\.crlf\.com"' "$TMPD/
 export SESSION_SCOPE_FILE="$TMPD/scope.yaml"
 
 # ──────────────────────────────────────────────────────────
+section "El objetivo se registra en targets.txt"
+printf '192.168.1.10|22|SSH|Servidor|C\n' > "$SESSION_TARGETS_FILE"
+targets_add_entry example.com;  eq "añade el objetivo"    "$?" "0"
+eq "usa el formato de 5 campos" \
+   "$(grep -cE '^example\.com\|—\|—\|Registrado al fijar el objetivo\|B$' "$SESSION_TARGETS_FILE")" "1"
+eq "pone cabecera fechada" \
+   "$(grep -cE '^# ─── AÑADIDOS POR EL GESTOR \([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}\) ───$' "$SESSION_TARGETS_FILE")" "1"
+antes=$(wc -l < "$SESSION_TARGETS_FILE")
+targets_add_entry example.com
+eq "no duplica"                "$(wc -l < "$SESSION_TARGETS_FILE")" "$antes"
+printf 'sin-salto|80|HTTP|x|B' > "$TMPD/sin_salto.txt"
+SESSION_TARGETS_FILE="$TMPD/sin_salto.txt" targets_add_entry ejemplo.org
+eq "no pega la línea a la anterior" "$(grep -c '^sin-salto|80|HTTP|x|B$' "$TMPD/sin_salto.txt")" "1"
+targets_add_entry "malo con espacios"; eq "rechaza un valor inválido" "$?" "1"
+rm -f "$TMPD/nuevo.txt"
+SESSION_TARGETS_FILE="$TMPD/nuevo.txt" targets_add_entry ejemplo.net
+eq "crea el fichero si no existe" "$(grep -c '^#  LISTA DE OBJETIVOS$' "$TMPD/nuevo.txt")" "1"
+python3 "$FW/00_Config/scripts/parse_targets.py" --input "$SESSION_TARGETS_FILE" --json "$TMPD/t.json" >/dev/null 2>&1
+eq "parse_targets.py lo entiende" \
+   "$(python3 -c "import json;d=json.load(open('$TMPD/t.json'));print([t['port'] for t in d if t['ip']=='example.com'][0])")" "None"
+
+# ──────────────────────────────────────────────────────────
 section "Sesión"
 session_set_target "10.0.0.9" && ok "guarda el objetivo"
 eq "lo devuelve" "$(session_target)" "10.0.0.9"

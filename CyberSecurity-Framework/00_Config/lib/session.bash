@@ -167,6 +167,44 @@ targets_from_config() {
     done < "$SESSION_TARGETS_FILE"
 }
 
+# targets_add_entry <host>
+#   0 añadido o ya estaba · 1 valor no válido · 2 no se pudo escribir
+# El puerto y el protocolo van como «—» (desconocido para parse_targets.py):
+# al fijar el objetivo no se sabe qué servicio corre ahí.
+targets_add_entry() {
+    local host="$1" f="$SESSION_TARGETS_FILE" fecha patron
+    validate_target "$host" || return 1
+
+    patron="^$(printf '%s' "$host" | sed 's/\./\\./g')\|"
+    if [[ -f "$f" ]] && grep -qiE "$patron" "$f"; then
+        return 0
+    fi
+
+    fecha=$(date '+%Y-%m-%d')
+    mkdir -p "$(dirname "$f")" || return 2
+
+    {
+        if [[ ! -s "$f" ]]; then
+            printf '# ============================================================\n'
+            printf '#  LISTA DE OBJETIVOS\n'
+            printf '#  Formato: IP|PUERTO|PROTOCOLO|DESCRIPCIÓN|PRIORIDAD\n'
+            printf '# ============================================================\n'
+            printf '#  PRIORIDAD: C = Crítica, A = Alta, M = Media, B = Baja\n'
+            printf '# ============================================================\n\n'
+        elif [[ -n "$(tail -c1 "$f")" ]]; then
+            printf '\n'
+        fi
+        # Una cabecera por tanda, no una por objetivo.
+        if ! grep -qF "# ─── AÑADIDOS POR EL GESTOR ($fecha" "$f" 2>/dev/null; then
+            printf '# ─── AÑADIDOS POR EL GESTOR (%s %s) ───\n' "$fecha" "$(date '+%H:%M')"
+        fi
+        printf '%s|—|—|Registrado al fijar el objetivo|B\n' "$host"
+    } >> "$f" || return 2
+
+    printf '   ➕ targets.txt: %s\n' "$host" >&2
+    return 0
+}
+
 # ─── Comprobación de alcance (mejor esfuerzo) ──────────────
 
 # _ip_to_int <a.b.c.d> → entero de 32 bits
