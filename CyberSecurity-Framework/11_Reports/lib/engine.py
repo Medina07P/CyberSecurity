@@ -98,7 +98,7 @@ def collect(
             continue
 
         try:
-            result = source.parser(source.path, scans_dir)
+            result = source.parser(source.path, repo_root)
         except Exception as exc:
             no_evaluable.append({
                 "fuente": relpath(source.path, repo_root),
