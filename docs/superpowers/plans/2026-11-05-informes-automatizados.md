@@ -111,7 +111,7 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(finding_from_dict(finding_to_dict(f)), f)
 ```
 
-Create `tests/run_reports.sh` with `#!/bin/bash`, header `Uso:/Ejemplo:`, `cd` to its own directory and:
+Create `tests/run_reports.sh` with `#!/bin/bash`, header `Uso:/Ejemplo:`, `chmod +x`, `cd` to its own directory and:
 `python3 tests/test_report_engine.py` (propagate exit code).
 
 - [ ] **Step 2: Run the tests and see them fail**
@@ -182,7 +182,7 @@ Expected: `ModuleNotFoundError: No module named 'lib.catalog'`.
 
 - [ ] **Step 3: Implement `catalog.py`**
 
-Define an internal `_RULES` dict of `rule -> (severidad, confianza, titulo, descripcion, impacto_cliente, recomendacion, esfuerzo, referencias)`. Texts name the tool for the technical report and explain business impact for the client one; include the tool's own caveat where it exists (`rate_limit` says "esto no prueba que el login no tenga freno más adelante"; `http_inject.fuerte` not applicable here). `build` formats `descripcion`/`impacto`/`recomendacion` with `variables` via `str.format`; if a placeholder is missing raise `KeyError` (do not swallow). Caller overrides for severity/confidence are applied last.
+Define an internal `_RULES` dict of `rule -> (severidad, confianza, titulo, descripcion, impacto_cliente, recomendacion, esfuerzo, referencias)`. Texts name the tool for the technical report and explain business impact for the client one; include the tool's own caveat where it exists (`rate_limit` says "esto no prueba que el login no tenga freno más adelante"; `http_inject.fuerte` not applicable here). `build` formats `descripcion`/`impacto`/`recomendacion` with a safe mapping: each variable is read with a default (`variables.get("endpoint", "el endpoint de autenticación")`, etc.), so a rule can be rendered without every variable and the all-rules test passes. An unknown *rule* raises `KeyError` (typos fail loudly). Caller overrides for severity/confidence are applied last.
 
 - [ ] **Step 4: Run and see them pass**
 
@@ -929,7 +929,7 @@ Add to `tests/run_reports.sh`:
 - `params_mode 11_Reports/report_generator.sh` → `slots`; `params_slot_count` → `1` (source `00_Config/lib/params.bash`).
 - `printf 'R\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh` output contains `Informe técnico`.
 - `printf '?\n\nQ\n' | ...` output contains `MANUAL-GESTOR.md`.
-- `printf 'R\n3\n\n\n\nQ\n' | ...` with `REPORT_SCANS_DIR`, `REPORT_OUT_DIR` and `REPORT_PROFILE` pointing at temp paths → creates `informe_cliente.md` and `informe_tecnico.md` under the fixture output dir.
+- `bash -c 'source ./cyber_framework.sh; printf "3\n\n\n" | quick_report'` with `REPORT_SCANS_DIR`, `REPORT_OUT_DIR`, `REPORT_PROFILE` and `SESSION_FILE` pointing at temp paths → creates `informe_cliente.md` and `informe_tecnico.md` under the fixture output dir.
 - `phase_status`: with `PHASE_FW_DIR=<tmp>` containing `11_Reports/generated/x/findings.json`, `phase_state 11_Reports` → `done`.
 - legacy shim with fixture dir prints `obsoleto` and writes the two reports.
 - `bash -n` on every modified `.sh`; `py_compile` on every modified `.py`.
@@ -990,7 +990,7 @@ Cover: requisitos e instalación; arranque; objetivo y `.session`; recorrido por
 Run:
 ```bash
 cd CyberSecurity-Framework
-./tests/run_reports.sh && ./tests/run_tests.sh && ./tests/run_e2e.sh && ./tests/run_smoke.sh && ./tests/run_wizard.sh
+./tests/run_reports.sh && ./tests/run_tests.sh && ./tests/run_e2e.sh && ./tests/run_smoke.sh && bash ./tests/run_wizard.sh
 ```
 Expected: all green. If a count assertion changes because of the new scripts (wrapper mode), update the count and note why in the commit message.
 
