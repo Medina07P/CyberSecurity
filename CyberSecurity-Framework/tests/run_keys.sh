@@ -109,6 +109,21 @@ eq "proyección no-dict: exit 3" "$code" "3"
 md5_despues=$(md5sum "$HOME/.theHarvester/api-keys.yaml" | cut -d' ' -f1)
 eq "proyección no-dict: sin sobrescribir" "$md5_despues" "$md5_antes"
 
+echo ""; echo "=== shodan y h8mail ==="
+py poner shodan key shodan-key-123456 >/dev/null 2>&1
+eq "shodan: contenido" "$(cat "$HOME/.shodan/api_key")" "shodan-key-123456"
+[[ "$(stat -c %a "$HOME/.shodan/api_key")" == "600" ]] && ok "shodan 600" || ko "shodan 600"
+py poner h8mail dehashed_key h8-dehashed-123456 >/dev/null 2>&1
+py poner h8mail hibp hibp-key-123456 >/dev/null 2>&1
+INI="$HOME/.h8mail_config.ini"
+[[ -f "$INI" ]] && ok "h8mail: escribe el INI" || ko "h8mail: escribe el INI"
+eq "h8mail: sección" "$(python3 -c "import configparser;c=configparser.ConfigParser();c.read('$INI');print(c['h8mail']['dehashed_key'])")" "h8-dehashed-123456"
+[[ "$(stat -c %a "$INI")" == "600" ]] && ok "h8mail 600" || ko "h8mail 600"
+# .bak antes de sustituir
+py poner shodan key shodan-key-999999 >/dev/null 2>&1
+[[ -f "$HOME/.shodan/api_key.bak" ]] && ok "shodan deja .bak" || ko "shodan deja .bak"
+eq "shodan: valor nuevo" "$(cat "$HOME/.shodan/api_key")" "shodan-key-999999"
+
 echo ""
 echo "pasan: $pasan  fallan: $fallan"
 [[ "$fallan" -eq 0 ]] && exit 0 || exit 1

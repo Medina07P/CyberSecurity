@@ -5,6 +5,7 @@
 # ============================================================
 
 import argparse
+import configparser
 import json
 import os
 import shutil
@@ -252,6 +253,155 @@ class _TheHarvesterAdapter:
         return result
 
 
+class _ShodanAdapter:
+    """Adaptador de proyección/ingesta para Shodan."""
+
+    def _destino(self):
+        return Path.home() / ".shodan" / "api_key"
+
+    def proyectar(self, reg):
+        """Vuelca shodan.key a ~/.shodan/api_key."""
+        dest = self._destino()
+        reg_section = reg.get("shodan", {})
+        val_reg, ok_reg = _get_nested(reg_section, "key")
+        val = val_reg if ok_reg and isinstance(val_reg, str) else ""
+
+        tmp_path = dest.with_suffix(".tmp")
+        try:
+            dest.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+            if dest.exists():
+                shutil.copy2(dest, dest.with_suffix(".bak"))
+                dest.with_suffix(".bak").chmod(0o600)
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                with os.fdopen(fd, "w") as f:
+                    f.write(val)
+                    if not val.endswith("\n"):
+                        f.write("\n")
+                    f.flush()
+                    os.fsync(f.fileno())
+            except Exception:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                raise
+            os.replace(tmp_path, dest)
+            dest.chmod(0o600)
+        except OSError as exc:
+            return False, f"shodan: no se pudo escribir {dest}: {exc}"
+        finally:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
+
+        estado = "puesta" if val else "vacía"
+        return True, f"shodan: {estado}"
+
+    def ingerir(self, reg):
+        """Lee ~/.shodan/api_key si el registro tiene shodan.key vacío."""
+        result = {}
+        dest = self._destino()
+        if not dest.exists():
+            return result
+        try:
+            val = dest.read_text().strip()
+        except OSError:
+            return result
+        if not val:
+            return result
+        reg_section = reg.get("shodan", {})
+        val_reg, ok_reg = _get_nested(reg_section, "key")
+        if ok_reg and val_reg:
+            return result
+        result["key"] = val
+        return result
+
+
+class _H8mailAdapter:
+    """Adaptador de proyección/ingesta para h8mail."""
+
+    def _campos(self):
+        return _tool_by_name("h8mail")["campos"]
+
+    def _destino(self):
+        return Path.home() / ".h8mail_config.ini"
+
+    def proyectar(self, reg):
+        """Vuelca los valores de h8mail a ~/.h8mail_config.ini."""
+        dest = self._destino()
+        reg_section = reg.get("h8mail", {})
+        config = configparser.ConfigParser(interpolation=None)
+        config.add_section("h8mail")
+        puestas = 0
+        for campo in self._campos():
+            val, ok = _get_nested(reg_section, campo)
+            if ok and isinstance(val, str) and val:
+                config.set("h8mail", campo, val)
+                puestas += 1
+            else:
+                config.set("h8mail", campo, "")
+
+        tmp_path = dest.with_suffix(".tmp")
+        try:
+            if dest.exists():
+                shutil.copy2(dest, dest.with_suffix(".bak"))
+                dest.with_suffix(".bak").chmod(0o600)
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                with os.fdopen(fd, "w") as f:
+                    config.write(f)
+                    f.flush()
+                    os.fsync(f.fileno())
+            except Exception:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                raise
+            os.replace(tmp_path, dest)
+            dest.chmod(0o600)
+        except OSError as exc:
+            return False, f"h8mail: no se pudo escribir {dest}: {exc}"
+        finally:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
+
+        if puestas > 0:
+            return True, "h8mail: puesta (h8mail necesita -c)"
+        return True, "h8mail: vacía"
+
+    def ingerir(self, reg):
+        """Lee ~/.h8mail_config.ini para campos vacíos en el registro."""
+        result = {}
+        dest = self._destino()
+        if not dest.exists():
+            return result
+        try:
+            config = configparser.ConfigParser(interpolation=None)
+            with open(dest) as f:
+                config.read_file(f)
+        except (OSError, configparser.Error):
+            return result
+        if "h8mail" not in config.sections():
+            return result
+        reg_section = reg.get("h8mail", {})
+        for campo in self._campos():
+            val, ok = _get_nested(reg_section, campo)
+            if ok and val:
+                continue
+            if config.has_option("h8mail", campo):
+                file_val = config.get("h8mail", campo).strip()
+                if file_val:
+                    result[campo] = file_val
+        return result
+
+
 def proyectar(herramienta, reg):
     """Proyecta el registro al fichero de configuración de una herramienta."""
     tool = _tool_by_name(herramienta)
@@ -290,6 +440,7 @@ def _construir_herramientas():
             "nombre": "shodan",
             "etiqueta": "Shodan",
             "campos": ["key"],
+            "adaptador": _ShodanAdapter(),
         },
         "h8mail": {
             "nombre": "h8mail",
@@ -300,6 +451,7 @@ def _construir_herramientas():
                 "dehashed_email", "dehashed_key", "intelx_key", "intelx_maxfile",
                 "breachdirectory_user", "breachdirectory_pass",
             ],
+            "adaptador": _H8mailAdapter(),
         },
         "amass": {
             "nombre": "amass",
