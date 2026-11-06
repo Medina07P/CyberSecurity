@@ -85,6 +85,20 @@ else
     bad "quick_report: no genera informe_tecnico.md"
 fi
 
+# Aislamiento: el perfil real del repo NO debe haber sido tocado
+if [ -f "$QR_TMP/.report_profile" ]; then
+    ok "quick_report: el perfil temporal existe"
+else
+    bad "quick_report: el perfil temporal no existe"
+fi
+if [ -f "$FW/11_Reports/.report_profile" ]; then
+    bad "quick_report: el perfil real del repo fue contaminado" \
+        "$(cat "$FW/11_Reports/.report_profile")"
+    rm -f "$FW/11_Reports/.report_profile"
+else
+    ok "quick_report: el perfil real del repo no fue tocado"
+fi
+
 # ──────────────────────────────────────────────────────────
 section "Fase 11: estado con generated/*/findings.json"
 PHASE_FIX="$TMPD/phase11"
