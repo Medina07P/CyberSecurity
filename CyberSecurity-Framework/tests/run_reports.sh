@@ -147,6 +147,34 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────
+section "Documentación: MANUAL-GESTOR.md"
+MANUAL="$FW/../docs/MANUAL-GESTOR.md"
+if [ -f "$MANUAL" ]; then
+    ok "docs/MANUAL-GESTOR.md existe"
+else
+    bad "docs/MANUAL-GESTOR.md no existe"
+fi
+for h in "## Arranque" "## Objetivo de sesión" "## Informes" "## Cómo leer los veredictos" "## Problemas frecuentes"; do
+    if grep -qF "$h" "$MANUAL" 2>/dev/null; then
+        ok "manual: contiene '$h'"
+    else
+        bad "manual: falta '$h'"
+    fi
+done
+if grep -qF "docs/MANUAL-GESTOR.md" "$FW/../README.md" 2>/dev/null; then
+    ok "README.md enlaza el manual"
+else
+    bad "README.md no enlaza el manual"
+fi
+# La salida de '?' debe nombrar el manual (ya lo cubre otra sección, pero lo reafirmamos)
+OUT_HELP=$(printf '?\n\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
+if printf '%s' "$OUT_HELP" | sed 's/\x1b\[[0-9;]*m//g' | grep -qF "MANUAL-GESTOR.md"; then
+    ok "la ayuda '?' menciona MANUAL-GESTOR.md"
+else
+    bad "la ayuda '?' no menciona MANUAL-GESTOR.md"
+fi
+
+# ──────────────────────────────────────────────────────────
 section "Sintaxis: bash -n y py_compile"
 for f in 11_Reports/report_generator.sh \
          11_Reports/run_all_reports.sh \

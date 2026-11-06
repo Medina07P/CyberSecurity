@@ -1,7 +1,7 @@
 # Diseño — Informes automatizados (técnico y cliente) desde el gestor
 
 - **Fecha:** 2026-11-05
-- **Estado:** aprobado (2026-11-05)
+- **Estado:** aprobado e implementado (2026-11-06)
 - **Origen:** petición del partner: «desde el interactivo de `cyber_framework.sh` poder generar
   reportes más avanzados, añadir automatizaciones efectivas, y que haya un instructivo de uso»,
   acotado a dos entregables: uno técnico y otro como si fuera para un cliente real, **deducidos
