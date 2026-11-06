@@ -151,9 +151,19 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(len(filter_findings(fs, "127.0.0.1", True, False)), 2)
         self.assertEqual(len(filter_findings(fs, "127.0.0.1", False, True)), 3)
 
+    def test_filter_marks_unattributed_findings_when_included(self):
+        included = filter_findings([self.mk("")], "127.0.0.1", True, False)
+        self.assertEqual(included[0].activo, "sin objetivo atribuible")
+        todo = filter_findings([self.mk("")], None, False, True)
+        self.assertEqual(todo[0].activo, "sin objetivo atribuible")
+
     def test_errores_log_is_an_incident_not_a_finding(self):
-        c = collect(self.root, ROOT, "127.0.0.1")
-        self.assertEqual(c.findings, [])
+        c = collect(self.root, ROOT, None, todos=True)
+        self.assertFalse(any(
+            evidence.archivo.endswith("errores.log")
+            for finding in c.findings
+            for evidence in finding.evidencia
+        ))
         self.assertEqual(len(c.incidencias), 1)
 
 
@@ -452,6 +462,21 @@ class CliTests(unittest.TestCase):
         self.assertTrue((self.out / "informe_tecnico.html").exists())
         self.assertTrue((self.out / "informe_cliente.html").exists())
 
+    def test_target_isolation_covers_json_and_all_four_documents(self):
+        rc = run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--tipo", "ambos",
+                  "--salida", str(self.out)])
+        self.assertEqual(rc, 0)
+        names = (
+            "findings.json", "informe_tecnico.md", "informe_tecnico.html",
+            "informe_cliente.md", "informe_cliente.html",
+        )
+        for name in names:
+            text = (self.out / name).read_text(encoding="utf-8")
+            self.assertNotIn("127.0.0.10", text, name)
+        data = json.loads((self.out / "findings.json").read_text(encoding="utf-8"))
+        self.assertEqual(list(data["activos"]), ["127.0.0.1"])
+        self.assertEqual(data["objetivos"], ["127.0.0.1"])
+
     def test_exit_3_when_nothing_is_evaluable(self):
         self.assertEqual(run(["--scans", str(self.empty), "--objetivo", "127.0.0.1", "--salida", str(self.out)]), 3)
 
@@ -520,6 +545,65 @@ class RenderProtocoloTests(unittest.TestCase):
         # Should not raise KeyError
         self.assertTrue((out / "informe_tecnico.html").exists())
         self.assertTrue((out / "informe_cliente.html").exists())
+
+
+class TargetIsolationTests(unittest.TestCase):
+    def test_appendices_and_incidents_do_not_cross_target_boundaries(self):
+        root = Path(tmp())
+        scans = root / "scans"
+        target_ffuf = json.dumps({
+            "commandline": "ffuf -u http://127.0.0.1/FUZZ -fs 96",
+            "results": [{"status": 200, "length": 96, "url": "http://127.0.0.1/a"}],
+        })
+        other_ffuf = json.dumps({
+            "commandline": "ffuf -u http://127.0.0.10/FUZZ -fs 96",
+            "results": [{"status": 200, "length": 96, "url": "http://127.0.0.10/b"}],
+        })
+        write_at(scans, "web/ffuf_127.0.0.1.json", target_ffuf)
+        write_at(scans, "web/ffuf_127.0.0.10.json", other_ffuf)
+        write_at(scans, "api/methods.txt", " ✅ PUT (200)\n")
+        write_at(scans, "nmap/errores.log", "fallo de ejecución\n")
+
+        collected = collect(scans, root, "127.0.0.1")
+
+        self.assertEqual(
+            [item["fuente"] for item in collected.descartados],
+            ["scans/web/ffuf_127.0.0.1.json"],
+        )
+        self.assertEqual(collected.incidencias, [])
+        unattributed = {
+            item["fuente"]: item["motivo"]
+            for item in collected.no_evaluable
+            if item["motivo"] == "sin objetivo atribuible"
+        }
+        self.assertIn("scans/api/methods.txt", unattributed)
+        self.assertIn("scans/nmap/errores.log", unattributed)
+        self.assertNotIn("127.0.0.10", json.dumps(to_json(collected, {}), ensure_ascii=False))
+
+    def test_evaluated_is_true_only_for_an_included_source(self):
+        root = Path(tmp())
+        scans = root / "scans"
+        write_at(scans, "nmap/bad_127.0.0.1.xml", "<nmaprun>")
+        write_at(scans, "nmap/good_127.0.0.10.xml", XML_127.replace("127.0.0.1", "127.0.0.10"))
+
+        collected = collect(scans, root, "127.0.0.1")
+
+        self.assertFalse(collected.evaluado)
+        self.assertEqual(collected.findings, [])
+        self.assertEqual(len(collected.no_evaluable), 1)
+        self.assertNotIn("127.0.0.10", json.dumps(to_json(collected, {}), ensure_ascii=False))
+
+    def test_asset_without_host_requires_the_explicit_flag(self):
+        root = Path(tmp())
+        scans = root / "scans"
+        write_at(scans, "web/headers_8080.txt", "HTTP/1.1 200 OK\nServer: x\n")
+
+        default = collect(scans, root, "127.0.0.1")
+        included = collect(scans, root, "127.0.0.1", incluir_sin_objetivo=True)
+
+        self.assertEqual(default.activos, {})
+        self.assertEqual(len(included.activos), 1)
+        self.assertEqual(next(iter(included.activos.values()))["host"], "")
 
 
 if __name__ == "__main__":
