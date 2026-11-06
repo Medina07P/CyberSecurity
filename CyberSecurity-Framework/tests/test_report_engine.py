@@ -185,5 +185,22 @@ class NmapTests(unittest.TestCase):
         self.assertTrue(r.no_evaluable)
 
 
+class CollectTests(unittest.TestCase):
+    def test_evidence_paths_are_repo_relative(self):
+        tmpdir = Path(tmp())
+        scans = tmpdir / "scans"
+        xml = scans / "nmap" / "a.xml"
+        xml.parent.mkdir(parents=True, exist_ok=True)
+        xml.write_text(XML_127, encoding="utf-8")
+        c = collect(scans, tmpdir, "127.0.0.1")
+        self.assertGreater(len(c.findings), 0)
+        for f in c.findings:
+            if f.evidencia:
+                self.assertTrue(
+                    f.evidencia[0].archivo.startswith("scans/nmap/"),
+                    f"Evidence path should be repo-relative: {f.evidencia[0].archivo}"
+                )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
