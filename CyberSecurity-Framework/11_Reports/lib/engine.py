@@ -8,14 +8,16 @@ pertenecen al objetivo de la sesión.
 Solo biblioteca estándar, como el resto del motor.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from .attribution import belongs_to, normalize_host
-from .model import Finding, relpath
+from .attribution import belongs_to, guess_host, normalize_host
+from .model import Finding, ParseResult, relpath
 from .sources import discover
 
 __all__ = ["Collected", "collect", "filter_findings"]
+
+_SIN_OBJETIVO = "sin objetivo atribuible"
 
 
 @dataclass
@@ -37,24 +39,82 @@ def filter_findings(
     incluir_sin_objetivo: bool,
     todos: bool,
 ) -> list[Finding]:
-    """Filtra hallazgos por objetivo.
-
-    - ``todos``: devuelve todos los hallazgos sin filtrar.
-    - Activo vacío: solo se incluye si ``incluir_sin_objetivo``.
-    - Activo no vacío: solo si ``belongs_to(activo, objetivo)``.
-    """
+    """Filtra hallazgos por objetivo y marca los incluidos sin atribución."""
     if todos:
-        return list(findings)
+        return [
+            replace(f, activo=_SIN_OBJETIVO) if f.activo == "" else f
+            for f in findings
+        ]
 
     result: list[Finding] = []
     for f in findings:
         if f.activo == "":
             if incluir_sin_objetivo:
-                result.append(f)
+                result.append(replace(f, activo=_SIN_OBJETIVO))
             continue
         if objetivo is not None and belongs_to(f.activo, objetivo):
             result.append(f)
     return result
+
+
+def _filter_assets(
+    assets: list[dict],
+    objetivo: str | None,
+    incluir_sin_objetivo: bool,
+    todos: bool,
+) -> list[dict]:
+    """Selecciona activos por su host; un host vacío exige el permiso explícito."""
+    selected: list[dict] = []
+    for asset in assets:
+        host = asset.get("host", "")
+        if todos or (host and objetivo is not None and belongs_to(host, objetivo)):
+            selected.append(asset)
+        elif not host and incluir_sin_objetivo:
+            selected.append(asset)
+    return selected
+
+
+def _content_hosts(result: ParseResult) -> set[str]:
+    """Hosts declarados por los registros; tienen prioridad sobre el nombre."""
+    hosts = {
+        normalize_host(f.activo)
+        for f in result.findings
+        if f.activo and f.activo != _SIN_OBJETIVO
+    }
+    hosts.update(
+        normalize_host(asset.get("host", ""))
+        for asset in result.activos
+        if asset.get("host", "")
+    )
+    return {host for host in hosts if host}
+
+
+def _selected_source(
+    source_host: str | None,
+    content_hosts: set[str],
+    objetivo: str | None,
+    incluir_sin_objetivo: bool,
+    todos: bool,
+) -> bool:
+    """Decide si una fuente entra antes de agregar cualquiera de sus datos."""
+    if todos:
+        return True
+    if content_hosts:
+        return bool(
+            objetivo is not None
+            and any(belongs_to(host, objetivo) for host in content_hosts)
+        )
+    if source_host:
+        return bool(objetivo is not None and belongs_to(source_host, objetivo))
+    return incluir_sin_objetivo
+
+
+def _add_unattributed(no_evaluable: list[dict], source, repo_root: Path) -> None:
+    """Deja constancia de una fuente omitida sin inventarle un objetivo."""
+    no_evaluable.append({
+        "fuente": relpath(source.path, repo_root),
+        "motivo": _SIN_OBJETIVO,
+    })
 
 
 def collect(
@@ -64,12 +124,11 @@ def collect(
     incluir_sin_objetivo: bool = False,
     todos: bool = False,
 ) -> Collected:
-    """Descubre fuentes, ejecuta parsers y agrega resultados.
+    """Descubre fuentes, atribuye cada una y agrega solo lo incluido.
 
-    - Los ``errores.log`` no vacíos se registran como incidencias.
-    - Las fuentes sin parser registrado se omiten (no evaluadas aún).
-    - Si un parser lanza una excepción, se registra como ``no_evaluable``.
-    - ``evaluado`` es ``True`` si al menos un parser se ejecutó con éxito.
+    El host declarado por los registros manda sobre el nombre del fichero. Una
+    fuente sin host no aporta hallazgos, activos, descartes ni incidencias sin
+    ``incluir_sin_objetivo``; en su lugar queda en el apéndice de no evaluable.
     """
     sources = discover(scans_dir)
 
@@ -81,7 +140,16 @@ def collect(
     incidencias: list[dict] = []
 
     for source in sources:
+        source_host = guess_host(source.path.name)
+
         if source.kind == "errores":
+            selected = _selected_source(
+                source_host, set(), objetivo, incluir_sin_objetivo, todos
+            )
+            if not selected:
+                if not source_host:
+                    _add_unattributed(no_evaluable, source, repo_root)
+                continue
             try:
                 size = source.path.stat().st_size
             except OSError:
@@ -100,6 +168,13 @@ def collect(
         try:
             result = source.parser(source.path, repo_root)
         except Exception as exc:
+            selected = _selected_source(
+                source_host, set(), objetivo, incluir_sin_objetivo, todos
+            )
+            if not selected:
+                if not source_host:
+                    _add_unattributed(no_evaluable, source, repo_root)
+                continue
             no_evaluable.append({
                 "fuente": relpath(source.path, repo_root),
                 "motivo": f"fallo del parser: {exc}",
@@ -107,27 +182,37 @@ def collect(
             evaluados.append(False)
             continue
 
-        all_findings.extend(result.findings)
-        for activo in result.activos:
+        content_hosts = _content_hosts(result)
+        selected = _selected_source(
+            source_host, content_hosts, objetivo, incluir_sin_objetivo, todos
+        )
+        if not selected:
+            if not source_host and not content_hosts:
+                _add_unattributed(no_evaluable, source, repo_root)
+            continue
+
+        all_findings.extend(filter_findings(
+            result.findings, objetivo, incluir_sin_objetivo, todos
+        ))
+        for activo in _filter_assets(
+            result.activos, objetivo, incluir_sin_objetivo, todos
+        ):
             host = activo.get("host", "")
-            if host:
-                activos[host] = activo
+            activos[host] = activo
         no_evaluable.extend(result.no_evaluable)
         descartados.extend(result.descartados)
         evaluados.append(result.evaluado)
 
-    filtered = filter_findings(all_findings, objetivo, incluir_sin_objetivo, todos)
-
-    # Objetivos: hosts de activos conocidos y de hallazgos filtrados.
-    objetivo_set: set[str] = set()
-    for host in activos:
-        objetivo_set.add(host)
-    for f in filtered:
-        if f.activo:
-            objetivo_set.add(normalize_host(f.activo))
+    # Objetivos: solo hosts de activos y hallazgos efectivamente incluidos.
+    objetivo_set: set[str] = {
+        normalize_host(host) for host in activos if host
+    }
+    for finding in all_findings:
+        if finding.activo and finding.activo != _SIN_OBJETIVO:
+            objetivo_set.add(normalize_host(finding.activo))
 
     return Collected(
-        findings=filtered,
+        findings=all_findings,
         activos=activos,
         no_evaluable=no_evaluable,
         descartados=descartados,
