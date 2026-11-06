@@ -307,5 +307,28 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(len(merged), 1); self.assertEqual(merged[0].confianza, "confirmado")
 
 
+from lib.parsers import headers
+
+class HeadersTests(unittest.TestCase):
+    def test_missing_headers_need_a_paired_successful_response(self):
+        p = write("web/security_headers_443.txt", "Server: x\n")
+        write("web/headers_443.txt", "HTTP/1.1 200 OK\nServer: x\n")
+        r = headers.parse_security(p, ROOT)
+        self.assertEqual({f.rule for f in r.findings},
+                         {"headers.missing.csp", "headers.missing.xfo", "headers.missing.xcto", "headers.missing.hsts"})
+
+    def test_without_guard_nothing_is_claimed(self):
+        p = write("web/security_headers_b.txt", "")
+        r = headers.parse_security(p, ROOT)
+        self.assertEqual(r.findings, []); self.assertTrue(r.no_evaluable)
+
+    def test_http_scheme_skips_hsts_and_present_header_is_not_reported(self):
+        p = write("web/security_headers_8080.txt", "Content-Security-Policy: default-src 'self'\n")
+        write("web/headers_8080.txt", "HTTP/1.1 200 OK\n")
+        rules = {f.rule for f in headers.parse_security(p, ROOT).findings}
+        self.assertNotIn("headers.missing.csp", rules); self.assertNotIn("headers.missing.hsts", rules)
+        self.assertEqual(rules, {"headers.missing.xfo", "headers.missing.xcto"})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
