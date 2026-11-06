@@ -414,6 +414,32 @@ class RenderTests(unittest.TestCase):
         c2, meta = from_json(data)
         self.assertEqual(len(c2.findings), 2); self.assertEqual(meta["cliente"], "ACME")
 
+    def test_client_no_determinado_never_claims_completion(self):
+        collected = Collected(
+            [], {}, [{"fuente": "scans/web/resultado.txt", "motivo": "NO DETERMINADO"}],
+            [], [], True,
+        )
+        out = Path(tmp())
+        write_reports(collected, {}, out, ["cliente"])
+        for name in ("informe_cliente.md", "informe_cliente.html"):
+            text = (out / name).read_text(encoding="utf-8")
+            self.assertNotIn("Todas las pruebas se completaron", text, name)
+            self.assertIn("1 fuente no pudo evaluarse", text, name)
+
+    def test_client_limits_remain_visible_with_valid_findings(self):
+        collected = self.collected()
+        collected.descartados.append({"fuente": "scans/web/corte.txt", "motivo": "timeout"})
+        collected.incidencias.append({"fuente": "scans/web/errores.log", "motivo": "fallo"})
+        out = Path(tmp())
+        write_reports(collected, {}, out, ["cliente"])
+        for name in ("informe_cliente.md", "informe_cliente.html"):
+            text = (out / name).read_text(encoding="utf-8")
+            self.assertNotIn("Todas las pruebas se completaron", text, name)
+            self.assertIn("1 prueba requiere", text, name)
+            self.assertIn("1 fuente no pudo evaluarse", text, name)
+            self.assertIn("1 incidencia de ejecución", text, name)
+            self.assertIn("1 resultado inconcluso", text, name)
+
     def test_client_singular_plural_pruebas(self):
         # With 1 candidate, should say "1 prueba requiere"
         from lib.engine import Collected
