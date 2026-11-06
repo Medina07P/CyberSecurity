@@ -52,6 +52,34 @@ eq "registro no-dict intacto" "$(cat "$KEYS_FILE")" "- uno
 - dos"
 cp "$TMPD/registro.bueno" "$KEYS_FILE"
 
+echo ""; echo "=== theHarvester ==="
+py poner theharvester censys.id censys-id-123456 >/dev/null 2>&1
+py poner theharvester censys.secret censys-secret-123456 >/dev/null 2>&1
+HT="$HOME/.theHarvester/api-keys.yaml"
+[[ -f "$HT" ]] && ok "proyecta en ~/.theHarvester" || ko "proyecta en ~/.theHarvester"
+eq "espejo: 3 huecos" "$(python3 -c "import yaml;print(len(yaml.safe_load(open('$HT'))['apikeys']))")" "3"
+eq "espejo: censys.secret" "$(python3 -c "import yaml;print(yaml.safe_load(open('$HT'))['apikeys']['censys']['secret'])")" "censys-secret-123456"
+[[ "$(stat -c %a "$HT")" == "600" ]] && ok "proyección 600" || ko "proyección 600"
+# Gana ~ sobre el /etc simulado
+mkdir -p "$TMPD/etc"; printf 'apikeys:\n  shodan:\n    key: del-etc\n' > "$TMPD/etc/api-keys.yaml"
+py poner theharvester shodan.key sk-propia-123456 >/dev/null 2>&1
+eq "~ gana al /etc" "$(python3 -c "import yaml;print(yaml.safe_load(open('$HT'))['apikeys']['shodan']['key'])")" "sk-propia-123456"
+# Un valor ajeno no vacío que el registro no conoce se conserva y se ingiere
+py poner theharvester dehashed.key - >/dev/null 2>&1
+python3 - "$HT" <<'EOS'
+import sys, yaml
+p = sys.argv[1]; d = yaml.safe_load(open(p))
+d["apikeys"]["dehashed"]["key"] = "ajena-123456"
+yaml.safe_dump(d, open(p, "w"), sort_keys=False)
+EOS
+py sincronizar theharvester >/dev/null 2>&1
+eq "conserva la ajena" "$(python3 -c "import yaml;print(yaml.safe_load(open('$HT'))['apikeys']['dehashed']['key'])")" "ajena-123456"
+py importar theharvester >/dev/null 2>&1
+eq "importar la trae" "$(python3 -c "import yaml;print(yaml.safe_load(open('$KEYS_FILE'))['theharvester']['dehashed']['key'])")" "ajena-123456"
+# Valor con caracteres que rompen YAML
+py poner theharvester hunter.key 'a#b:c "d"' >/dev/null 2>&1
+eq "valor con # y comillas" "$(python3 -c "import yaml;print(yaml.safe_load(open('$HT'))['apikeys']['hunter']['key'])")" 'a#b:c "d"'
+
 echo ""
 echo "pasan: $pasan  fallan: $fallan"
 [[ "$fallan" -eq 0 ]] && exit 0 || exit 1
