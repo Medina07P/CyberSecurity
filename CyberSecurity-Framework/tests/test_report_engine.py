@@ -208,6 +208,26 @@ class NucleiTests(unittest.TestCase):
         self.assertEqual(len(r.findings), 1); self.assertTrue(r.no_evaluable)
 
 
+from lib.parsers import nikto
+
+class NiktoTests(unittest.TestCase):
+    def test_noise_produces_nothing_and_no_noise(self):
+        txt = "+ No CGI Directories found (use '-C all' to force check all possible dirs)\n+ Server leaks inodes via ETags\n"
+        r = nikto.parse(write("nikto/a.txt", txt), ROOT)
+        self.assertEqual(r.findings, []); self.assertEqual(r.no_evaluable, [])
+
+    def test_cve_is_confirmed_and_osvdb_is_observation(self):
+        txt = "+ /x: CVE-2020-1234: demo\n+ OSVDB-3092: /admin/: admin found\n"
+        r = nikto.parse(write("nikto/b.txt", txt), ROOT)
+        self.assertEqual([f.rule for f in r.findings], ["nikto.cve", "nikto.osvdb"])
+        self.assertEqual([f.confianza for f in r.findings], ["confirmado", "observacion"])
+        self.assertEqual(r.findings[0].evidencia[0].linea, 1)
+
+    def test_security_header_lines_are_left_to_headers_parser(self):
+        r = nikto.parse(write("nikto/c.txt", "+ The anti-clickjacking X-Frame-Options header is not present.\n"), ROOT)
+        self.assertEqual(r.findings, [])
+
+
 class CollectTests(unittest.TestCase):
     def test_evidence_paths_are_repo_relative(self):
         tmpdir = Path(tmp())
