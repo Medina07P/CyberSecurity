@@ -260,18 +260,28 @@ class _ShodanAdapter:
         return Path.home() / ".shodan" / "api_key"
 
     def proyectar(self, reg):
-        """Vuelca shodan.key a ~/.shodan/api_key."""
+        """Vuelca shodan.key a ~/.shodan/api_key, conservando un valor ajeno."""
         dest = self._destino()
         reg_section = reg.get("shodan", {})
         val_reg, ok_reg = _get_nested(reg_section, "key")
         val = val_reg if ok_reg and isinstance(val_reg, str) else ""
 
+        existente = ""
+        if dest.exists():
+            try:
+                existente = dest.read_text().strip()
+            except OSError as exc:
+                return False, f"shodan: no se pudo leer {dest}: {exc}"
+        if not val and existente:
+            val = existente
+
         tmp_path = dest.with_suffix(".tmp")
+        backup = dest.with_name(dest.name + ".bak")
         try:
             dest.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
             if dest.exists():
-                shutil.copy2(dest, dest.with_suffix(".bak"))
-                dest.with_suffix(".bak").chmod(0o600)
+                shutil.copy2(dest, backup)
+                backup.chmod(0o600)
             fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             try:
                 with os.fdopen(fd, "w") as f:
@@ -330,9 +340,23 @@ class _H8mailAdapter:
         return Path.home() / ".h8mail_config.ini"
 
     def proyectar(self, reg):
-        """Vuelca los valores de h8mail a ~/.h8mail_config.ini."""
+        """Vuelca los valores de h8mail a ~/.h8mail_config.ini, conservando ajenos."""
         dest = self._destino()
         reg_section = reg.get("h8mail", {})
+
+        existente = {}
+        if dest.exists():
+            try:
+                config_ex = configparser.ConfigParser(interpolation=None)
+                with open(dest) as f:
+                    config_ex.read_file(f)
+                if "h8mail" in config_ex.sections():
+                    for campo in self._campos():
+                        if config_ex.has_option("h8mail", campo):
+                            existente[campo] = config_ex.get("h8mail", campo).strip()
+            except (OSError, configparser.Error) as exc:
+                return False, f"h8mail: no se pudo leer {dest}: {exc}"
+
         config = configparser.ConfigParser(interpolation=None)
         config.add_section("h8mail")
         puestas = 0
@@ -341,14 +365,18 @@ class _H8mailAdapter:
             if ok and isinstance(val, str) and val:
                 config.set("h8mail", campo, val)
                 puestas += 1
+            elif existente.get(campo):
+                config.set("h8mail", campo, existente[campo])
+                puestas += 1
             else:
                 config.set("h8mail", campo, "")
 
         tmp_path = dest.with_suffix(".tmp")
+        backup = dest.with_name(dest.name + ".bak")
         try:
             if dest.exists():
-                shutil.copy2(dest, dest.with_suffix(".bak"))
-                dest.with_suffix(".bak").chmod(0o600)
+                shutil.copy2(dest, backup)
+                backup.chmod(0o600)
             fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             try:
                 with os.fdopen(fd, "w") as f:
