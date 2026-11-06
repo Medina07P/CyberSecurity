@@ -16,6 +16,22 @@ source "$FW/00_Config/lib/phase_status.bash"
 TMPD="$(mktemp -d)"
 export SESSION_FILE="$TMPD/.session"
 export SESSION_TARGETS_FILE="$TMPD/targets.txt"
+export SESSION_SCOPE_FILE="$TMPD/scope.yaml"
+# Fixture de scope.yaml: ni el fichero real ni el de targets.txt se tocan.
+cat > "$SESSION_SCOPE_FILE" <<'EOS'
+# ─── AUTORIZACIÓN ──────────────────────────────────────────
+project:
+  name: "Fixture"
+targets:
+  ips:
+    - "192.168.1.0/24"
+  domains:
+    - "base.com"
+  excluded:
+    - "192.168.1.1"
+EOS
+MD5_SCOPE_REAL=$(md5sum "$FW/00_Config/scope.yaml" 2>/dev/null | cut -d' ' -f1)
+MD5_TARGETS_REAL=$(md5sum "$FW/00_Config/targets.txt" 2>/dev/null | cut -d' ' -f1)
 source "$FW/00_Config/lib/session.bash"
 source "$FW/00_Config/lib/prompt.bash"
 
@@ -59,7 +75,7 @@ for f in $(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | sort); do
     o=$(params_slots "$f" | awk -F'|' '$3=="obligatorio"' | wc -l | tr -d ' ')
     [ "$o" -ge 2 ] && oblig=$((oblig + 1))
 done
-eq "39 scripts con 2+ huecos" "$dos" "39"
+eq "40 scripts con 2+ huecos" "$dos" "40"
 eq "8 scripts con 2+ obligatorios" "$oblig" "8"
 
 # ──────────────────────────────────────────────────────────
@@ -107,6 +123,40 @@ done
 for no in '' '1.2.3.4; rm -rf /' '1.2.3.4 5' 'con espacio' '999.1.1.1' 'http://x.com' 'a/b' '$HOME'; do
     if validate_target "$no"; then bad "rechaza [$no]"; else ok "rechaza [$no]"; fi
 done
+
+# ──────────────────────────────────────────────────────────
+section "El objetivo se registra en scope.yaml"
+scope_add_target example.com;        eq "añade el dominio"            "$?" "0"
+eq "añade el dominio pelado"         "$(grep -c '^ *- "example\.com"$' "$SESSION_SCOPE_FILE")" "1"
+eq "añade el comodín"                "$(grep -c '^ *- "\*\.example\.com"$' "$SESSION_SCOPE_FILE")" "1"
+antes=$(wc -l < "$SESSION_SCOPE_FILE")
+scope_add_target example.com
+eq "no duplica"                      "$(wc -l < "$SESSION_SCOPE_FILE")" "$antes"
+scope_add_target Example.com
+eq "no duplica por mayúsculas"       "$(grep -ic '^ *- "example\.com"$' "$SESSION_SCOPE_FILE")" "1"
+scope_add_target 10.1.2.3;           eq "añade la IP"                 "$?" "0"
+eq "la IP va a ips"                  "$(sed -n '/^  ips:/,/^  [a-z]/p' "$SESSION_SCOPE_FILE" | grep -c '10.1.2.3')" "1"
+eq "la IP no va a domains"           "$(sed -n '/^  domains:/,/^  [a-z]/p' "$SESSION_SCOPE_FILE" | grep -c '10.1.2.3')" "0"
+eq "crea la copia .bak"              "$([[ -f "$SESSION_SCOPE_FILE.bak" ]] && echo si)" "si"
+eq "el YAML sigue parseando"         "$(python3 -c 'import yaml,sys;yaml.safe_load(open(sys.argv[1]))' "$SESSION_SCOPE_FILE" >/dev/null 2>&1; echo $?)" "0"
+eq "conserva los comentarios"        "$(grep -c 'AUTORIZACIÓN' "$SESSION_SCOPE_FILE")" "1"
+scope_add_target "malo con espacios"; eq "rechaza un valor inválido" "$?" "1"
+printf 'targets:\n  ips:\n    - "1.2.3.4"\n' > "$TMPD/sin_domains.yaml"
+SESSION_SCOPE_FILE="$TMPD/sin_domains.yaml" scope_add_target otra.com
+eq "sin la clave domains no inventa" "$?" "2"
+eq "y no toca el fichero"            "$(md5sum < "$TMPD/sin_domains.yaml" | cut -d' ' -f1)" \
+                                     "$(printf 'targets:\n  ips:\n    - "1.2.3.4"\n' | md5sum | cut -d' ' -f1)"
+printf 'targets:\n  domains:\n    - "solo.com"\n' > "$TMPD/exacto.yaml"
+SESSION_SCOPE_FILE="$TMPD/exacto.yaml" scope_allows solo.com
+eq "scope_allows acepta el dominio pelado" "$?" "0"
+printf 'targets:\n  domains:\n    - "a.com"\n  excluded:\n    - "b.com"\n' > "$TMPD/dos_claves.yaml"
+SESSION_SCOPE_FILE="$TMPD/dos_claves.yaml" scope_add_target c.com
+eq "inserta solo en targets.domains" "$(sed -n '/^  excluded:/,$p' "$TMPD/dos_claves.yaml" | grep -c 'c\.com')" "0"
+printf 'targets:\r\n  domains:\r\n    - "crlf.com"\r\n' > "$TMPD/crlf.yaml"
+SESSION_SCOPE_FILE="$TMPD/crlf.yaml" scope_add_target crlf.com
+eq "no duplica con CRLF"             "$(grep -c '^ *- "crlf\.com"' "$TMPD/crlf.yaml")" "1"
+eq "y añade el comodín"              "$(grep -c '^ *- "\*\.crlf\.com"' "$TMPD/crlf.yaml")" "1"
+export SESSION_SCOPE_FILE="$TMPD/scope.yaml"
 
 # ──────────────────────────────────────────────────────────
 section "Sesión"
@@ -270,6 +320,72 @@ eq "run_all_recon: declara su hueco en Uso:"         "$(params_mode "$FW/02_Reco
 : > "$RMP_LOG"
 (cd "$TMPD" && bash "$RMP/02_Recon/run_all_recon.sh" 192.0.2.97 >/dev/null 2>&1)
 eq "run_all_recon: funciona desde cualquier cwd"      "$(grep -c '192.0.2.97' "$RMP_LOG")" "1"
+
+# ──────────────────────────────────────────────────────────
+section "run_all_osint acepta dominio (y archivo opcional)"
+# El bug: el script no declaraba parámetros y llamaba a sus hijos sin
+# argumentos, así que los cinco imprimían su Uso:, no hacían nada y se
+# anunciaba 'OSINT completado' con exit 0.
+OSP="$TMPD/osint"
+mkdir -p "$OSP/01_OSINT/scripts"
+cp "$FW/01_OSINT/run_all_osint.sh" "$OSP/01_OSINT/"
+export OSINT_LOG="$TMPD/osint_args"
+# Los hijos se sustituyen por dobles que solo registran lo que reciben.
+for s in email_harvester osint_harvester subdomain_finder social_media_search metadata_extractor; do
+    cat > "$OSP/01_OSINT/scripts/$s.sh" <<'EOS'
+#!/bin/bash
+printf '%s=%s\n' "$(basename "$0")" "$1" >> "$OSINT_LOG"
+EOS
+done
+: > "$OSINT_LOG"
+
+eq "run_all_osint: declara sus huecos en Uso:"  "$(params_mode "$FW/01_OSINT/run_all_osint.sh")" "slots"
+eq "run_all_osint: 2 huecos (dominio + archivo)" "$(params_slot_count "$FW/01_OSINT/run_all_osint.sh")" "2"
+eq "run_all_osint: el archivo es opcional y FICHERO" \
+   "$(params_slots "$FW/01_OSINT/run_all_osint.sh" | awk -F'|' 'NR==2{print $3" "$4}')" "opcional FICHERO"
+# Un Ejemplo: de un token no debe rellenar el hueco opcional con un
+# archivo que quizá no existe: se descarta.
+eq "run_all_osint: descarta el ejemplo incompleto" \
+   "$(params_example_values "$FW/01_OSINT/run_all_osint.sh" >/dev/null 2>&1; echo $?)" "1"
+
+(cd "$TMPD" && bash "$OSP/01_OSINT/run_all_osint.sh" example.com >/dev/null 2>&1)
+eq "run_all_osint: funciona desde cualquier cwd" \
+   "$(grep -cE '^(email_harvester|osint_harvester|subdomain_finder)\.sh=example\.com$' "$OSINT_LOG")" "3"
+eq "run_all_osint: deriva el nombre de empresa para redes sociales" \
+   "$(grep -c '^social_media_search\.sh=example$' "$OSINT_LOG")" "1"
+eq "run_all_osint: no ejecuta metadatos sin archivo" \
+   "$(grep -c '^metadata_extractor\.sh=' "$OSINT_LOG")" "0"
+
+: > "$OSINT_LOG"
+printf 'x' > "$TMPD/documento.pdf"
+bash "$OSP/01_OSINT/run_all_osint.sh" example.com "$TMPD/documento.pdf" >/dev/null 2>&1
+eq "run_all_osint: con archivo ejecuta metadatos" \
+   "$(grep -cxF "metadata_extractor.sh=$TMPD/documento.pdf" "$OSINT_LOG")" "1"
+
+# Un hijo que falla no puede pasar por bueno: se cuenta, su stderr queda
+# en el log y el script sale ≠0 sin anunciar que completó.
+cat > "$OSP/01_OSINT/scripts/subdomain_finder.sh" <<'EOS'
+#!/bin/bash
+printf '%s=%s\n' "$(basename "$0")" "$1" >> "$OSINT_LOG"
+echo "dnsrecon no disponible" >&2
+exit 3
+EOS
+: > "$OSINT_LOG"
+OSOUT=$(bash "$OSP/01_OSINT/run_all_osint.sh" example.com 2>&1)
+eq "run_all_osint: sale ≠0 si un hijo falla" "$?" "1"
+case "$OSOUT" in
+    *"✅ OSINT completado"*) bad "run_all_osint: no anuncia éxito si algo falló" ;;
+    *) ok "run_all_osint: no anuncia éxito si algo falló" ;;
+esac
+eq "run_all_osint: guarda el stderr del hijo fallido" \
+   "$(grep -c 'dnsrecon no disponible' "$OSP/01_OSINT/osint_errores.log")" "1"
+eq "run_all_osint: sigue con los demás hijos" \
+   "$(grep -c '^email_harvester\.sh=' "$OSINT_LOG")" "1"
+
+bash "$OSP/01_OSINT/run_all_osint.sh" >/dev/null 2>&1
+eq "run_all_osint: sin dominio sale 1" "$?" "1"
+bash "$OSP/01_OSINT/run_all_osint.sh" example.com "$TMPD/no-existe.pdf" >/dev/null 2>&1
+eq "run_all_osint: archivo inexistente sale 1" "$?" "1"
 
 # ──────────────────────────────────────────────────────────
 section "enum_web: nombres con objetivo y línea base de ffuf"
@@ -1271,7 +1387,8 @@ if command -v python3 >/dev/null 2>&1; then
     # «sin regla aplicable», y el aviso tiene que decirlo así.
     mkdir -p "$TMPD/conf_dominios"
     printf 'scope:\n  domains:\n    - example.com\n' > "$TMPD/conf_dominios/scope.yaml"
-    OUT=$(SESSION_CONFIG_DIR="$TMPD/conf_dominios" RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno.req" 1 2>&1)
+    OUT=$(SESSION_CONFIG_DIR="$TMPD/conf_dominios" SESSION_SCOPE_FILE="$TMPD/conf_dominios/scope.yaml" \
+          RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno.req" 1 2>&1)
     eq "sonda: el aviso de alcance habla de regla, no de fichero ilegible" "$(printf '%s' "$OUT" | grep -c 'no tiene una regla aplicable')" "1"
     eq "sonda: el aviso ya no dice ilegible" "$(printf '%s' "$OUT" | grep -ci 'ilegible')" "0"
 
@@ -1379,6 +1496,11 @@ if command -v python3 >/dev/null 2>&1; then
 else
     echo "  SKIP     python3 no instalado"
 fi
+
+eq "el scope.yaml real no cambió" \
+   "$(md5sum "$FW/00_Config/scope.yaml" 2>/dev/null | cut -d' ' -f1)" "$MD5_SCOPE_REAL"
+eq "el targets.txt real no cambió" \
+   "$(md5sum "$FW/00_Config/targets.txt" 2>/dev/null | cut -d' ' -f1)" "$MD5_TARGETS_REAL"
 
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
