@@ -270,5 +270,42 @@ class FfufTests(unittest.TestCase):
         self.assertTrue(r.evaluado)
 
 
+from lib.parsers import http_inject, sqlmap, sqli_findings, rate_limit
+
+class VerdictTests(unittest.TestCase):
+    def test_http_inject_three_levels(self):
+        tsv = "nivel\tparam\tclase\tpayload\tcodigo\ttamano\tms\tevidencia\n"
+        tsv += "CONFIRMADO\tid\tsqli\t' OR 1=1\t200\t99\t12\tx\n"
+        tsv += "FUERTE\tq\txss\t<script>\t200\t99\t12\ty\n"
+        tsv += "DEBIL\tz\txss\tx\t200\t99\t12\tz\n"
+        path = write("web/http_inject_a.tsv", tsv)
+        write("web/http_inject_a/contexto.txt", "host=127.0.0.1\n")
+        r = http_inject.parse(path, ROOT)
+        self.assertEqual([f.confianza for f in r.findings], ["confirmado", "candidato"])
+        self.assertEqual(r.findings[0].severidad, "critica")
+        self.assertEqual(len(r.descartados), 1)
+
+    def test_sqlmap_verdicts(self):
+        ok = "- Objetivo: 127.0.0.1:443 (https)\n- Veredicto: INYECTABLE (id): boolean-based blind\n"
+        r = sqlmap.parse(write("web/sqlmap_a.txt", ok), ROOT)
+        self.assertEqual((r.findings[0].severidad, r.findings[0].confianza), ("critica", "confirmado"))
+        self.assertEqual(sqlmap.parse(write("web/sqlmap_b.txt", ok.replace("INYECTABLE", "NO INYECTABLE")), ROOT).findings, [])
+        self.assertTrue(sqlmap.parse(write("web/sqlmap_c.txt", ok.replace("INYECTABLE (id): boolean-based blind", "NO DETERMINADO (código 2)")), ROOT).no_evaluable)
+
+    def test_rate_limit_verdicts(self):
+        base = "- Objetivo: 127.0.0.1:443 (https)\n- Petición: POST /login\n- Veredicto: {}\n"
+        self.assertEqual(rate_limit.parse(write("web/rate_limit_a.txt", base.format("SIN FRENO")), ROOT).findings[0].severidad, "alta")
+        self.assertEqual(rate_limit.parse(write("web/rate_limit_b.txt", base.format("FRENADO")), ROOT).findings, [])
+        self.assertTrue(rate_limit.parse(write("web/rate_limit_c.txt", base.format("NO DETERMINADO")), ROOT).no_evaluable)
+
+    def test_sqli_findings_is_candidate_and_merges_with_sqlmap(self):
+        line = "https://127.0.0.1:443/?id=1|200:999|base:200:433\n"
+        sq = sqli_findings.parse(write("web/sqli_findings_a.txt", line), ROOT)
+        self.assertEqual((sq.findings[0].confianza, sq.findings[0].severidad), ("candidato", "media"))
+        sql = sqlmap.parse(write("web/sqlmap_d.txt", "- Objetivo: 127.0.0.1:443 (https)\n- Veredicto: INYECTABLE (id): x\n"), ROOT)
+        merged = merge_findings(sq.findings + sql.findings)
+        self.assertEqual(len(merged), 1); self.assertEqual(merged[0].confianza, "confirmado")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
