@@ -10,6 +10,7 @@ SESSION_FW_DIR="$(cd "$SESSION_CONFIG_DIR/.." && pwd)"
 SESSION_REPO_DIR="$(cd "$SESSION_FW_DIR/.." && pwd)"
 SESSION_FILE="${SESSION_FILE:-$SESSION_CONFIG_DIR/.session}"
 SESSION_TARGETS_FILE="${SESSION_TARGETS_FILE:-$SESSION_CONFIG_DIR/targets.txt}"
+SESSION_SCOPE_FILE="${SESSION_SCOPE_FILE:-$SESSION_CONFIG_DIR/scope.yaml}"
 
 # ─── Validación ────────────────────────────────────────────
 
@@ -59,6 +60,88 @@ session_has_target() {
 
 # ─── Objetivos de targets.txt ──────────────────────────────
 
+# _scope_normalize <línea o valor de scope.yaml> → valor sin comillas ni comentario
+_scope_normalize() {
+    local v="$1"
+    v=${v%%#*}
+    v=${v//$'\r'/}
+    v=$(printf '%s' "$v" | sed -E "s/^[[:space:]]*-[[:space:]]*//; s/^[\"']//; s/[\"'][[:space:]]*$//; s/[[:space:]]+$//")
+    printf '%s' "$v"
+}
+
+# scope_add_target <ip|dominio>
+#   0 añadido o ya estaba · 1 valor no válido · 2 no se pudo escribir
+# Un dominio añade dos entradas: él mismo y su comodín *.dominio, que es lo
+# que scope_allows necesita para autorizar sus subdominios.
+scope_add_target() {
+    local value="$1" key ins tmp e have found i
+    local -a entries=() existing=() missing=()
+    validate_target "$value" || return 1
+    [[ -f "$SESSION_SCOPE_FILE" ]] || return 2
+
+    if [[ "$value" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+        key="ips"
+        entries=("$value")
+    else
+        key="domains"
+        entries=("$value" "*.$value")
+    fi
+
+    # Entradas que ya tiene esa clave dentro de targets:
+    mapfile -t existing < <(awk -v key="$key" '
+        /^[^[:space:]]/ { intargets = ($0 ~ /^targets:/); inkey = 0 }
+        intargets && $0 ~ ("^[[:space:]]+" key ":") { inkey = 1; next }
+        intargets && inkey && $0 ~ /^[[:space:]]+-[[:space:]]/ { print; next }
+        intargets && inkey && $0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*#/ { inkey = 0 }
+    ' "$SESSION_SCOPE_FILE")
+
+    for e in "${entries[@]}"; do
+        found=0
+        for have in "${existing[@]}"; do
+            have=$(_scope_normalize "$have")
+            if [[ "${have,,}" == "${e,,}" ]]; then found=1; break; fi
+        done
+        (( found )) || missing+=("$e")
+    done
+    ((${#missing[@]})) || return 0
+
+    # Última línea de la clave (o la de la propia clave si está vacía).
+    ins=$(awk -v key="$key" '
+        /^[^[:space:]]/ { intargets = ($0 ~ /^targets:/); inkey = 0 }
+        intargets && $0 ~ ("^[[:space:]]+" key ":") { inkey = 1; last = NR; next }
+        intargets && inkey && $0 ~ /^[[:space:]]+-[[:space:]]/ { last = NR; next }
+        intargets && inkey && $0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*#/ { inkey = 0 }
+        END { if (last) print last }
+    ' "$SESSION_SCOPE_FILE")
+    [[ -n "$ins" ]] || return 2
+
+    tmp="$SESSION_SCOPE_FILE.auto.tmp"
+    cp -f "$SESSION_SCOPE_FILE" "$SESSION_SCOPE_FILE.bak" || return 2
+    if ! awk -v ins="$ins" -v add="$(printf '%s\n' "${missing[@]}")" '
+        { print }
+        NR == ins {
+            n = split(add, a, "\n")
+            for (i = 1; i <= n; i++) if (a[i] != "") printf "    - \"%s\"\n", a[i]
+        }
+    ' "$SESSION_SCOPE_FILE" > "$tmp"; then
+        rm -f "$tmp"
+        return 2
+    fi
+
+    # Si el YAML deja de parsear, se deshace: el alcance no puede quedar roto.
+    if command -v python3 >/dev/null 2>&1 &&
+       ! python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))' "$tmp" >/dev/null 2>&1; then
+        rm -f "$tmp"
+        return 2
+    fi
+    mv -f "$tmp" "$SESSION_SCOPE_FILE" || return 2
+
+    for i in "${missing[@]}"; do
+        printf '   ➕ scope.yaml: %s\n' "$i" >&2
+    done
+    return 0
+}
+
 # targets_from_config → "ip|descripcion" por línea, sin duplicados y sin EXCLUIDO
 targets_from_config() {
     local line ip rest desc seen=" "
@@ -96,15 +179,19 @@ _ip_to_int() {
 
 # scope_allows <objetivo> → 0 si encaja en scope.yaml, 1 si no, 2 si no se puede interpretar
 scope_allows() {
-    local target="$1" scope="$SESSION_CONFIG_DIR/scope.yaml"
+    local target="$1" scope="$SESSION_SCOPE_FILE"
     [[ -f "$scope" ]] || return 2
 
-    local allowed
+    local allowed domains
     allowed=$(grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?' "$scope" 2>/dev/null)
-    [[ -z "$allowed" ]] && return 2
+    domains=$(grep -oE '[A-Za-z0-9*.-]+\.(com|net|org|local|lan|io)' "$scope" 2>/dev/null)
+
+    # Sin ninguna regla interpretable no se puede opinar (2 = no determinado).
+    [[ -z "$allowed" && -z "$domains" ]] && return 2
 
     local t_int cidr base bits mask
     if validate_target "$target" && [[ "$target" =~ ^[0-9] ]]; then
+        [[ -z "$allowed" ]] && return 2
         t_int=$(_ip_to_int "$target") || return 2
         local entry
         while IFS= read -r entry; do
@@ -127,12 +214,17 @@ scope_allows() {
         return 1
     fi
 
-    # Dominio: comparación por sufijo con comodín
+    # Dominio: coincidencia exacta para las entradas peladas y por sufijo
+    # para las que llevan comodín (*.dominio).
     local dom
     while IFS= read -r dom; do
-        [[ "$dom" == *"*"* ]] || continue
-        dom="${dom#\*.}"
-        [[ "$target" == *".$dom" || "$target" == "$dom" ]] && return 0
-    done <<< "$(grep -oE '[A-Za-z0-9*.-]+\.(com|net|org|local|lan|io)' "$scope" 2>/dev/null)"
+        [[ -z "$dom" ]] && continue
+        if [[ "$dom" == *"*"* ]]; then
+            dom="${dom#\*.}"
+            [[ "${target,,}" == *".${dom,,}" || "${target,,}" == "${dom,,}" ]] && return 0
+        else
+            [[ "${target,,}" == "${dom,,}" ]] && return 0
+        fi
+    done <<< "$domains"
     return 2
 }
