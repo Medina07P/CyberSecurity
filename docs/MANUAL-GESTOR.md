@@ -1,0 +1,356 @@
+# Manual del Gestor Interactivo
+
+Guía de uso de `cyber_framework.sh`, el punto de entrada interactivo del framework de auditoría de seguridad.
+
+---
+
+## Requisitos e instalación
+
+### Sistema
+
+- **Kali Linux 2024+** (recomendado) o cualquier distribución Linux con Bash 4.0+
+- 8 GB RAM mínimo
+- 50 GB espacio en disco
+
+### Dependencias
+
+```bash
+sudo apt update
+sudo apt install -y nmap masscan hydra ffuf sqlmap nikto whatweb \
+    aircrack-ng wireshark tshark john hashcat \
+    python3 python3-pip git tree
+```
+
+**Nota:** El gestor funciona sin herramientas de pentesting instaladas; cada script avisa si falta la suya.
+
+### Instalación del framework
+
+```bash
+git clone https://github.com/Medina07P/CyberSecurity.git
+cd CyberSecurity/CyberSecurity-Framework
+find . -name "*.sh" -exec chmod +x {} \;
+find . -name "*.py" -exec chmod +x {} \;
+```
+
+---
+
+## Arranque
+
+```bash
+cd CyberSecurity-Framework
+./cyber_framework.sh
+```
+
+Al arrancar, el gestor pregunta el **objetivo de sesión** (host o dominio). Puedes escribirlo o elegirlo de `00_Config/targets.txt`. Se guarda en `00_Config/.session` y se propone como valor por defecto en todos los scripts que piden un host.
+
+La cabecera muestra:
+- El objetivo actual
+- Qué módulos tienen ya resultados (fases completadas)
+
+### Teclas principales
+
+| Tecla | Acción |
+|---|---|
+| `00`–`13` | Entrar en un módulo (también vale `0`–`9`) |
+| `T` | Cambiar el objetivo de la sesión |
+| `R` | Generar informes (técnico, cliente o ambos) |
+| `99` | Flujo completo (ejecuta todas las fases en orden) |
+| `?` | Ayuda, con el orden recomendado de fases |
+| `Q` | Salir |
+
+Cada script declara sus parámetros en su propia línea `Uso:`, así que el gestor pregunta exactamente los que necesita —también en los que piden dos o más— y ofrece el valor del `Ejemplo:` como defecto al pulsar Enter.
+
+---
+
+## Objetivo de sesión
+
+El objetivo se guarda en `00_Config/.session` (git-ignored) y se usa para:
+
+1. **Atribución de archivos**: el motor de informes solo incluye resultados atribuibles a ese host.
+2. **Valor por defecto**: los scripts que piden un host lo proponen automáticamente.
+3. **Filtrado**: evita mezclar resultados de distintos objetivos o laboratorios.
+
+Si defines varios objetivos en `00_Config/targets.txt`, el gestor te los ofrece como lista. Puedes cambiarlo en cualquier momento con `T`.
+
+### Sin objetivo
+
+Si no defines un objetivo de sesión, el motor de informes:
+- Avisa y se comporta como `--todos` (incluye todo lo que haya en `scans/`)
+- O puedes usar `--incluir-sin-objetivo` para añadir fuentes no atribuibles, marcadas como tales
+
+---
+
+## Recorrido por fases
+
+El orden recomendado es:
+
+1. **00_Config**: valida el alcance (`scope.yaml`) y los objetivos (`targets.txt`)
+2. **01_OSINT**: inteligencia de fuentes abiertas (solo dominios)
+3. **02_Recon**: descubrimiento de hosts vivos
+4. **03_Scanners**: escaneo de puertos y vulnerabilidades
+5. **04_Enumeration**: enumeración de servicios
+6. **05_Exploitation** y **06_PostExploitation**: solo si tienes autorización explícita
+7. **07_Wireless**: auditoría inalámbrica (requiere adaptador)
+8. **08_Forensics**: análisis forense
+9. **09_Automation**: automatización y workflows
+10. **10_Evidence**: gestión de evidencias
+11. **11_Reports**: generación de informes
+12. **12_Knowledge_Base**: base de conocimiento
+13. **13_Labs**: laboratorios de práctica
+
+### Flujo rápido
+
+```bash
+# Ejecutar todas las fases en orden (pide confirmación)
+99
+```
+
+El flujo completo comprueba el alcance de `scope.yaml` y pide confirmación antes de ejecutar scripts intrusivos.
+
+---
+
+## Marcas en la lista de scripts
+
+Las marcas avisan antes de ejecutar:
+
+- **`[intrusiva]`** — fuerza bruta, explotación, persistencia o limpieza: pide confirmación aparte. Ejemplos: `hydra_brute.sh`, `reverse_shell_php.sh`, `rate_limit_probe.sh`.
+- **`[manual]`** — usa banderas o subcomandos: escribes la línea de argumentos completa. Ejemplos: `nmap_smart.sh` (si tiene `--flags`), `interface_manager.sh`.
+- **`[generador]`** — escribe otro script, no escanea nada. Ejemplos: `enum_smb.sh` (genera el script real), `osint_harvester.sh` (ya materializado).
+
+---
+
+## Informes
+
+### Menú `R`
+
+Desde el menú principal, pulsa `R` para acceder al submenú de informes:
+
+```
+1. Informe técnico
+2. Informe de cliente
+3. Ambos informes
+```
+
+El gestor:
+1. Pide **cliente** y **auditor** la primera vez y los guarda en `11_Reports/.report_profile` (git-ignored). Enter conserva el valor.
+2. Usa el objetivo de la sesión.
+3. Ejecuta el motor de informes (`11_Reports/report_engine.py`).
+4. Muestra las rutas de los informes generados.
+5. Ofrece abrir el HTML con `xdg-open`.
+
+### Los dos informes
+
+- **Técnico** (`informe_tecnico.md` y `.html`): hallazgos con severidad, activo, técnica, evidencia (`archivo:línea`), reproducción, recomendación y referencias.
+- **Cliente** (`informe_cliente.md` y `.html`): resumen ejecutivo, riesgo de negocio, plan de acción, sin payloads ni rutas internas.
+
+Ambos se generan en `11_Reports/generated/<objetivo>/`.
+
+### Línea de comandos
+
+```bash
+# Envoltorio amigable (slots)
+./11_Reports/report_generator.sh [tipo]
+# Ejemplo: ./11_Reports/report_generator.sh ambos
+
+# Motor directo
+python3 11_Reports/report_engine.py \
+  --objetivo 127.0.0.1 --tipo ambos --scans ../scans \
+  --salida 11_Reports/generated/127.0.0.1 --cliente "ACME" --auditor "Ana"
+```
+
+### Opciones del motor
+
+| Opción | Defecto | Qué hace |
+|---|---|---|
+| `--objetivo` | objetivo de `.session` | solo entra lo atribuible a ese host |
+| `--tipo` | `ambos` | `tecnico` / `cliente` / `ambos` |
+| `--scans` | `<repo>/scans` | raíz de resultados |
+| `--salida` | `11_Reports/generated/<slug>` | destino |
+| `--cliente` / `--auditor` | perfil / usuario del sistema | portada |
+| `--todos` | no | agrega todos los objetivos en un informe multiobjetivo |
+| `--incluir-sin-objetivo` | no | añade fuentes no atribuibles, marcadas |
+| `--desde-json <ruta>` | no | re-renderiza sin volver a escanear |
+| `--json` | no | imprime el resumen JSON por stdout |
+| `--abrir` | no | abre el HTML al terminar |
+
+### Perfil de cliente
+
+El perfil se guarda en `11_Reports/.report_profile` (git-ignored) con formato:
+
+```
+cliente=ACME
+auditor=Ana
+```
+
+Se crea la primera vez que usas `R` o puedes editarlo manualmente. Enter conserva el valor.
+
+---
+
+## Cómo leer los veredictos
+
+### Estados de confianza
+
+- **`confirmado`**: la herramienta demostró explotación o un diferencial concluyente. Ejemplos: `sqlmap` inyectable, `http_inject` confirmado, `SIN FRENO`, CVE de nuclei.
+- **`candidato`**: diferencial reproducible que aún no prueba explotación. Ejemplos: `http_inject` fuerte, `sqli_findings` con diferencial.
+- **`observacion`**: configuración observada directamente, sin explotar. Ejemplos: puerto abierto, cabecera ausente, auth por contraseña.
+- **`descartado`**: eco, catch-all, `429`, timeout. Se cuenta y se explica, no se publica.
+
+### Diferencias importantes
+
+- **`CONFIRMADO` ≠ `FUERTE`**: `CONFIRMADO` es un hallazgo demostrado; `FUERTE` es un candidato que requiere revisión.
+- **`NO DETERMINADO` ≠ limpio**: significa que la herramienta no pudo concluir (por ejemplo, sqlmap ante un `429`). Va al apéndice de **no evaluable**, nunca a «sin riesgo».
+- **Ausencia de evidencia ≠ evidencia de ausencia**: un `security_headers_*.txt` vacío no significa «faltan cabeceras»; hace falta el `headers_*.txt` pareado con un 2xx/3xx. Si no está, `no_evaluable`.
+
+### Apéndice de no evaluable
+
+El técnico incluye un **Apéndice A: no evaluable** con la fuente y qué falta para poder evaluarla. Ejemplos:
+- Archivo vacío y sin el pareado necesario
+- Fuente sin objetivo atribuible
+- `NO DETERMINADO` de una herramienta
+
+Si ves «N pruebas requieren revisión» en el informe de cliente, mira este apéndice en el técnico.
+
+---
+
+## Alcance y seguridad
+
+### Alcance
+
+Todos los scripts deben ejecutarse dentro del alcance definido en `00_Config/scope.yaml`. El flujo completo (`99`) lo comprueba y pide confirmación.
+
+El motor de informes **no parsea** `scope.yaml` en v1 (evita depender de PyYAML) y **no bloquea**: la portada declara el alcance como el objetivo de sesión.
+
+### Seguridad
+
+- Los resultados van siempre a `scans/<herramienta>/` en la raíz del repositorio, se lance el script desde donde se lance.
+- `scans/` está en `.gitignore`: contiene IPs y hallazgos de cada sesión, no se sube al repositorio.
+- Los scripts intrusivos (`[intrusiva]`) piden confirmación aparte.
+- Nunca ejecutes `99` como prueba de humo: ejecuta fuerza bruta, explotación y limpieza contra todos los objetivos configurados.
+
+### Herramientas no instaladas
+
+Si una herramienta no está instalada, el script avisa y continúa (o sale con error, según el caso). Los resultados parciales se guardan en `scans/` y los errores en `scans/<herramienta>/errores.log`.
+
+---
+
+## Problemas frecuentes
+
+### Herramienta no instalada
+
+**Síntoma:** el script dice «herramienta no encontrada» o «command not found».
+
+**Solución:** instala la herramienta con `apt` o verifica que está en el `PATH`. El gestor funciona sin herramientas de pentesting; cada script avisa si falta la suya.
+
+### `errores.log`
+
+**Síntoma:** un script termina con 0 hallazgos pero sospechas que falló.
+
+**Solución:** mira `scans/<herramienta>/errores.log`. Si está vacío, el script terminó sin errores. Si tiene contenido, la herramienta falló (no el script).
+
+### Sin objetivo
+
+**Síntoma:** el motor de informes dice «sin objetivo» o genera un informe multiobjetivo.
+
+**Solución:** define el objetivo con `T` o edita `00_Config/.session`. Si quieres incluir todo, usa `--todos` o `--incluir-sin-objetivo`.
+
+### Informe vacío
+
+**Síntoma:** el informe dice «0 hallazgos» o «no hay datos evaluable».
+
+**Causas:**
+1. No se ejecutó ningún escáner (no hay archivos en `scans/`).
+2. El objetivo de sesión no coincide con los archivos (atribución).
+3. Todos los archivos son `no_evaluable` (vacíos, sin pareado, `NO DETERMINADO`).
+
+**Solución:** verifica que hay resultados en `scans/`, que el objetivo es correcto y que las herramientas terminaron sin errores.
+
+### `429` / `503` en los resultados
+
+**Síntoma:** ves `429` o `503` en los archivos de `scans/`.
+
+**Significado:** la herramienta fue frenada (rate limiting). No es un hallazgo, es una incidencia de ejecución. El motor lo clasifica como `descartado` o `no_evaluable`, según el caso.
+
+**Solución:** revisa `errores.log` y considera reducir la velocidad de escaneo o respetar `Retry-After`.
+
+### El informe de cliente no menciona un hallazgo
+
+**Síntoma:** el técnico menciona un hallazgo pero el de cliente no.
+
+**Causa:** el informe de cliente solo puede afirmar lo que está en `hallazgos` con `confianza=confirmado`. Los `candidato` se mencionan solo como recuento («N pruebas requieren revisión») y los `observacion` van a la sección de endurecimiento, nunca como explotados.
+
+**Solución:** mira el técnico para ver el detalle, o espera a que el candidato se confirme con una prueba adicional.
+
+---
+
+## Referencia rápida de comandos
+
+### Arranque y navegación
+
+```bash
+./cyber_framework.sh          # Arrancar el gestor
+T                              # Cambiar objetivo
+R                              # Generar informes
+99                             # Flujo completo
+?                              # Ayuda
+Q                              # Salir
+```
+
+### Informes
+
+```bash
+# Desde el gestor
+R → 1 (técnico) / 2 (cliente) / 3 (ambos)
+
+# Desde la línea de comandos
+./11_Reports/report_generator.sh ambos
+python3 11_Reports/report_engine.py --objetivo 127.0.0.1 --tipo ambos
+
+# Re-renderizar desde JSON
+python3 11_Reports/report_engine.py --desde-json 11_Reports/generated/127.0.0.1/findings.json
+```
+
+### Configuración
+
+```bash
+nano 00_Config/scope.yaml      # Editar alcance
+nano 00_Config/targets.txt     # Editar objetivos
+nano 11_Reports/.report_profile # Editar perfil de cliente
+```
+
+### Verificación
+
+```bash
+cd 00_Config && ./scripts/validate_config.sh
+cd CyberSecurity-Framework
+./tests/run_tests.sh           # Librería del gestor
+./tests/run_e2e.sh             # Script recibe argumento tecleado
+./tests/run_smoke.sh           # Navegación del menú
+./tests/run_reports.sh         # Motor de informes
+bash ./tests/run_wizard.sh     # Asistente de configuración
+```
+
+### Resultados
+
+```bash
+tree scans/                    # Ver todos los resultados
+tree 11_Reports/generated/     # Ver informes generados
+cat scans/<herramienta>/errores.log  # Ver errores de una herramienta
+```
+
+---
+
+## Documentación adicional
+
+- `AGENTS.md`: conocimiento operativo, cómo están hechas las cosas y por qué.
+- `docs/CLEANUP-2026-10-30.md`: sesión de limpieza, 44 ficheros en cuarentena, 8 bugs corregidos.
+- `docs/GESTOR-2026-10-30.md`: diseño del gestor, parser de `Uso:`, sesión, estado de fases.
+- `docs/SCANS-PATHS-2026-10-30.md`: por qué todos los resultados van a `<repo>/scans/`.
+- `docs/ARREGLOS-FRAMEWORK-2026-10-31.md`: once fixes tras la primera prueba real.
+- `docs/BURP-HTTP-INJECT-2026-10-31.md`: Burp y `http_inject.sh`.
+- `docs/SQLMAP-Y-FRENOS-2026-10-31.md`: sqlmap, `Retry-After` y rate limiting.
+- `docs/RATE-LIMIT-2026-10-31.md`: prueba de rate limiting.
+- `docs/PATHS-KALI-2026-10-31.md`: rutas absolutas y relativas en Kali.
+
+---
+
+**Última actualización:** 2026-11-06
