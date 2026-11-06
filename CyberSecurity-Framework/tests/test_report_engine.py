@@ -157,5 +157,33 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(len(c.incidencias), 1)
 
 
+from lib.parsers import nmap
+
+XML_127 = """<nmaprun><host><status state="up"/><address addr="127.0.0.1" addrtype="ipv4"/>
+<ports><port protocol="tcp" portid="8080"><state state="open"/>
+<service name="http" product="SimpleHTTP" version="0.6"/></port></ports>
+<hostscript><script id="vulners" output="CVE-2021-41773: 7.5: https://x"/></hostscript>
+</host></nmaprun>"""
+
+class NmapTests(unittest.TestCase):
+    def test_open_port_and_cve(self):
+        r = nmap.parse(write("nmap/a.xml", XML_127), ROOT)
+        self.assertEqual(len([f for f in r.findings if f.rule == "nmap.open_port"]), 1)
+        cve = [f for f in r.findings if f.rule == "nmap.cve"][0]
+        self.assertEqual((cve.cve, cve.severidad), ("CVE-2021-41773", "alta"))
+        self.assertEqual(r.activos[0]["puertos"][0]["puerto"], 8080)
+
+    def test_cve_without_score_is_media_and_says_so(self):
+        r = nmap.parse(write("nmap/b.xml", XML_127.replace(": 7.5:", "")), ROOT)
+        f = [x for x in r.findings if x.rule == "nmap.cve"][0]
+        self.assertEqual(f.severidad, "media")
+        self.assertIn("CVSS no consultado", f.descripcion)
+
+    def test_malformed_xml_is_no_evaluable(self):
+        r = nmap.parse(write("nmap/bad.xml", "<nmaprun>"), ROOT)
+        self.assertFalse(r.evaluado)
+        self.assertTrue(r.no_evaluable)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
