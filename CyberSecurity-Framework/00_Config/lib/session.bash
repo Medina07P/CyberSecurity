@@ -45,7 +45,15 @@ session_target() {
 
 session_set_target() {
     validate_target "$1" || return 1
-    printf '%s\n' "$1" > "$SESSION_FILE"
+    printf '%s\n' "$1" > "$SESSION_FILE" || return 1
+
+    # El registro es informativo: si falla, la sesión sigue siendo válida.
+    local rc_scope=0 rc_targets=0
+    scope_add_target "$1" || rc_scope=$?
+    targets_add_entry "$1" || rc_targets=$?
+    (( rc_scope == 0 ))   || printf '⚠️  No se pudo registrar en scope.yaml (código %s)\n' "$rc_scope" >&2
+    (( rc_targets == 0 )) || printf '⚠️  No se pudo registrar en targets.txt (código %s)\n' "$rc_targets" >&2
+    return 0
 }
 
 session_clear() {

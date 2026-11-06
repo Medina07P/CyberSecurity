@@ -70,6 +70,23 @@ El objetivo se guarda en `00_Config/.session` (git-ignored) y se usa para:
 2. **Valor por defecto**: los scripts que piden un host lo proponen automáticamente.
 3. **Filtrado**: evita mezclar resultados de distintos objetivos o laboratorios.
 
+Al fijar el objetivo (`T` o el que escribes al arrancar), el gestor lo **registra solo** en dos sitios:
+
+- `00_Config/scope.yaml`: el host en `targets.ips`, o el dominio **y** su comodín `*.dominio`
+  en `targets.domains`. Se crea `scope.yaml.bak` y se valida el YAML; si algo falla, se avisa y
+  el objetivo de la sesión sigue valiendo.
+- `00_Config/targets.txt`: una línea `<host>|—|—|Registrado al fijar el objetivo|B` bajo una
+  cabecera fechada. El `—` significa "puerto y protocolo desconocidos" y es lo que entiende
+  `parse_targets.py`; `B` es prioridad baja.
+
+Con eso el objetivo aparece en la lista de `T` la próxima vez y el flujo completo ya no te
+dirá que está fuera de alcance. Para deshacerlo no hay comando: borra a mano las líneas de
+`scope.yaml` y `targets.txt` (o restaura `scope.yaml.bak`).
+
+> Ojo: como el gestor registra lo que fijas, la comprobación de alcance pasa a ser un
+> **registro** de lo que has usado, no una barrera. La autorización real es el documento de
+> `authorization.document` en `scope.yaml`.
+
 Si defines varios objetivos en `00_Config/targets.txt`, el gestor te los ofrece como lista. Puedes cambiarlo en cualquier momento con `T`.
 
 ### Sin objetivo
