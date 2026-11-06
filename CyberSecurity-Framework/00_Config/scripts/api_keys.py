@@ -7,6 +7,7 @@
 import argparse
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -90,14 +91,199 @@ _DEFAULT_HARVESTER_CAMPOS = [
 ]
 
 
-def _construir_herramientas():
-    """Construye la tabla de herramientas, campos incluidos."""
-    ht_plantilla = _cargar_plantilla_theharvester()
-    ht_campos = _campos_theharvester(ht_plantilla) or _DEFAULT_HARVESTER_CAMPOS
+def harvester_dirs():
+    """Directorios de configuración de theHarvester en orden de preferencia."""
+    home = Path.home() / ".theHarvester"
+    if "KEYS_HARVESTER_DIRS" in os.environ:
+        extras = [Path(p) for p in os.environ["KEYS_HARVESTER_DIRS"].split(":") if p]
+        return [home] + extras
     return [
-        {"nombre": "theharvester", "etiqueta": "theHarvester", "campos": ht_campos},
-        {"nombre": "shodan", "etiqueta": "Shodan", "campos": ["key"]},
-        {
+        home,
+        Path("/etc/theHarvester"),
+        Path("/usr/local/etc/theHarvester"),
+    ]
+
+
+class _TheHarvesterAdapter:
+    """Adaptador de proyección/ingesta para theHarvester."""
+
+    def _campos(self):
+        return _tool_by_name("theharvester")["campos"]
+
+    def _plantilla(self, reg=None, existente=None):
+        """Estructura a proyectar: plantilla + campos con valor en registro/proyección."""
+        plantilla = _cargar_plantilla_theharvester()
+        completa = {
+            slot: dict(leaves)
+            for slot, leaves in plantilla.items()
+            if isinstance(leaves, dict)
+        }
+        if reg is not None:
+            reg_section = reg.get("theharvester", {})
+            for campo in self._campos():
+                slot, leaf = campo.split(".", 1)
+                val_reg, ok_reg = _get_nested(reg_section, campo)
+                if ok_reg and val_reg:
+                    completa.setdefault(slot, {})[leaf] = None
+        if existente is not None:
+            for slot, leaves in existente.items():
+                if not isinstance(leaves, dict):
+                    continue
+                for leaf, val in leaves.items():
+                    if val:
+                        completa.setdefault(slot, {})[leaf] = None
+        return completa
+
+    def _destino(self):
+        for d in harvester_dirs():
+            candidate = d / "api-keys.yaml"
+            if candidate.exists():
+                return candidate
+        dest = harvester_dirs()[0] / "api-keys.yaml"
+        dest.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        return dest
+
+    def _leer_existente(self, dest):
+        if not dest.exists():
+            return {}
+        try:
+            with open(dest) as f:
+                data = yaml.safe_load(f) or {}
+        except yaml.YAMLError:
+            return {}
+        return data.get("apikeys", {})
+
+    def proyectar(self, reg):
+        """Vuelca el registro a ~/.theHarvester/api-keys.yaml conservando ajenos."""
+        dest = self._destino()
+        existente = self._leer_existente(dest)
+        plantilla = self._plantilla(reg, existente)
+        reg_section = reg.get("theharvester", {})
+
+        contenido = {"apikeys": {}}
+        total = 0
+        filled = 0
+        for slot, leaves in plantilla.items():
+            if not isinstance(leaves, dict):
+                continue
+            contenido["apikeys"][slot] = {}
+            for leaf in leaves.keys():
+                total += 1
+                path = f"{slot}.{leaf}"
+                val_reg, ok_reg = _get_nested(reg_section, path)
+                if ok_reg and isinstance(val_reg, str) and val_reg:
+                    contenido["apikeys"][slot][leaf] = val_reg
+                    filled += 1
+                else:
+                    val_ext, ok_ext = _get_nested(existente, path)
+                    if ok_ext and val_ext:
+                        contenido["apikeys"][slot][leaf] = val_ext
+                    else:
+                        contenido["apikeys"][slot][leaf] = ""
+
+        if dest.exists():
+            shutil.copy2(dest, dest.with_suffix(".bak"))
+
+        tmp_path = dest.with_suffix(".tmp")
+        try:
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                with os.fdopen(fd, "w") as f:
+                    yaml.safe_dump(
+                        contenido, f, default_flow_style=False,
+                        sort_keys=False, allow_unicode=True,
+                    )
+                    f.flush()
+                    os.fsync(f.fileno())
+            except Exception:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                raise
+            os.replace(tmp_path, dest)
+            dest.chmod(0o600)
+        except OSError as exc:
+            return False, f"theHarvester: no se pudo escribir {dest}: {exc}"
+        finally:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
+
+        return True, f"theHarvester: {filled} de {total} campos"
+
+    def ingerir(self, reg):
+        """Lee de la proyección valores no vacíos que el registro tenga vacíos."""
+        reg_section = reg.get("theharvester", {})
+        result = {}
+        for d in harvester_dirs():
+            candidate = d / "api-keys.yaml"
+            if not candidate.exists():
+                continue
+            try:
+                with open(candidate) as f:
+                    data = yaml.safe_load(f) or {}
+            except yaml.YAMLError:
+                continue
+            existente = data.get("apikeys", {})
+            plantilla = self._plantilla(reg, existente)
+            for slot, leaves in plantilla.items():
+                if not isinstance(leaves, dict):
+                    continue
+                for leaf in leaves.keys():
+                    path = f"{slot}.{leaf}"
+                    val_reg, ok_reg = _get_nested(reg_section, path)
+                    if ok_reg and val_reg:
+                        continue
+                    val_ext, ok_ext = _get_nested(existente, path)
+                    if ok_ext and val_ext:
+                        result[path] = val_ext
+            return result
+        return result
+
+
+def proyectar(herramienta, reg):
+    """Proyecta el registro al fichero de configuración de una herramienta."""
+    tool = _tool_by_name(herramienta)
+    if tool is None or "adaptador" not in tool:
+        return False, f"{herramienta}: sin adaptador"
+    return tool["adaptador"].proyectar(reg)
+
+
+def ingerir(herramienta):
+    """Trae valores desde el fichero de configuración de una herramienta."""
+    tool = _tool_by_name(herramienta)
+    if tool is None or "adaptador" not in tool:
+        return {}
+    reg = cargar_registro()
+    sembrar_theharvester(reg)
+    return tool["adaptador"].ingerir(reg)
+
+
+def _construir_herramientas():
+    """Construye la tabla de herramientas indexada por nombre."""
+    ht_plantilla = _cargar_plantilla_theharvester()
+    ht_campos_template = _campos_theharvester(ht_plantilla)
+    # La plantilla da la estructura real; los campos por defecto aseguran que
+    # todos los huecos conocidos sigan siendo validables y proyectables.
+    ht_campos = ht_campos_template + [
+        c for c in _DEFAULT_HARVESTER_CAMPOS if c not in ht_campos_template
+    ]
+    return {
+        "theharvester": {
+            "nombre": "theharvester",
+            "etiqueta": "theHarvester",
+            "campos": ht_campos,
+            "adaptador": _TheHarvesterAdapter(),
+        },
+        "shodan": {
+            "nombre": "shodan",
+            "etiqueta": "Shodan",
+            "campos": ["key"],
+        },
+        "h8mail": {
             "nombre": "h8mail",
             "etiqueta": "h8mail",
             "campos": [
@@ -107,7 +293,7 @@ def _construir_herramientas():
                 "breachdirectory_user", "breachdirectory_pass",
             ],
         },
-        {
+        "amass": {
             "nombre": "amass",
             "etiqueta": "Amass",
             "campos": [
@@ -115,7 +301,7 @@ def _construir_herramientas():
                 "virustotal.key", "urlscan.key",
             ],
         },
-        {
+        "recon-ng": {
             "nombre": "recon-ng",
             "etiqueta": "recon-ng",
             "campos": [
@@ -123,7 +309,7 @@ def _construir_herramientas():
                 "securitytrails_api", "virustotal_api", "hunter_api", "github_api",
             ],
         },
-        {
+        "spiderfoot": {
             "nombre": "spiderfoot",
             "etiqueta": "SpiderFoot",
             "campos": [
@@ -132,17 +318,14 @@ def _construir_herramientas():
                 "sfp_hunter.api_key", "sfp_urlscan.api_key",
             ],
         },
-    ]
+    }
 
 
 HERRAMIENTAS = _construir_herramientas()
 
 
 def _tool_by_name(nombre):
-    for h in HERRAMIENTAS:
-        if h["nombre"] == nombre:
-            return h
-    return None
+    return HERRAMIENTAS.get(nombre)
 
 
 def _get_nested(d, path):
@@ -291,7 +474,7 @@ def _longitud_valor(valor):
 def estado_json(reg):
     """Devuelve el estado del registro sin escribir ni revelar secretos."""
     herramientas = []
-    for h in HERRAMIENTAS:
+    for h in HERRAMIENTAS.values():
         seccion = reg.get(h["nombre"], {})
         campos_json = []
         puestas = 0
@@ -338,6 +521,16 @@ def main():
     estado_parser = subparsers.add_parser("estado", help="Muestra el estado")
     estado_parser.add_argument("--json", action="store_true")
 
+    sinc_parser = subparsers.add_parser(
+        "sincronizar", help="Vuelca el registro a los ficheros de herramienta"
+    )
+    sinc_parser.add_argument("herramienta", nargs="?")
+
+    imp_parser = subparsers.add_parser(
+        "importar", help="Trae valores desde los ficheros de herramienta"
+    )
+    imp_parser.add_argument("herramienta")
+
     args = parser.parse_args()
 
     if args.orden == "poner":
@@ -355,6 +548,11 @@ def main():
             f"✅ {args.herramienta}/{args.campo}: "
             f"definida ({len(valor.strip())} caracteres)"
         )
+        ok, msg = proyectar(args.herramienta, reg)
+        if not ok:
+            print(f"⚠️  {msg}", file=sys.stderr)
+            sys.exit(3)
+        print(f"✅ {msg}")
     elif args.orden == "estado":
         reg = cargar_registro()
         sembrar_theharvester(reg)
@@ -362,6 +560,30 @@ def main():
             print(json.dumps(estado_json(reg)))
         else:
             _mostrar_estado(reg)
+    elif args.orden == "sincronizar":
+        reg = cargar_registro()
+        sembrar_theharvester(reg)
+        herramientas = [args.herramienta] if args.herramienta else ["theharvester"]
+        exit_code = 0
+        for nombre in herramientas:
+            ok, msg = proyectar(nombre, reg)
+            if not ok:
+                print(f"⚠️  {msg}", file=sys.stderr)
+                exit_code = 3
+            else:
+                print(f"✅ {msg}")
+        sys.exit(exit_code)
+    elif args.orden == "importar":
+        if not args.herramienta:
+            imp_parser.error("Falta la herramienta")
+        vals = ingerir(args.herramienta)
+        if vals:
+            reg = cargar_registro()
+            sembrar_theharvester(reg)
+            for path, val in vals.items():
+                _set_nested(reg[args.herramienta], path, val)
+            guardar_registro(reg)
+        print(f"✅ {args.herramienta}: importados {len(vals)} campos")
     else:
         parser.print_help()
         sys.exit(1)
