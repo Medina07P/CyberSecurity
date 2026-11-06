@@ -108,7 +108,7 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
         for host, data in sorted(collected.activos.items()):
             puertos = data.get("puertos", [])
             if puertos:
-                puertos_str = ", ".join(f"{p['puerto']}/{p['protocolo']}" for p in puertos)
+                puertos_str = ", ".join(f"{p['puerto']}/{p.get('protocolo', 'tcp')}" for p in puertos)
                 lines.append(f"- {host}: {puertos_str}")
             else:
                 lines.append(f"- {host}")
@@ -259,7 +259,7 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
         for host, data in sorted(collected.activos.items()):
             puertos = data.get("puertos", [])
             if puertos:
-                puertos_str = ", ".join(f"{p['puerto']}/{p['protocolo']}" for p in puertos)
+                puertos_str = ", ".join(f"{p['puerto']}/{p.get('protocolo', 'tcp')}" for p in puertos)
                 html_parts.append(f"<li>{html.escape(host)}: {html.escape(puertos_str)}</li>")
             else:
                 html_parts.append(f"<li>{html.escape(host)}</li>")

@@ -109,7 +109,7 @@ def _puertos_abiertos(
             continue
         protocolo = port_el.get("protocol", "tcp")
         servicio, producto = _servicio(port_el)
-        puertos.append({"puerto": numero, "servicio": servicio, "producto": producto})
+        puertos.append({"puerto": numero, "protocolo": protocolo, "servicio": servicio, "producto": producto})
 
         key = f"nmap.open_port:{protocolo}:{host}:{numero}"
         if key in vistos:

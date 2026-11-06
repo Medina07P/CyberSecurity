@@ -431,7 +431,7 @@ class RenderTests(unittest.TestCase):
         self.assertIn("2 pruebas requieren", md2)
 
 
-from report_engine import run, read_profile, write_profile
+from report_engine import run, read_profile, write_profile, _FRAMEWORK_ROOT, _REPO_ROOT, _default_scans_dir
 
 class CliTests(unittest.TestCase):
     def setUp(self):
@@ -485,6 +485,41 @@ class CliTests(unittest.TestCase):
         self.assertIn("127.0.0.10", " ".join(ids))
         run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--incluir-sin-objetivo", "--salida", str(self.out)])
         self.assertTrue(any(h["rule"] == "api.method" for h in json.loads((self.out / "findings.json").read_text())["hallazgos"]))
+
+    def test_framework_root_points_to_cybersecurity_framework(self):
+        self.assertTrue((_FRAMEWORK_ROOT / "00_Config").is_dir())
+        self.assertEqual(_default_scans_dir().name, "scans")
+        self.assertEqual(_default_scans_dir().parent, _REPO_ROOT)
+
+
+from lib.parsers import nmap
+
+class NmapAssetTests(unittest.TestCase):
+    def test_nmap_asset_includes_protocolo(self):
+        tmpdir = Path(tempfile.mkdtemp(prefix="nmap-asset-"))
+        xml_path = tmpdir / "a.xml"
+        xml_path.write_text(XML_127, encoding="utf-8")
+        result = nmap.parse(xml_path, ROOT)
+        self.assertTrue(result.activos)
+        puerto = result.activos[0]["puertos"][0]
+        self.assertIn("protocolo", puerto)
+        self.assertEqual(puerto["protocolo"], "tcp")
+
+
+class RenderProtocoloTests(unittest.TestCase):
+    def test_collected_without_protocolo_renders(self):
+        # Asset with port dict lacking 'protocolo' key should not crash render
+        f = Finding(rule="r", key="k", titulo="t", categoria="web", severidad="info",
+                   confianza="observacion", activo="h", tecnica="x", descripcion="d",
+                   impacto_cliente="i", recomendacion="r", esfuerzo="medio",
+                   cve=None, cvss=None, evidencia=[], referencias=[])
+        activos = {"h": {"host": "h", "puertos": [{"puerto": 80, "servicio": "http"}]}}
+        col = Collected([f], activos, [], [], ["h"], True)
+        out = Path(tempfile.mkdtemp(prefix="render-proto-"))
+        write_reports(col, {}, out, ["tecnico", "cliente"])
+        # Should not raise KeyError
+        self.assertTrue((out / "informe_tecnico.html").exists())
+        self.assertTrue((out / "informe_cliente.html").exists())
 
 
 if __name__ == "__main__":
