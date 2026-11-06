@@ -353,5 +353,51 @@ class HostSourceTests(unittest.TestCase):
         self.assertEqual(r.findings, []); self.assertTrue(r.activos)
 
 
+from lib.render import write_reports, to_json, from_json
+from lib.engine import Collected
+
+class RenderTests(unittest.TestCase):
+    def collected(self):
+        f = Finding(rule="sqlmap.sqli", key="k", titulo="SQLi", categoria="web", severidad="critica",
+                    confianza="confirmado", activo="https://127.0.0.1", tecnica="sqlmap",
+                    descripcion="d", impacto_cliente="i", recomendacion="r", esfuerzo="medio",
+                    cve=None, cvss=None, evidencia=[Evidence("scans/web/sqlmap_a.txt", 3, "- Veredicto: INYECTABLE")],
+                    referencias=[])
+        c = Finding(rule="sqli_findings.differential", key="c", titulo="Dif", categoria="web", severidad="media",
+                    confianza="candidato", activo="https://127.0.0.1", tecnica="sqli",
+                    descripcion="d", impacto_cliente="i", recomendacion="r", esfuerzo="medio",
+                    cve=None, cvss=None, evidencia=[], referencias=[])
+        return Collected([f, c], {"127.0.0.1": {"host": "127.0.0.1", "puertos": []}},
+                         [{"fuente": "scans/x", "motivo": "vacío"}], [{"fuente": "scans/y", "motivo": "catch-all"}],
+                         ["127.0.0.1"], True)
+
+    def test_technical_has_evidence_and_appendix(self):
+        out = Path(tmp()); write_reports(self.collected(), {"cliente": "ACME", "auditor": "Ana"}, out, ["tecnico"])
+        md = (out / "informe_tecnico.md").read_text()
+        self.assertIn("scans/web/sqlmap_a.txt:3", md)
+        self.assertIn("Candidatos", md); self.assertIn("No evaluable", md)
+        self.assertIn("Incidencias de ejecución", md); self.assertIn("Descartados", md)
+        self.assertIn("Activos", md)
+
+    def test_client_has_no_internal_paths_or_payloads(self):
+        out = Path(tmp()); write_reports(self.collected(), {"cliente": "ACME", "auditor": "Ana"}, out, ["cliente"])
+        text = (out / "informe_cliente.md").read_text() + (out / "informe_cliente.html").read_text()
+        for prohibido in ("scans/", "INYECTABLE", "sqlmap", "payload"):
+            self.assertNotIn(prohibido, text)
+        self.assertIn("30/60/90", text); self.assertIn("ACME", text)
+
+    def test_html_is_self_contained_and_escaped(self):
+        c = self.collected(); c.findings[0].titulo = "<script>x</script>"
+        out = Path(tmp()); write_reports(c, {}, out, ["tecnico", "cliente"])
+        html = (out / "informe_tecnico.html").read_text()
+        self.assertIn("<style", html); self.assertNotIn("cdn", html.lower())
+        self.assertIn("&lt;script&gt;", html); self.assertNotIn("<script>x", html)
+
+    def test_roundtrip_json(self):
+        c = self.collected(); data = to_json(c, {"cliente": "ACME"})
+        c2, meta = from_json(data)
+        self.assertEqual(len(c2.findings), 2); self.assertEqual(meta["cliente"], "ACME")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
