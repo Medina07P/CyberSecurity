@@ -115,7 +115,7 @@ Las marcas avisan antes de ejecutar:
 
 - **`[intrusiva]`** — fuerza bruta, explotación, persistencia o limpieza: pide confirmación aparte. Ejemplos: `hydra_brute.sh`, `reverse_shell_php.sh`, `rate_limit_probe.sh`.
 - **`[manual]`** — usa banderas o subcomandos: escribes la línea de argumentos completa. Ejemplos: `nmap_smart.sh` (si tiene `--flags`), `interface_manager.sh`.
-- **`[generador]`** — escribe otro script, no escanea nada. Ejemplos: `enum_smb.sh` (genera el script real), `osint_harvester.sh` (ya materializado).
+- **`[generador]`** — escribe otro script, no escanea nada. Ejemplos: `enum_smb.sh`, `deepseeenum_web.sh` (escriben el script real en su primera ejecución; `ps_exec.sh` y `linpeas.sh` hacen lo propio).
 
 ---
 
@@ -169,7 +169,7 @@ python3 11_Reports/report_engine.py \
 | `--cliente` / `--auditor` | perfil / usuario del sistema | portada |
 | `--todos` | no | agrega todos los objetivos en un informe multiobjetivo |
 | `--incluir-sin-objetivo` | no | añade fuentes no atribuibles, marcadas |
-| `--desde-json <ruta>` | no | re-renderiza sin volver a escanear |
+| `--desde-json <ruta>` | no | re-renderiza sin volver a escanear: edita `findings.json` (no el Markdown) y vuelve a generar |
 | `--json` | no | imprime el resumen JSON por stdout |
 | `--abrir` | no | abre el HTML al terminar |
 
@@ -321,8 +321,11 @@ nano 11_Reports/.report_profile # Editar perfil de cliente
 
 ```bash
 cd 00_Config && ./scripts/validate_config.sh
+```
+
+```bash
 cd CyberSecurity-Framework
-./tests/run_tests.sh           # Librería del gestor
+./tests/run_tests.sh           # Librería del gestor y forma de Uso: de cada script
 ./tests/run_e2e.sh             # Script recibe argumento tecleado
 ./tests/run_smoke.sh           # Navegación del menú
 ./tests/run_reports.sh         # Motor de informes
