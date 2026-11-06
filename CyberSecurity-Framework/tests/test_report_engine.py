@@ -431,5 +431,61 @@ class RenderTests(unittest.TestCase):
         self.assertIn("2 pruebas requieren", md2)
 
 
+from report_engine import run, read_profile, write_profile
+
+class CliTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tmp()); self.scans = self.tmp / "scans"; self.out = self.tmp / "out"
+        self.empty = self.tmp / "empty"; self.empty.mkdir()
+        self.profile = self.tmp / ".report_profile"
+        write_at(self.scans, "nmap/a.xml", XML_127)
+        write_at(self.scans, "nmap/b.xml", XML_127.replace("127.0.0.1", "127.0.0.10"))
+        write_at(self.scans, "api/methods.txt", " ✅ PUT (200)\n")
+        os.environ["REPORT_PROFILE"] = str(self.profile)
+
+    def test_generates_both_reports_and_json(self):
+        rc = run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--tipo", "ambos",
+                  "--salida", str(self.out), "--cliente", "ACME", "--auditor", "Ana"])
+        self.assertEqual(rc, 0)
+        self.assertTrue((self.out / "findings.json").exists())
+        self.assertEqual(json.loads((self.out / "findings.json").read_text())["meta"]["cliente"], "ACME")
+        self.assertTrue((self.out / "informe_tecnico.html").exists())
+        self.assertTrue((self.out / "informe_cliente.html").exists())
+
+    def test_exit_3_when_nothing_is_evaluable(self):
+        self.assertEqual(run(["--scans", str(self.empty), "--objetivo", "127.0.0.1", "--salida", str(self.out)]), 3)
+
+    def test_usage_error_returns_1_and_help_returns_0(self):
+        self.assertEqual(run(["--no-existe"]), 1)
+        self.assertEqual(run(["--help"]), 0)
+
+    def test_desde_json_respects_an_edit(self):
+        run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--salida", str(self.out)])
+        data = json.loads((self.out / "findings.json").read_text()); data["hallazgos"][0]["titulo"] = "EDITADO"
+        (self.out / "findings.json").write_text(json.dumps(data))
+        self.assertEqual(run(["--desde-json", str(self.out / "findings.json"), "--salida", str(self.out), "--tipo", "tecnico"]), 0)
+        self.assertIn("EDITADO", (self.out / "informe_tecnico.md").read_text())
+
+    def test_profile_is_used_when_flags_are_absent(self):
+        write_profile(self.profile, {"cliente": "Perfil SA", "auditor": "Ana"})
+        run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--salida", str(self.out)])
+        self.assertEqual(json.loads((self.out / "findings.json").read_text())["meta"]["cliente"], "Perfil SA")
+
+    def test_json_summary_is_machine_readable(self):
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--salida", str(self.out), "--json"])
+        resumen = json.loads(buf.getvalue().strip().splitlines()[-1])
+        self.assertGreaterEqual(resumen["hallazgos"], 1)
+
+    def test_todos_and_incluir_sin_objetivo(self):
+        run(["--scans", str(self.scans), "--todos", "--salida", str(self.out)])
+        ids = {h["activo"] for h in json.loads((self.out / "findings.json").read_text())["hallazgos"]}
+        self.assertIn("127.0.0.10", " ".join(ids))
+        run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--incluir-sin-objetivo", "--salida", str(self.out)])
+        self.assertTrue(any(h["rule"] == "api.method" for h in json.loads((self.out / "findings.json").read_text())["hallazgos"]))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
