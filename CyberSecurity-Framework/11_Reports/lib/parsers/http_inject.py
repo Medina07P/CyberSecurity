@@ -90,7 +90,17 @@ def parse(path: Path, repo_root: Path) -> ParseResult:
     vistos: set[str] = set()
 
     lector = csv.DictReader(crudo.splitlines(), delimiter="\t")
-    for idx, fila in enumerate(lector):
+    filas = list(lector)
+    if not filas:
+        return ParseResult(
+            evaluado=False,
+            no_evaluable=[{
+                "fuente": archivo,
+                "motivo": "tanda vacía o interrumpida (sin filas de evidencia)",
+            }],
+        )
+
+    for idx, fila in enumerate(filas):
         nivel = (fila.get("nivel") or "").strip()
         param = (fila.get("param") or "").strip()
         clase = (fila.get("clase") or "").strip()

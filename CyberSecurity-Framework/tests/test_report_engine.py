@@ -295,6 +295,19 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(r.findings[0].severidad, "critica")
         self.assertEqual(len(r.descartados), 1)
 
+    def test_http_inject_header_only_is_interrupted_not_evaluated(self):
+        path = write(
+            "web/http_inject_truncado_127.0.0.1.tsv",
+            "nivel\tparam\tclase\tpayload\tcodigo\ttamano\tms\tevidencia\n",
+        )
+        result = http_inject.parse(path, ROOT)
+        self.assertFalse(result.evaluado)
+        self.assertEqual(result.findings, [])
+        self.assertEqual(
+            result.no_evaluable[0]["motivo"],
+            "tanda vacía o interrumpida (sin filas de evidencia)",
+        )
+
     def test_sqlmap_verdicts(self):
         ok = "- Objetivo: 127.0.0.1:443 (https)\n- Veredicto: INYECTABLE (id): boolean-based blind\n"
         r = sqlmap.parse(write("web/sqlmap_a.txt", ok), ROOT)
