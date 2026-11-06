@@ -48,7 +48,8 @@ def parse(path: Path, repo_root: Path) -> ParseResult:
 
     Solo las líneas de veredicto cuentan. Un ``NO INYECTABLE`` no produce
     hallazgo; un ``NO DETERMINADO`` queda como ``no_evaluable`` porque la
-    prueba no concluyó.
+    prueba no concluyó. Si no hay ningún veredicto válido, el fichero es
+    ``no_evaluable``.
     """
     path = Path(path)
     archivo = relpath(path, repo_root)
@@ -60,6 +61,7 @@ def parse(path: Path, repo_root: Path) -> ParseResult:
     findings: list = []
     no_evaluable: list[dict] = []
     vistos: set[str] = set()
+    tuvo_veredicto_valido = False
 
     for numero, linea in enumerate(lineas, 1):
         linea = linea.strip()
@@ -73,6 +75,7 @@ def parse(path: Path, repo_root: Path) -> ParseResult:
 
         m_ver = _VEREDICTO_RE.match(linea)
         if not m_ver:
+            # Si no es una línea de objetivo ni de veredicto, ignorar
             continue
 
         texto = m_ver.group(1).strip()
@@ -89,6 +92,7 @@ def parse(path: Path, repo_root: Path) -> ParseResult:
             continue
 
         if texto.startswith("INYECTABLE"):
+            tuvo_veredicto_valido = True
             m_param = _PARAM_RE.search(texto)
             param = m_param.group(1).strip() if m_param else ""
             tecnica = texto.split(":", 1)[-1].strip() if ":" in texto else ""
@@ -106,7 +110,14 @@ def parse(path: Path, repo_root: Path) -> ParseResult:
             ))
             continue
 
-    return ParseResult(findings=findings, no_evaluable=no_evaluable)
+    # Si no hubo ningún veredicto válido, es no_evaluable
+    if not tuvo_veredicto_valido and not no_evaluable:
+        return ParseResult(
+            evaluado=False,
+            no_evaluable=[{"fuente": archivo, "motivo": "sin veredicto válido"}],
+        )
+
+    return ParseResult(findings=findings, no_evaluable=no_evaluable, evaluado=tuvo_veredicto_valido)
 
 
 register("sqlmap", parse)

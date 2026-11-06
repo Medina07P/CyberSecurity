@@ -136,7 +136,11 @@ def _hallazgo(
 ) -> Finding | None:
     """Un hallazgo `nuclei.template`, o `None` si la clave ya estaba vista."""
     host, ruta = _host_y_ruta(activo)
-    clave = f"nuclei|{plantilla}|{host}|{ruta}"
+    # Clave canónica de CVE si hay CVE; si no, la clave incluye la plantilla
+    if cve:
+        clave = f"cve|{cve}|{host}"
+    else:
+        clave = f"nuclei|{plantilla}|{host}|{ruta}"
     if clave in vistos:
         return None
     vistos.add(clave)

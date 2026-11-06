@@ -164,8 +164,14 @@ def finding_from_dict(data: dict) -> Finding:
 
 
 def relpath(path: Path, repo_root: Path) -> str:
-    """Ruta relativa POSIX a la raíz del repositorio; si no cuelga, el nombre."""
+    """Ruta relativa POSIX a la raíz del repositorio.
+    
+    Usa os.path.relpath para permitir rutas con .. si el path no cuelga de repo_root.
+    Esto es importante cuando --scans apunta a un directorio externo.
+    """
+    import os
     try:
-        return Path(path).resolve().relative_to(Path(repo_root).resolve()).as_posix()
+        return os.path.relpath(Path(path).resolve(), Path(repo_root).resolve()).replace(os.sep, '/')
     except ValueError:
+        # En Windows, relpath puede fallar si están en diferentes unidades
         return Path(path).name

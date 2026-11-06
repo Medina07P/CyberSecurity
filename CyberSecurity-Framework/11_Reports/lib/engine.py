@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from .attribution import belongs_to, guess_host, normalize_host
-from .model import Finding, ParseResult, relpath
+from .model import Finding, ParseResult, merge_findings, sort_findings, relpath
 from .sources import discover
 
 __all__ = ["Collected", "collect", "filter_findings"]
@@ -198,7 +198,28 @@ def collect(
             result.activos, objetivo, incluir_sin_objetivo, todos
         ):
             host = activo.get("host", "")
-            activos[host] = activo
+            if host in activos:
+                # Fusionar con el activo existente
+                existing = activos[host]
+                # Fusionar puertos por (protocolo, puerto)
+                existing_ports = {(p.get("protocolo", "tcp"), p.get("puerto")) for p in existing.get("puertos", [])}
+                for puerto in activo.get("puertos", []):
+                    key = (puerto.get("protocolo", "tcp"), puerto.get("puerto"))
+                    if key not in existing_ports:
+                        existing.setdefault("puertos", []).append(puerto)
+                        existing_ports.add(key)
+                # Fusionar tecnologías
+                existing_tech = set(existing.get("tecnologias", []))
+                for tech in activo.get("tecnologias", []):
+                    if tech not in existing_tech:
+                        existing.setdefault("tecnologias", []).append(tech)
+                        existing_tech.add(tech)
+                # Fusionar otros campos sin perder datos
+                for key, value in activo.items():
+                    if key not in existing:
+                        existing[key] = value
+            else:
+                activos[host] = activo
         no_evaluable.extend(result.no_evaluable)
         descartados.extend(result.descartados)
         evaluados.append(result.evaluado)
@@ -210,6 +231,9 @@ def collect(
     for finding in all_findings:
         if finding.activo and finding.activo != _SIN_OBJETIVO:
             objetivo_set.add(normalize_host(finding.activo))
+
+    # Fusionar hallazgos con la misma clave y ordenar por gravedad
+    all_findings = sort_findings(merge_findings(all_findings))
 
     return Collected(
         findings=all_findings,

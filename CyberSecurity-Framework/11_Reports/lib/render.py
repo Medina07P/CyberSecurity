@@ -124,22 +124,34 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
         for f in confirmados:
             lines.append(f"### {f.titulo}")
             lines.append("")
+            lines.append(f"**ID:** {f.id}")
             lines.append(f"**Severidad:** {f.severidad}")
             lines.append(f"**Activo:** {f.activo}")
             lines.append(f"**Técnica:** {f.tecnica}")
+            lines.append(f"**Descripción:** {f.descripcion}")
             if f.evidencia:
+                lines.append("**Evidencia:**")
                 for e in f.evidencia:
                     linea_str = f":{e.linea}" if e.linea else ""
-                    lines.append(f"- **Evidencia:** {e.archivo}{linea_str}")
+                    lines.append(f"- {e.archivo}{linea_str}")
                     lines.append(f"  ```")
                     lines.append(f"  {e.extracto}")
                     lines.append(f"  ```")
-            lines.append(f"- **Descripción:** {f.descripcion}")
-            lines.append(f"- **Recomendación:** {f.recomendacion}")
+            lines.append("**Reproducción:**")
+            # Solo si hay evidencia con extracto que sugiera cómo reproducir
+            if f.evidencia and any(e.extracto for e in f.evidencia):
+                lines.append("Consultar la evidencia para los pasos de reproducción.")
+            else:
+                lines.append("No consta en la evidencia.")
+            lines.append(f"**Recomendación:** {f.recomendacion}")
+            if f.referencias:
+                lines.append("**Referencias:**")
+                for ref in f.referencias:
+                    lines.append(f"- {ref}")
             if f.cve:
-                lines.append(f"- **CVE:** {f.cve}")
+                lines.append(f"**CVE:** {f.cve}")
             if f.cvss is not None:
-                lines.append(f"- **CVSS:** {f.cvss}")
+                lines.append(f"**CVSS:** {f.cvss}")
             lines.append("")
     else:
         lines.append("No se encontraron hallazgos confirmados.")
@@ -151,7 +163,27 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
     candidatos = [f for f in collected.findings if f.confianza == "candidato"]
     if candidatos:
         for f in candidatos:
-            lines.append(f"- **{f.titulo}** ({f.severidad}): {f.descripcion}")
+            lines.append(f"### {f.titulo}")
+            lines.append("")
+            lines.append(f"**ID:** {f.id}")
+            lines.append(f"**Severidad:** {f.severidad}")
+            lines.append(f"**Activo:** {f.activo}")
+            lines.append(f"**Técnica:** {f.tecnica}")
+            lines.append(f"**Descripción:** {f.descripcion}")
+            if f.evidencia:
+                lines.append("**Evidencia:**")
+                for e in f.evidencia:
+                    linea_str = f":{e.linea}" if e.linea else ""
+                    lines.append(f"- {e.archivo}{linea_str}")
+                    lines.append(f"  ```")
+                    lines.append(f"  {e.extracto}")
+                    lines.append(f"  ```")
+            lines.append(f"**Recomendación:** {f.recomendacion}")
+            if f.referencias:
+                lines.append("**Referencias:**")
+                for ref in f.referencias:
+                    lines.append(f"- {ref}")
+            lines.append("")
     else:
         lines.append("No hay hallazgos candidatos.")
     lines.append("")
@@ -162,7 +194,27 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
     observaciones = [f for f in collected.findings if f.confianza == "observacion"]
     if observaciones:
         for f in observaciones:
-            lines.append(f"- **{f.titulo}** ({f.severidad}): {f.descripcion}")
+            lines.append(f"### {f.titulo}")
+            lines.append("")
+            lines.append(f"**ID:** {f.id}")
+            lines.append(f"**Severidad:** {f.severidad}")
+            lines.append(f"**Activo:** {f.activo}")
+            lines.append(f"**Técnica:** {f.tecnica}")
+            lines.append(f"**Descripción:** {f.descripcion}")
+            if f.evidencia:
+                lines.append("**Evidencia:**")
+                for e in f.evidencia:
+                    linea_str = f":{e.linea}" if e.linea else ""
+                    lines.append(f"- {e.archivo}{linea_str}")
+                    lines.append(f"  ```")
+                    lines.append(f"  {e.extracto}")
+                    lines.append(f"  ```")
+            lines.append(f"**Recomendación:** {f.recomendacion}")
+            if f.referencias:
+                lines.append("**Referencias:**")
+                for ref in f.referencias:
+                    lines.append(f"- {ref}")
+            lines.append("")
     else:
         lines.append("No hay observaciones.")
     lines.append("")
@@ -204,9 +256,17 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
     # Metodología
     lines.append("## Metodología")
     lines.append("")
-    lines.append("Se aplicaron técnicas de reconocimiento activo y pasivo, escaneo de puertos,")
-    lines.append("análisis de vulnerabilidades con herramientas automatizadas y revisión manual")
-    lines.append("de hallazgos. Los resultados se clasificaron por severidad y confianza.")
+    if collected.evaluado:
+        # Listar solo las fuentes realmente evaluadas
+        tecnicas = sorted({f.tecnica for f in collected.findings if f.tecnica})
+        if tecnicas:
+            lines.append("Se aplicaron las siguientes técnicas de evaluación:")
+            for tecnica in tecnicas:
+                lines.append(f"- {tecnica}")
+        else:
+            lines.append("Se evaluaron fuentes pero no se identificaron técnicas específicas.")
+    else:
+        lines.append("No se evaluó ninguna fuente con éxito.")
     lines.append("")
 
     return "\n".join(lines)
@@ -274,17 +334,28 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
         for f in confirmados:
             sev_class = html.escape(f.severidad)
             html_parts.append(f"<h3>{html.escape(f.titulo)}</h3>")
+            html_parts.append(f"<p><strong>ID:</strong> {html.escape(f.id)}</p>")
             html_parts.append(f"<p><strong>Severidad:</strong> <span class='{sev_class}'>{html.escape(f.severidad)}</span></p>")
             html_parts.append(f"<p><strong>Activo:</strong> {html.escape(f.activo)}</p>")
             html_parts.append(f"<p><strong>Técnica:</strong> {html.escape(f.tecnica)}</p>")
+            html_parts.append(f"<p><strong>Descripción:</strong> {html.escape(f.descripcion)}</p>")
             if f.evidencia:
-                html_parts.append("<ul>")
+                html_parts.append("<p><strong>Evidencia:</strong></p><ul>")
                 for e in f.evidencia:
                     linea_str = f":{e.linea}" if e.linea else ""
-                    html_parts.append(f"<li><strong>Evidencia:</strong> {html.escape(e.archivo)}{html.escape(linea_str)}<pre>{html.escape(e.extracto)}</pre></li>")
+                    html_parts.append(f"<li>{html.escape(e.archivo)}{html.escape(linea_str)}<pre>{html.escape(e.extracto)}</pre></li>")
                 html_parts.append("</ul>")
-            html_parts.append(f"<p><strong>Descripción:</strong> {html.escape(f.descripcion)}</p>")
+            html_parts.append("<p><strong>Reproducción:</strong> ")
+            if f.evidencia and any(e.extracto for e in f.evidencia):
+                html_parts.append("Consultar la evidencia para los pasos de reproducción.</p>")
+            else:
+                html_parts.append("No consta en la evidencia.</p>")
             html_parts.append(f"<p><strong>Recomendación:</strong> {html.escape(f.recomendacion)}</p>")
+            if f.referencias:
+                html_parts.append("<p><strong>Referencias:</strong></p><ul>")
+                for ref in f.referencias:
+                    html_parts.append(f"<li>{html.escape(ref)}</li>")
+                html_parts.append("</ul>")
             if f.cve:
                 html_parts.append(f"<p><strong>CVE:</strong> {html.escape(f.cve)}</p>")
             if f.cvss is not None:
@@ -296,10 +367,25 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
     html_parts.append("<h2>Candidatos</h2>")
     candidatos = [f for f in collected.findings if f.confianza == "candidato"]
     if candidatos:
-        html_parts.append("<ul>")
         for f in candidatos:
-            html_parts.append(f"<li><strong>{html.escape(f.titulo)}</strong> ({html.escape(f.severidad)}): {html.escape(f.descripcion)}</li>")
-        html_parts.append("</ul>")
+            html_parts.append(f"<h3>{html.escape(f.titulo)}</h3>")
+            html_parts.append(f"<p><strong>ID:</strong> {html.escape(f.id)}</p>")
+            html_parts.append(f"<p><strong>Severidad:</strong> <span class='{html.escape(f.severidad)}'>{html.escape(f.severidad)}</span></p>")
+            html_parts.append(f"<p><strong>Activo:</strong> {html.escape(f.activo)}</p>")
+            html_parts.append(f"<p><strong>Técnica:</strong> {html.escape(f.tecnica)}</p>")
+            html_parts.append(f"<p><strong>Descripción:</strong> {html.escape(f.descripcion)}</p>")
+            if f.evidencia:
+                html_parts.append("<p><strong>Evidencia:</strong></p><ul>")
+                for e in f.evidencia:
+                    linea_str = f":{e.linea}" if e.linea else ""
+                    html_parts.append(f"<li>{html.escape(e.archivo)}{html.escape(linea_str)}<pre>{html.escape(e.extracto)}</pre></li>")
+                html_parts.append("</ul>")
+            html_parts.append(f"<p><strong>Recomendación:</strong> {html.escape(f.recomendacion)}</p>")
+            if f.referencias:
+                html_parts.append("<p><strong>Referencias:</strong></p><ul>")
+                for ref in f.referencias:
+                    html_parts.append(f"<li>{html.escape(ref)}</li>")
+                html_parts.append("</ul>")
     else:
         html_parts.append("<p>No hay hallazgos candidatos.</p>")
 
@@ -307,10 +393,25 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
     html_parts.append("<h2>Observaciones</h2>")
     observaciones = [f for f in collected.findings if f.confianza == "observacion"]
     if observaciones:
-        html_parts.append("<ul>")
         for f in observaciones:
-            html_parts.append(f"<li><strong>{html.escape(f.titulo)}</strong> ({html.escape(f.severidad)}): {html.escape(f.descripcion)}</li>")
-        html_parts.append("</ul>")
+            html_parts.append(f"<h3>{html.escape(f.titulo)}</h3>")
+            html_parts.append(f"<p><strong>ID:</strong> {html.escape(f.id)}</p>")
+            html_parts.append(f"<p><strong>Severidad:</strong> <span class='{html.escape(f.severidad)}'>{html.escape(f.severidad)}</span></p>")
+            html_parts.append(f"<p><strong>Activo:</strong> {html.escape(f.activo)}</p>")
+            html_parts.append(f"<p><strong>Técnica:</strong> {html.escape(f.tecnica)}</p>")
+            html_parts.append(f"<p><strong>Descripción:</strong> {html.escape(f.descripcion)}</p>")
+            if f.evidencia:
+                html_parts.append("<p><strong>Evidencia:</strong></p><ul>")
+                for e in f.evidencia:
+                    linea_str = f":{e.linea}" if e.linea else ""
+                    html_parts.append(f"<li>{html.escape(e.archivo)}{html.escape(linea_str)}<pre>{html.escape(e.extracto)}</pre></li>")
+                html_parts.append("</ul>")
+            html_parts.append(f"<p><strong>Recomendación:</strong> {html.escape(f.recomendacion)}</p>")
+            if f.referencias:
+                html_parts.append("<p><strong>Referencias:</strong></p><ul>")
+                for ref in f.referencias:
+                    html_parts.append(f"<li>{html.escape(ref)}</li>")
+                html_parts.append("</ul>")
     else:
         html_parts.append("<p>No hay observaciones.</p>")
 
@@ -354,9 +455,17 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
 
     # Metodología
     html_parts.append("<h2>Metodología</h2>")
-    html_parts.append("<p>Se aplicaron técnicas de reconocimiento activo y pasivo, escaneo de puertos,")
-    html_parts.append("análisis de vulnerabilidades con herramientas automatizadas y revisión manual")
-    html_parts.append("de hallazgos. Los resultados se clasificaron por severidad y confianza.</p>")
+    if collected.evaluado:
+        tecnicas = sorted({f.tecnica for f in collected.findings if f.tecnica})
+        if tecnicas:
+            html_parts.append("<p>Se aplicaron las siguientes técnicas de evaluación:</p><ul>")
+            for tecnica in tecnicas:
+                html_parts.append(f"<li>{html.escape(tecnica)}</li>")
+            html_parts.append("</ul>")
+        else:
+            html_parts.append("<p>Se evaluaron fuentes pero no se identificaron técnicas específicas.</p>")
+    else:
+        html_parts.append("<p>No se evaluó ninguna fuente con éxito.</p>")
 
     html_parts.extend(["</body>", "</html>"])
     return "\n".join(html_parts)
@@ -437,12 +546,17 @@ def _render_cliente_md(collected: Collected, meta: dict) -> str:
         altos = len([f for f in confirmados if f.severidad == "alta"])
         medios = len([f for f in confirmados if f.severidad == "media"])
         bajos = len([f for f in confirmados if f.severidad == "baja"])
+        infos = len([f for f in confirmados if f.severidad == "info"])
         if criticos or altos:
             lineas_resumen.append(f"Se identificaron {criticos + altos} hallazgos de severidad alta o crítica que requieren atención inmediata.")
         if medios:
             lineas_resumen.append(f"Se encontraron {medios} hallazgos de severidad media que deberían abordarse en el corto plazo.")
         if bajos:
             lineas_resumen.append(f"Se detectaron {bajos} hallazgos de severidad baja que pueden incluirse en el plan de endurecimiento.")
+        if infos and not (criticos or altos or medios or bajos):
+            lineas_resumen.append(f"Se identificaron {infos} hallazgos informativos que no representan un riesgo directo pero amplían la visibilidad del entorno.")
+        elif infos:
+            lineas_resumen.append(f"Adicionalmente, se registraron {infos} hallazgos informativos.")
     else:
         lineas_resumen.append("No se identificaron hallazgos confirmados durante la evaluación.")
     lines.append(" ".join(lineas_resumen))
@@ -579,6 +693,7 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
         altos = len([f for f in confirmados if f.severidad == "alta"])
         medios = len([f for f in confirmados if f.severidad == "media"])
         bajos = len([f for f in confirmados if f.severidad == "baja"])
+        infos = len([f for f in confirmados if f.severidad == "info"])
         resumen = []
         if criticos or altos:
             resumen.append(f"Se identificaron {criticos + altos} hallazgos de severidad alta o crítica que requieren atención inmediata.")
@@ -586,6 +701,10 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
             resumen.append(f"Se encontraron {medios} hallazgos de severidad media que deberían abordarse en el corto plazo.")
         if bajos:
             resumen.append(f"Se detectaron {bajos} hallazgos de severidad baja que pueden incluirse en el plan de endurecimiento.")
+        if infos and not (criticos or altos or medios or bajos):
+            resumen.append(f"Se identificaron {infos} hallazgos informativos que no representan un riesgo directo pero amplían la visibilidad del entorno.")
+        elif infos:
+            resumen.append(f"Adicionalmente, se registraron {infos} hallazgos informativos.")
         html_parts.append(f"<p>{html.escape(' '.join(resumen))}</p>")
     else:
         html_parts.append("<p>No se identificaron hallazgos confirmados durante la evaluación.</p>")

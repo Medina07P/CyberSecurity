@@ -254,6 +254,28 @@ class CollectTests(unittest.TestCase):
                     f"Evidence path should be repo-relative: {f.evidencia[0].archivo}"
                 )
 
+    def test_external_scans_dir_uses_relpath_not_basename(self):
+        # Cuando --scans apunta a un directorio externo, la evidencia debe
+        # contener la ruta relativa completa, no solo el nombre del fichero
+        external = Path(tmp()) / "external_scans"
+        repo = Path(tmp()) / "repo"
+        external.mkdir(parents=True)
+        repo.mkdir(parents=True)
+        xml = external / "nmap" / "a_127.0.0.1.xml"
+        xml.parent.mkdir(parents=True)
+        xml.write_text(XML_127, encoding="utf-8")
+        
+        c = collect(external, repo, "127.0.0.1")
+        self.assertGreater(len(c.findings), 0)
+        for f in c.findings:
+            if f.evidencia:
+                # Debe contener la ruta relativa, no solo el nombre
+                archivo = f.evidencia[0].archivo
+                self.assertIn("nmap", archivo)
+                self.assertIn("a_127.0.0.1.xml", archivo)
+                # No debe ser solo el nombre del fichero
+                self.assertNotEqual(archivo, "a_127.0.0.1.xml")
+
 
 from lib.parsers import ffuf
 
@@ -308,12 +330,52 @@ class VerdictTests(unittest.TestCase):
             "tanda vacía o interrumpida (sin filas de evidencia)",
         )
 
+    def test_http_inject_sqli_subclasses_are_accepted(self):
+        tsv = "nivel\tparam\tclase\tpayload\tcodigo\ttamano\tms\tevidencia\n"
+        tsv += "CONFIRMADO\tid\tsqli_bool\t' OR 1=1\t200\t99\t12\tx\n"
+        tsv += "FUERTE\tq\tsqli_error\t' OR '1'='1\t200\t99\t12\ty\n"
+        tsv += "CONFIRMADO\tt\tsqli_time\t' AND SLEEP(5)\t200\t99\t12\tz\n"
+        path = write("web/http_inject_sqli_sub_127.0.0.1.tsv", tsv)
+        write("web/http_inject_sqli_sub_127.0.0.1/contexto.txt", "host=127.0.0.1\n")
+        r = http_inject.parse(path, ROOT)
+        self.assertEqual(len(r.findings), 3)
+        for f in r.findings:
+            self.assertEqual(f.rule, "http_inject.sqli")
+        keys = {f.key for f in r.findings}
+        self.assertEqual(keys, {"sqli|127.0.0.1|id", "sqli|127.0.0.1|q", "sqli|127.0.0.1|t"})
+
     def test_sqlmap_verdicts(self):
         ok = "- Objetivo: 127.0.0.1:443 (https)\n- Veredicto: INYECTABLE (id): boolean-based blind\n"
         r = sqlmap.parse(write("web/sqlmap_a.txt", ok), ROOT)
         self.assertEqual((r.findings[0].severidad, r.findings[0].confianza), ("critica", "confirmado"))
         self.assertEqual(sqlmap.parse(write("web/sqlmap_b.txt", ok.replace("INYECTABLE", "NO INYECTABLE")), ROOT).findings, [])
         self.assertTrue(sqlmap.parse(write("web/sqlmap_c.txt", ok.replace("INYECTABLE (id): boolean-based blind", "NO DETERMINADO (código 2)")), ROOT).no_evaluable)
+
+    def test_sqlmap_without_verdict_is_no_evaluable(self):
+        # Un fichero con contenido pero sin línea de veredicto válida
+        content = "- Objetivo: 127.0.0.1:443 (https)\n- Otra línea sin veredicto\n"
+        r = sqlmap.parse(write("web/sqlmap_no_verdict.txt", content), ROOT)
+        self.assertFalse(r.evaluado)
+        self.assertTrue(r.no_evaluable)
+        self.assertEqual(r.findings, [])
+
+    def test_sqlmap_error_429_is_no_evaluable(self):
+        # ERROR 429 debe ser no_evaluable
+        content = "- Objetivo: 127.0.0.1:443 (https)\n- ERROR 429: Too Many Requests\n"
+        r = sqlmap.parse(write("web/sqlmap_429.txt", content), ROOT)
+        self.assertFalse(r.evaluado)
+        self.assertTrue(r.no_evaluable)
+        self.assertEqual(r.findings, [])
+
+    def test_sqlmap_mixed_verdicts_keeps_evaluated_true(self):
+        # Si hay al menos un veredicto válido, evaluado=True
+        content = "- Objetivo: 127.0.0.1:443 (https)\n"
+        content += "- Veredicto: INYECTABLE (id): boolean-based blind\n"
+        content += "- Veredicto: NO DETERMINADO (q): código 429\n"
+        r = sqlmap.parse(write("web/sqlmap_mixed.txt", content), ROOT)
+        self.assertTrue(r.evaluado)
+        self.assertEqual(len(r.findings), 1)
+        self.assertTrue(r.no_evaluable)  # El NO DETERMINADO queda como no_evaluable
 
     def test_rate_limit_verdicts(self):
         base = "- Objetivo: 127.0.0.1:443 (https)\n- Petición: POST /login\n- Veredicto: {}\n"
@@ -352,6 +414,29 @@ class HeadersTests(unittest.TestCase):
         self.assertNotIn("headers.missing.csp", rules); self.assertNotIn("headers.missing.hsts", rules)
         self.assertEqual(rules, {"headers.missing.xfo", "headers.missing.xcto"})
 
+    def test_https_detection_uses_exact_tokens(self):
+        # 4430 no es https
+        p = write("web/security_headers_4430.txt", "Server: x\n")
+        write("web/headers_4430.txt", "HTTP/1.1 200 OK\nServer: x\n")
+        r = headers.parse_security(p, ROOT)
+        # No debe reportar HSTS porque 4430 no es https
+        rules = {f.rule for f in r.findings}
+        self.assertNotIn("headers.missing.hsts", rules)
+        self.assertIn("headers.missing.csp", rules)
+
+    def test_csp_with_frame_ancestors_skips_xfo(self):
+        p = write("web/security_headers_csp_127.0.0.1.txt", 
+                  "Content-Security-Policy: default-src 'self'; frame-ancestors 'none'\n")
+        write("web/headers_csp_127.0.0.1.txt", "HTTP/1.1 200 OK\n")
+        r = headers.parse_security(p, ROOT)
+        rules = {f.rule for f in r.findings}
+        # No debe reportar XFO porque CSP tiene frame-ancestors
+        self.assertNotIn("headers.missing.xfo", rules)
+        # CSP está presente, así que no se reporta como faltante
+        self.assertNotIn("headers.missing.csp", rules)
+        # Pero sí debe reportar XCTO que sí falta
+        self.assertIn("headers.missing.xcto", rules)
+
 
 from lib.parsers import host_sources
 
@@ -360,6 +445,35 @@ class HostSourceTests(unittest.TestCase):
         r = host_sources.parse_api(write("api/methods.txt", " ✅ GET (404)\n ✅ PUT (200)\n ✅ DELETE (501)\n"), ROOT)
         self.assertEqual(len(r.findings), 1)
         self.assertEqual((r.findings[0].severidad, r.findings[0].activo), ("baja", ""))
+
+    def test_unattributed_sources_marked_in_reports(self):
+        root = Path(tmp())
+        scans = root / "scans"
+        write_at(scans, "api/methods.txt", " ✅ PUT (200)\n")
+        
+        # Sin flag: no se incluye
+        collected = collect(scans, root, "127.0.0.1")
+        self.assertEqual(collected.findings, [])
+        unattributed = [item for item in collected.no_evaluable if item["motivo"] == "sin objetivo atribuible"]
+        self.assertTrue(unattributed)
+        
+        # Con flag: se incluye y se marca
+        collected = collect(scans, root, "127.0.0.1", incluir_sin_objetivo=True)
+        self.assertEqual(len(collected.findings), 1)
+        self.assertEqual(collected.findings[0].activo, "sin objetivo atribuible")
+        
+        # Verificar que el informe técnico lo muestra
+        out = Path(tmp())
+        write_reports(collected, {"cliente": "ACME"}, out, ["tecnico"])
+        md_tecnico = (out / "informe_tecnico.md").read_text()
+        self.assertIn("sin objetivo atribuible", md_tecnico)
+        
+        # El informe de cliente incluye el hallazgo pero no expone el activo interno
+        out2 = Path(tmp())
+        write_reports(collected, {"cliente": "ACME"}, out2, ["cliente"])
+        md_cliente = (out2 / "informe_cliente.md").read_text()
+        # El hallazgo debe aparecer en Endurecimiento (observaciones)
+        self.assertIn("Método HTTP", md_cliente)
 
     def test_ssh_password_auth_with_host(self):
         txt = "Nmap scan report for localhost (127.0.0.1)\n| ssh-auth-methods:\n|     publickey\n|_    password\n"
@@ -385,7 +499,7 @@ class RenderTests(unittest.TestCase):
                     confianza="confirmado", activo="https://127.0.0.1", tecnica="sqlmap",
                     descripcion="d", impacto_cliente="i", recomendacion="r", esfuerzo="medio",
                     cve=None, cvss=None, evidencia=[Evidence("scans/web/sqlmap_a.txt", 3, "- Veredicto: INYECTABLE")],
-                    referencias=[])
+                    referencias=["https://cwe.mitre.org/data/definitions/89.html"])
         c = Finding(rule="sqli_findings.differential", key="c", titulo="Dif", categoria="web", severidad="media",
                     confianza="candidato", activo="https://127.0.0.1", tecnica="sqli",
                     descripcion="d", impacto_cliente="i", recomendacion="r", esfuerzo="medio",
@@ -402,8 +516,33 @@ class RenderTests(unittest.TestCase):
         self.assertIn("Incidencias de ejecución", md); self.assertIn("Descartados", md)
         self.assertIn("Activos", md)
         self.assertIn("Técnica", md)
+        self.assertIn("ID:", md)
+        self.assertIn("Reproducción:", md)
+        self.assertIn("Referencias:", md)
         html = (out / "informe_tecnico.html").read_text()
         self.assertIn("Técnica", html)
+        self.assertIn("ID:", html)
+
+    def test_methodology_lists_only_evaluated_sources(self):
+        # Un hallazgo con una sola técnica no debe mencionar fases no ejecutadas
+        f = Finding(rule="nmap.open_port", key="k", titulo="Puerto abierto", categoria="red",
+                    severidad="info", confianza="observacion", activo="127.0.0.1", tecnica="nmap",
+                    descripcion="d", impacto_cliente="i", recomendacion="r", esfuerzo="medio",
+                    cve=None, cvss=None, evidencia=[], referencias=[])
+        col = Collected([f], {"127.0.0.1": {}}, [], [], ["127.0.0.1"], True)
+        out = Path(tmp())
+        write_reports(col, {}, out, ["tecnico"])
+        md = (out / "informe_tecnico.md").read_text()
+        self.assertIn("nmap", md)
+        # No debe mencionar técnicas que no se ejecutaron
+        self.assertNotIn("reconocimiento activo y pasivo", md)
+        
+        # Sin fuentes evaluadas
+        col2 = Collected([], {}, [], [], [], False)
+        out2 = Path(tmp())
+        write_reports(col2, {}, out2, ["tecnico"])
+        md2 = (out2 / "informe_tecnico.md").read_text()
+        self.assertIn("No se evaluó ninguna fuente con éxito", md2)
 
     def test_client_has_no_internal_paths_or_payloads(self):
         out = Path(tmp()); write_reports(self.collected(), {"cliente": "ACME", "auditor": "Ana"}, out, ["cliente"])
@@ -518,6 +657,12 @@ class CliTests(unittest.TestCase):
 
     def test_exit_3_when_nothing_is_evaluable(self):
         self.assertEqual(run(["--scans", str(self.empty), "--objetivo", "127.0.0.1", "--salida", str(self.out)]), 3)
+        # Los informes deben existir aunque no haya nada evaluable
+        self.assertTrue((self.out / "informe_tecnico.md").exists())
+        self.assertTrue((self.out / "informe_cliente.md").exists())
+        self.assertTrue((self.out / "findings.json").exists())
+        md = (self.out / "informe_cliente.md").read_text()
+        self.assertIn("No hubo fuentes evaluables", md)
 
     def test_usage_error_returns_1_and_help_returns_0(self):
         self.assertEqual(run(["--no-existe"]), 1)
@@ -632,6 +777,50 @@ class TargetIsolationTests(unittest.TestCase):
         self.assertEqual(len(collected.no_evaluable), 1)
         self.assertNotIn("127.0.0.10", json.dumps(to_json(collected, {}), ensure_ascii=False))
 
+    def test_cve_deduplicates_across_nmap_and_nuclei(self):
+        root = Path(tmp())
+        scans = root / "scans"
+        # nmap reporta CVE-2021-41773
+        write_at(scans, "nmap/a_127.0.0.1.xml", XML_127)
+        # nuclei reporta el mismo CVE
+        jsonl = '{"template-id":"CVE-2021-41773","info":{"name":"X","severity":"high","classification":{"cve-id":"CVE-2021-41773"}},"matched-at":"https://127.0.0.1:8443/a"}\n'
+        write_at(scans, "nuclei/b_127.0.0.1.jsonl", jsonl)
+        
+        collected = collect(scans, root, "127.0.0.1")
+        
+        # Debe haber un solo hallazgo con clave cve|CVE-2021-41773|127.0.0.1
+        cve_findings = [f for f in collected.findings if f.cve == "CVE-2021-41773"]
+        self.assertEqual(len(cve_findings), 1)
+        self.assertEqual(cve_findings[0].key, "cve|CVE-2021-41773|127.0.0.1")
+        # Debe tener evidencias de ambas fuentes
+        self.assertEqual(len(cve_findings[0].evidencia), 2)
+
+    def test_sqli_merges_sqlmap_http_inject_and_sqli_findings(self):
+        root = Path(tmp())
+        scans = root / "scans"
+        # sqlmap confirma inyección
+        write_at(scans, "web/sqlmap_127.0.0.1.txt", 
+                 "- Objetivo: 127.0.0.1:443 (https)\n- Veredicto: INYECTABLE (id): boolean-based blind\n")
+        # http_inject con diferencial fuerte
+        tsv = "nivel\tparam\tclase\tpayload\tcodigo\ttamano\tms\tevidencia\n"
+        tsv += "FUERTE\tid\tsqli\t' OR 1=1\t200\t99\t12\tx\n"
+        write_at(scans, "web/http_inject_127.0.0.1.tsv", tsv)
+        write_at(scans, "web/http_inject_127.0.0.1/contexto.txt", "host=127.0.0.1\n")
+        # sqli_findings con diferencial
+        write_at(scans, "web/sqli_findings_127.0.0.1.txt", 
+                 "https://127.0.0.1:443/?id=1|200:999|base:200:433\n")
+        
+        collected = collect(scans, root, "127.0.0.1")
+        
+        # Debe haber un solo hallazgo con clave sqli|127.0.0.1|id
+        sqli_findings = [f for f in collected.findings if "sqli" in f.key.lower()]
+        self.assertEqual(len(sqli_findings), 1)
+        self.assertEqual(sqli_findings[0].key, "sqli|127.0.0.1|id")
+        # Debe ser confirmado (sqlmap tiene la mayor confianza)
+        self.assertEqual(sqli_findings[0].confianza, "confirmado")
+        # Debe tener evidencias de las tres fuentes
+        self.assertEqual(len(sqli_findings[0].evidencia), 3)
+
     def test_asset_without_host_requires_the_explicit_flag(self):
         root = Path(tmp())
         scans = root / "scans"
@@ -643,6 +832,29 @@ class TargetIsolationTests(unittest.TestCase):
         self.assertEqual(default.activos, {})
         self.assertEqual(len(included.activos), 1)
         self.assertEqual(next(iter(included.activos.values()))["host"], "")
+
+    def test_assets_merge_by_host(self):
+        root = Path(tmp())
+        scans = root / "scans"
+        # nmap aporta puertos
+        write_at(scans, "nmap/a_127.0.0.1.xml", XML_127)
+        # technologies aporta tecnologías
+        write_at(scans, "web/technologies_127.0.0.1.txt", 
+                 "http://127.0.0.1:8080 [200 OK] Server[SimpleHTTP/0.6]\n")
+        # headers aporta contexto
+        write_at(scans, "web/headers_127.0.0.1.txt", "HTTP/1.1 200 OK\nServer: x\n")
+        
+        collected = collect(scans, root, "127.0.0.1")
+        
+        # Debe haber un solo activo para 127.0.0.1
+        self.assertEqual(len(collected.activos), 1)
+        asset = collected.activos["127.0.0.1"]
+        # Debe tener puertos de nmap
+        self.assertTrue(any(p["puerto"] == 8080 for p in asset.get("puertos", [])))
+        # Debe tener tecnologías de whatweb
+        self.assertIn("Server: SimpleHTTP/0.6", asset.get("tecnologias", []))
+        # Debe tener contexto de headers
+        self.assertIn("fuente", asset)
 
 
 if __name__ == "__main__":

@@ -50,16 +50,17 @@ def _load_parsers() -> None:
 
     Cada módulo se importa con tolerancia a ``ImportError``; si el módulo
     aún no existe (tareas futuras), simplemente se ignora.
+    El flag _loaded se marca solo después de completar la importación.
     """
     global _loaded
     if _loaded:
         return
-    _loaded = True
     for module_name in _PARSER_MODULES:
         try:
             importlib.import_module(f".parsers.{module_name}", package="lib")
         except ImportError:
             pass
+    _loaded = True
 
 
 # Tabla de clasificación: (directorio, patrón de nombre) → kind.

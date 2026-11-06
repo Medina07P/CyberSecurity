@@ -67,10 +67,10 @@ for arg in "$@"; do
                 continue
                 ;;
             *)
-                echo "❌ Tipo no reconocido: $arg" >&2
-                echo "Usa: tecnico | cliente | ambos" >&2
-                echo "   o: ./report_generator.sh --help" >&2
-                exit 1
+                # Primer argumento no es un tipo conocido: no consumirlo como tipo,
+                # reenviar todo con tipo "ambos" por defecto
+                resto+=("$arg")
+                continue
                 ;;
         esac
     fi

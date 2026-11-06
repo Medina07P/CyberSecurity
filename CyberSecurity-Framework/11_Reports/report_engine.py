@@ -255,21 +255,21 @@ def run(argv: list[str] | None = None) -> int:
         print(f"Error al leer scans: {exc}", file=sys.stderr)
         return 1
 
-    if not collected.evaluado:
-        print("No se evaluó ningún parser con éxito; no hay material para informar.",
-              file=sys.stderr)
-        return 3
-
     meta = {
         "cliente": cliente,
         "auditor": auditor,
         "fecha": datetime.now().strftime("%Y-%m-%d"),
         "objetivo": objetivo or "No especificado",
+        "alcance": objetivo or "No especificado",
+        "generado_en": datetime.now().isoformat(),
+        "modo": "todos" if todos else ("incluir_sin_objetivo" if args.incluir_sin_objetivo else "objetivo"),
+        "scans_dir": str(scans_dir),
         "herramientas": sorted({
             f.tecnica for f in collected.findings if f.tecnica
         }),
     }
 
+    # Escribir informes incluso si no hay nada evaluable
     try:
         write_reports(collected, meta, out_dir, tipos)
         data = to_json(collected, meta)
@@ -277,6 +277,11 @@ def run(argv: list[str] | None = None) -> int:
     except OSError as exc:
         print(f"Error al escribir informes: {exc}", file=sys.stderr)
         return 1
+
+    if not collected.evaluado:
+        print("No se evaluó ningún parser con éxito; se generaron informes sin hallazgos evaluable.",
+              file=sys.stderr)
+        return 3
 
     if args.json:
         print(json.dumps(_summary(objetivo, collected, out_dir), ensure_ascii=False))
