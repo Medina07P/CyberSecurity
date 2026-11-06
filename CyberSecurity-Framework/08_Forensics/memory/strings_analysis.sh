@@ -5,7 +5,8 @@
 # Ejemplo: ./strings_analysis.sh memory.bin
 
 FILE="$1"
-OUTPUT_DIR="../analysis/strings"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/analysis/strings"
 
 if [[ -z "$FILE" ]]; then
     echo "Uso: ./strings_analysis.sh <FILE>"

@@ -189,7 +189,7 @@ if [[ -f "fingerprinting/puertos_web.txt" ]]; then
     while read -r port; do
         echo "  → Puerto $port"
         PROTO="http"
-        [[ "$port" == "443" ]] && PROTO="https"
+        [[ "$port" == "443" || "$port" == "8443" ]] && PROTO="https"
         URL="${PROTO}://${TARGET_IP}:${port}"
         
         # Intentar diferentes herramientas de captura

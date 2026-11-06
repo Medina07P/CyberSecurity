@@ -37,11 +37,12 @@ echo "📋 Verificando servicios..."
 nmap -sV -p 21,22,80,443,445,389,3306,5432,6379,8080 "$TARGET" \
     -oG "$GNMAP" -oN "${GNMAP%.gnmap}.txt" >/dev/null 2>/dev/null
 
-# Usa el resultado del escaneo; si no hay fichero, pregunta a nmap
+# Usa el resultado del escaneo; si el puerto no estaba en él, pregunta a nmap.
+# Ojo: un gnmap no vacío no implica que ese puerto concreto se haya escaneado.
 port_open() {
     local port="$1"
-    if [[ -s "$GNMAP" ]]; then
-        grep -qE "(Ports: |, )${port}/open" "$GNMAP"
+    if [[ -s "$GNMAP" ]] && grep -qE "(Ports: |, )${port}/(open|closed|filtered)/" "$GNMAP"; then
+        grep -qE "(Ports: |, )${port}/open/" "$GNMAP"
     else
         nmap -p "$port" "$TARGET" 2>/dev/null | grep -q "open"
     fi

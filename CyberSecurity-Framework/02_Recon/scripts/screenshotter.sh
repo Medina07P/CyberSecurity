@@ -7,7 +7,9 @@
 
 TARGET="$1"
 PORT="$2"
-OUTPUT_DIR="../screenshots"
+# Salida junto al módulo, independiente del cwd desde el que se lance
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/screenshots"
 
 if [[ -z "$TARGET" || -z "$PORT" ]]; then
     echo "Uso: ./screenshotter.sh <IP> <PUERTO>"
@@ -18,7 +20,7 @@ fi
 mkdir -p "$OUTPUT_DIR"
 
 PROTO="http"
-[[ "$PORT" == "443" ]] && PROTO="https"
+[[ "$PORT" == "443" || "$PORT" == "8443" ]] && PROTO="https"
 URL="${PROTO}://${TARGET}:${PORT}"
 
 echo "📸 Capturando screenshot de: $URL"

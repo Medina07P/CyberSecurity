@@ -1,15 +1,11 @@
-# ─── 01_OSINT/scripts/osint_harvester.sh ───
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TARGET_FILE="$ROOT/01_OSINT/scripts/osint_harvester.sh"
-TMP_FILE="$(mktemp "${TARGET_FILE}.XXXXXX")"
-cat > "$TMP_FILE" << 'EOF'
 #!/bin/bash
 # ============================================================
 #  OSINT HARVESTER - Recopilación de información
 # ============================================================
 
 DOMAIN="$1"
-OUTPUT_DIR="${2:-.}"
+# Salida junto al módulo (01_OSINT/domains), independiente del cwd
+OUTPUT_DIR="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/domains}"
 
 if [[ -z "$DOMAIN" ]]; then
     echo "Uso: ./osint_harvester.sh <dominio> [directorio_salida]"
@@ -17,6 +13,7 @@ if [[ -z "$DOMAIN" ]]; then
 fi
 
 echo "🔍 Recopilando OSINT para: $DOMAIN"
+mkdir -p "$OUTPUT_DIR"
 
 # 1. WHOIS
 whois "$DOMAIN" > "$OUTPUT_DIR/whois_${DOMAIN}.txt"
@@ -39,7 +36,3 @@ curl -s "https://crt.sh/?q=%.$DOMAIN&output=json" 2>/dev/null | jq -r '.[].name_
 echo "  ✅ Certificados completado"
 
 echo "✅ OSINT completado para $DOMAIN"
-EOF
-
-chmod +x "$TMP_FILE"
-mv -f "$TMP_FILE" "$TARGET_FILE"

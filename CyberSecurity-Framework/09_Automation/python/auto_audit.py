@@ -15,7 +15,13 @@ class AutoAudit:
     def __init__(self, target):
         self.target = target
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.output_dir = f"audit_{self.target}_{self.timestamp}"
+        # Resultados en <repo>/scans/audits/, sin depender del cwd
+        self.root = Path(__file__).resolve().parents[3]
+        self.output_dir = str(
+            self.root / "scans" / "audits" /
+            f"audit_{self.target}_{self.timestamp}"
+        )
+        os.makedirs(self.output_dir, exist_ok=True)
         self.phases = {
             "recon": self.run_recon,
             "scan": self.run_scan,

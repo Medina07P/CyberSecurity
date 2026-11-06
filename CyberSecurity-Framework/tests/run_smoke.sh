@@ -87,11 +87,23 @@ else
 fi
 
 echo ""
-echo "=== marcas en 01_OSINT y 06 ==="
-out=$(printf '01\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
-printf '%s' "$out" | grep -qF "[generador]" && echo "  OK       aparece [generador] en 01" || { echo "  FALLO    sin [generador] en 01"; fail=$((fail+1)); }
+echo "=== marcas en 06 ==="
+# 01_OSINT ya no tiene generadores: osint_harvester.sh se reescribía a sí mismo
+# y se materializó el 2026-10-31. Los generadores que quedan están en 06.
 out=$(printf '06\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
+printf '%s' "$out" | grep -qF "[generador]" && echo "  OK       aparece [generador] en 06" || { echo "  FALLO    sin [generador] en 06"; fail=$((fail+1)); }
 printf '%s' "$out" | grep -qF "[intrusiva]" && echo "  OK       aparece [intrusiva] en 06" || { echo "  FALLO    sin [intrusiva] en 06"; fail=$((fail+1)); }
+
+out=$(printf '00\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
+printf '%s' "$out" | grep -qF "config_wizard.sh" \
+    && echo "  OK       configuración lista config_wizard.sh" \
+    || { echo "  FALLO    no lista config_wizard.sh"; fail=$((fail + 1)); }
+
+echo ""
+echo "=== informes: acción R ==="
+# La acción R del menú principal muestra el submenu de informe rápido.
+# La generación real se prueba en run_reports.sh con fixtures aislados.
+run "R muestra el submenu de informes" 'R\n0\nQ\n' "Informe técnico"
 
 echo ""
 echo "----------------------------------------"

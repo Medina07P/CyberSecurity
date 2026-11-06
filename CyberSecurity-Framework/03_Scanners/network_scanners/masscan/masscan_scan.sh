@@ -18,20 +18,30 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
+# El log es de este run: sin truncar, el error de hace un mes sigue ahí y
+# todas las ejecuciones posteriores avisan sin motivo real.
+: > "$OUTPUT_DIR/errores.log"
+
 if ! command -v masscan &>/dev/null; then
     echo "❌ Masscan no instalado"
     echo "  Instalar con: sudo apt install masscan"
     exit 1
 fi
 
+# Masscan usa sockets raw: sin root falla y el mensaje de "sin puertos" engaña.
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo "❌ Masscan necesita root (sockets raw)"
+    echo "   Ejecuta: sudo bash ${BASH_SOURCE[0]} $TARGET $PORTS"
+    exit 1
+fi
+
 echo "📡 Ejecutando masscan en: $TARGET"
 echo "   Puertos: $PORTS"
 
-# Ejecutar masscan con sudo (ya que estamos como root)
 masscan -p"$PORTS" --rate=10000 "$TARGET" \
     -oJ "$OUTPUT_DIR/masscan_${TARGET//\//_}.json" \
     -oG "$OUTPUT_DIR/masscan_${TARGET//\//_}.grep" \
-    -oL "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt" 2>/dev/null
+    -oL "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt" 2>>"$OUTPUT_DIR/errores.log"
 
 # Mostrar resultados
 if [[ -f "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt" ]]; then
@@ -44,4 +54,10 @@ if [[ -f "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt" ]]; then
     cat "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt"
 else
     echo "❌ No se encontraron puertos abiertos o el escaneo falló"
+fi
+
+# El stderr de la herramienta no se descarta: un "0 hallazgos" no debe
+# poder ser en realidad un fallo de ejecucion.
+if [[ -s "$OUTPUT_DIR/errores.log" ]]; then
+    echo "⚠️  Errores registrados en: $OUTPUT_DIR/errores.log"
 fi

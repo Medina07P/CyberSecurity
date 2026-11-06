@@ -5,7 +5,8 @@
 # Ejemplo: ./bt_discover.sh AA:BB:CC:DD:EE:FF
 
 MAC="$1"
-OUTPUT_DIR="../captures/logs"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/captures/logs"
 
 if [[ -z "$MAC" ]]; then
     echo "Uso: ./bt_discover.sh <MAC>"

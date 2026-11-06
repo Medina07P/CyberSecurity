@@ -6,8 +6,8 @@
 # ============================================================
 
 URL="$1"
-SCANS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)/scans"
-OUTPUT_DIR="$SCANS_DIR/nikto"
+SCANS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../../00_Config/lib" && pwd)"
+source "$SCANS_LIB/scans.bash"
 
 if [[ -z "$URL" ]]; then
     echo "Uso: ./nikto_scan.sh <URL>"
@@ -15,7 +15,13 @@ if [[ -z "$URL" ]]; then
     exit 1
 fi
 
-mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR=$(scans_dir nikto)
+
+# El log es de este run: sin truncar, el error de hace un mes sigue ahí y
+# todas las ejecuciones posteriores avisan sin motivo real.
+: > "$OUTPUT_DIR/errores.log"
+
+SLUG=$(scans_slug "$URL")
 
 if ! command -v nikto &>/dev/null; then
     echo "❌ Nikto no instalado"
@@ -26,18 +32,27 @@ fi
 echo "🔬 Escaneando con Nikto: $URL"
 echo "  ⚠️  Nikto puede tardar varios minutos..."
 
-# Escaneo en texto
-nikto -h "$URL" -ssl -o "$OUTPUT_DIR/nikto_${URL//[:\/]/_}.txt" \
-    -Format txt 2>/dev/null
+# Escaneo en texto. -ssl solo en HTTPS: forzarlo contra http:// rompe la conexión.
+# Nikto añade la extensión del formato al nombre de -o, así que se pasa sin ".txt".
+NIKTO_BASE="$OUTPUT_DIR/nikto_${SLUG}"
+NIKTO_ARGS=(-h "$URL" -o "$NIKTO_BASE" -Format txt)
+[[ "$URL" == https://* ]] && NIKTO_ARGS+=(-ssl)
+nikto "${NIKTO_ARGS[@]}" 2>>"$OUTPUT_DIR/errores.log"
 
 # Extraer CVEs y vulnerabilidades
-if [[ -f "$OUTPUT_DIR/nikto_${URL//[:\/]/_}.txt" ]]; then
+if [[ -f "${NIKTO_BASE}.txt" ]]; then
     echo ""
     echo "📊 VULNERABILIDADES ENCONTRADAS:"
     echo "────────────────────────────────────────"
-    grep -E "OSVDB|CVE|\+" "$OUTPUT_DIR/nikto_${URL//[:\/]/_}.txt" | head -20
+    grep -E "OSVDB|CVE|\+" "${NIKTO_BASE}.txt" | head -20
     echo ""
-    echo "📁 Resultados: $OUTPUT_DIR/nikto_${URL//[:\/]/_}.*"
+    echo "📁 Resultados: ${NIKTO_BASE}.txt"
 else
     echo "  ⚠️ No se encontraron vulnerabilidades o el escaneo falló"
+fi
+
+# El stderr de la herramienta no se descarta: un "0 hallazgos" no debe
+# poder ser en realidad un fallo de ejecucion.
+if [[ -s "$OUTPUT_DIR/errores.log" ]]; then
+    echo "⚠️  Errores registrados en: $OUTPUT_DIR/errores.log"
 fi

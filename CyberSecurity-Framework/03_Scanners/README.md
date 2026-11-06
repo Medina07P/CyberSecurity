@@ -11,7 +11,7 @@ Este directorio contiene los escáneres de puertos, servicios y vulnerabilidades
 | `network_scanners/rustscan/` | RustScan: descubrimiento rápido con derivación a Nmap |
 | `web_scanners/nikto/` | Nikto: análisis de servidores web |
 | `web_scanners/nuclei/` | Nuclei: plantillas de vulnerabilidades y CVEs |
-| `web_scanners/burpsuite/` | Configuración de Burp Suite (no ejecutable) |
+| `web_scanners/burpsuite/` | Burp Suite: lanzador y configuración. Community no escanea ni guarda proyectos; captura con Repeater y pasa la petición a `05_Exploitation/web/http_inject.sh` |
 
 ## 🚀 Uso Rápido
 

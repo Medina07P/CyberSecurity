@@ -5,7 +5,8 @@
 # Ejemplo: ./wifi_scan.sh wlan0
 
 INTERFACE="$1"
-OUTPUT_DIR="../captures/logs"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/captures/logs"
 
 if [[ -z "$INTERFACE" ]]; then
     echo "Uso: ./wifi_scan.sh <INTERFACE>"

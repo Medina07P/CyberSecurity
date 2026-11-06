@@ -4,8 +4,8 @@
 #  Uso: source 00_Config/lib/session.bash
 # ============================================================
 
-SESSION_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SESSION_CONFIG_DIR="$(cd "$SESSION_LIB_DIR/.." && pwd)"
+SESSION_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+SESSION_CONFIG_DIR="${SESSION_CONFIG_DIR:-$(cd "$SESSION_LIB_DIR/.." && pwd)}"
 SESSION_FW_DIR="$(cd "$SESSION_CONFIG_DIR/.." && pwd)"
 SESSION_REPO_DIR="$(cd "$SESSION_FW_DIR/.." && pwd)"
 SESSION_FILE="${SESSION_FILE:-$SESSION_CONFIG_DIR/.session}"

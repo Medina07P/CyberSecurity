@@ -4,7 +4,8 @@
 # Uso: ./bt_scan.sh
 # Ejemplo: ./bt_scan.sh
 
-OUTPUT_DIR="../captures/logs"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/captures/logs"
 
 mkdir -p "$OUTPUT_DIR"
 

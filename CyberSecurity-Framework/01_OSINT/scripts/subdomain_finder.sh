@@ -5,7 +5,9 @@
 # ============================================================
 
 DOMAIN="$1"
-OUTPUT_DIR="${2:-../subdomains}"
+# Salida junto al módulo, independiente del cwd desde el que se lance
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="${2:-$MODULE_DIR/subdomains}"
 
 if [[ -z "$DOMAIN" ]]; then
     echo "Uso: ./subdomain_finder.sh <dominio>"
@@ -14,6 +16,7 @@ if [[ -z "$DOMAIN" ]]; then
 fi
 
 echo "🌐 Buscando subdominios para: $DOMAIN"
+mkdir -p "$OUTPUT_DIR"
 
 # 1. dnsrecon
 echo "  → dnsrecon..."

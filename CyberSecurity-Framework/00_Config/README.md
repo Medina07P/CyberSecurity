@@ -22,5 +22,9 @@ Este directorio contiene todos los archivos de configuración, alcance y objetiv
 # Validar configuración
 ./scripts/validate_config.sh
 
+# Alta guiada de objetivos (pregunta host, puerto, protocolo, descripción y prioridad)
+./scripts/config_wizard.sh
+
 # Parsear objetivos
 python3 scripts/parse_targets.py
+```

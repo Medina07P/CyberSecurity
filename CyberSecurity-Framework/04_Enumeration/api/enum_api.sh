@@ -17,7 +17,9 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-URL="http://${TARGET}:${PORT}"
+PROTO="http"
+[[ "$PORT" == "443" || "$PORT" == "8443" ]] && PROTO="https"
+URL="${PROTO}://${TARGET}:${PORT}"
 
 echo "🔌 Enumerando API en: $URL"
 echo "────────────────────────────────────────"

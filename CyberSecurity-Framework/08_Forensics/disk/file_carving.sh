@@ -5,7 +5,8 @@
 # Ejemplo: ./file_carving.sh disk.img
 
 FILE="$1"
-OUTPUT_DIR="${2:-../recovered}"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="${2:-$MODULE_DIR/recovered}"
 
 if [[ -z "$FILE" ]]; then
     echo "Uso: ./file_carving.sh <FILE> [OUTPUT_DIR]"

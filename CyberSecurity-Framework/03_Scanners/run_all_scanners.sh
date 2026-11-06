@@ -34,7 +34,8 @@ if [[ -f "network_scanners/nmap/nmap_smart.sh" ]]; then
 else
     echo "  ⚠️ nmap_smart.sh no encontrado, usando nmap básico..."
     mkdir -p "$SCANS_DIR/nmap"
-    nmap -sV -sC -p- --min-rate 1000 "$TARGET" -oN "$SCANS_DIR/nmap/basic_${TARGET}.txt" 2>/dev/null
+    : > "$SCANS_DIR/nmap/errores.log"
+    nmap -sV -sC -p- --min-rate 1000 "$TARGET" -oN "$SCANS_DIR/nmap/basic_$(basename "$TARGET").txt" 2>>"$SCANS_DIR/nmap/errores.log"
 fi
 
 # Masscan (solo si es IP)
@@ -52,27 +53,41 @@ echo ""
 echo "🌐 WEB SCANNERS"
 echo "────────────────────────────────────────"
 
-# Verificar si hay puertos web abiertos
-WEB_PORTS=$(nmap -p 80,443,8080,8443 "$TARGET" 2>/dev/null | grep -E "^[0-9]+/tcp.*open" | cut -d'/' -f1 | tr '\n' ',' | sed 's/,$//')
+# Verificar si hay puertos web abiertos. El código de salida importa: un nmap
+# que falla deja WEB_PORTS vacío y "no hay puertos web" cerraría el run en verde
+# sin haber mirado nada.
+WEB_DISCOVERY=$(nmap -p 80,443,8080,8443 "$TARGET" 2>>"$SCANS_DIR/nmap/errores.log")
+WEB_RC=$?
+WEB_PORTS=$(printf '%s\n' "$WEB_DISCOVERY" | grep -E "^[0-9]+/tcp.*open" | cut -d'/' -f1 | tr '\n' ',' | sed 's/,$//')
 
-if [[ -n "$WEB_PORTS" ]]; then
+if [[ $WEB_RC -ne 0 ]]; then
+    echo "  ⚠️ No se pudo descubrir puertos web (nmap salió con $WEB_RC)"
+    echo "     Errores en: $SCANS_DIR/nmap/errores.log"
+elif [[ -n "$WEB_PORTS" ]]; then
     echo "  → Puertos web abiertos: $WEB_PORTS"
-    
-    # Nikto
-    echo "  → Nikto..."
-    if [[ -f "web_scanners/nikto/nikto_scan.sh" ]]; then
-        ./web_scanners/nikto/nikto_scan.sh "http://$TARGET"
-    else
-        echo "  ⚠️ nikto_scan.sh no encontrado"
-    fi
-    
-    # Nuclei
-    echo "  → Nuclei..."
-    if [[ -f "web_scanners/nuclei/nuclei_scan.sh" ]]; then
-        ./web_scanners/nuclei/nuclei_scan.sh "http://$TARGET"
-    else
-        echo "  ⚠️ nuclei_scan.sh no encontrado"
-    fi
+
+    # Un escaneo por puerto detectado, con el esquema correcto: nunca asumir el 80.
+    for WEB_PORT in ${WEB_PORTS//,/ }; do
+        WEB_SCHEME="http"
+        [[ "$WEB_PORT" == "443" || "$WEB_PORT" == "8443" ]] && WEB_SCHEME="https"
+        WEB_URL="${WEB_SCHEME}://${TARGET}:${WEB_PORT}"
+
+        # Nikto
+        echo "  → Nikto ($WEB_URL)..."
+        if [[ -f "web_scanners/nikto/nikto_scan.sh" ]]; then
+            ./web_scanners/nikto/nikto_scan.sh "$WEB_URL"
+        else
+            echo "  ⚠️ nikto_scan.sh no encontrado"
+        fi
+
+        # Nuclei
+        echo "  → Nuclei ($WEB_URL)..."
+        if [[ -f "web_scanners/nuclei/nuclei_scan.sh" ]]; then
+            ./web_scanners/nuclei/nuclei_scan.sh "$WEB_URL"
+        else
+            echo "  ⚠️ nuclei_scan.sh no encontrado"
+        fi
+    done
 else
     echo "  ⚠️ No se encontraron puertos web abiertos"
 fi
@@ -81,3 +96,25 @@ echo ""
 echo "════════════════════════════════════════════════════════"
 echo "  ✅ ESCANEOS COMPLETADOS"
 echo "════════════════════════════════════════════════════════"
+
+# ─── Resumen de errores ──────────────────────────────────
+# Un "0 hallazgos" puede ser en realidad un fallo de ejecución: cada escáner
+# escribe su stderr en <scans>/<herramienta>/errores.log. Se listan aquí los
+# que quedaron con contenido para no cerrar el run dando por buenos los vacíos.
+LOGS_ERRORES=()
+for log in "$SCANS_DIR"/*/errores.log "$SCANS_DIR"/*/*/errores.log; do
+    [[ -s "$log" ]] || continue
+    LOGS_ERRORES+=("$log")
+done
+
+if (( ${#LOGS_ERRORES[@]} )); then
+    echo ""
+    echo "📋 LOGS CON ERRORES"
+    echo "────────────────────────────────────────"
+    for log in "${LOGS_ERRORES[@]}"; do
+        N=$(wc -l < "$log" 2>/dev/null | tr -d ' ')
+        [[ "$N" == "1" ]] && UNIDAD="línea" || UNIDAD="líneas"
+        echo "  ⚠️  $log ($N $UNIDAD)"
+    done
+    echo "  Revisa esos logs antes de dar por buenos los resultados vacíos."
+fi
