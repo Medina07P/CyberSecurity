@@ -330,6 +330,152 @@ class _ShodanAdapter:
         return result
 
 
+class _AmassAdapter:
+    """Adaptador de proyección/ingesta para amass v5 (datasources.yaml)."""
+
+    def _campos(self):
+        return _tool_by_name("amass")["campos"]
+
+    def _destino(self):
+        return Path.home() / ".config" / "amass" / "datasources.yaml"
+
+    def _leer_existente(self, dest):
+        if not dest.exists():
+            return {}
+        try:
+            with open(dest) as f:
+                data = yaml.safe_load(f)
+        except yaml.YAMLError as exc:
+            raise _ProyeccionIlegible(
+                f"amass: {dest} no es YAML válido: {exc}"
+            )
+        if not isinstance(data, dict):
+            raise _ProyeccionIlegible(
+                f"amass: {dest} no contiene un diccionario"
+            )
+        return data
+
+    def _entry_by_name(self, entries, nombre):
+        for entry in entries:
+            if isinstance(entry, dict) and entry.get("name", "").lower() == nombre.lower():
+                return entry
+        return None
+
+    def proyectar(self, reg):
+        """Fusiona el registro en ~/.config/amass/datasources.yaml sin alterar el esquema."""
+        dest = self._destino()
+        if not dest.exists():
+            return False, "amass: sin inicializar (ejecuta amass una vez)"
+        try:
+            data = self._leer_existente(dest)
+        except _ProyeccionIlegible as exc:
+            print(f"⚠️  {exc}", file=sys.stderr)
+            return False, str(exc)
+
+        datasources = data.get("datasources")
+        if not isinstance(datasources, list):
+            msg = f"amass: {dest} no contiene una lista 'datasources'"
+            print(f"⚠️  {msg}", file=sys.stderr)
+            return False, msg
+
+        reg_section = reg.get("amass", {})
+        total = 0
+        filled = 0
+        modified = False
+
+        for campo in self._campos():
+            total += 1
+            source_name, leaf = campo.split(".", 1)
+            val_reg, ok_reg = _get_nested(reg_section, campo)
+            entry = self._entry_by_name(datasources, source_name)
+            if entry is None:
+                if ok_reg and isinstance(val_reg, str) and val_reg:
+                    print(
+                        f"⚠️  amass: la fuente {source_name} no está en datasources.yaml",
+                        file=sys.stderr,
+                    )
+                continue
+            creds = entry.get("creds")
+            if not isinstance(creds, dict):
+                continue
+            if leaf not in creds:
+                continue
+            if ok_reg and isinstance(val_reg, str) and val_reg:
+                creds[leaf] = val_reg
+                filled += 1
+                modified = True
+            elif creds.get(leaf):
+                # conserva el valor ajeno: ya está ahí
+                pass
+
+        if not modified:
+            return False, "amass: no se pudo escribir ningún campo"
+
+        tmp_path = dest.with_suffix(".tmp")
+        try:
+            dest.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                with os.fdopen(fd, "w") as f:
+                    yaml.safe_dump(
+                        data, f, default_flow_style=False,
+                        sort_keys=False, allow_unicode=True,
+                    )
+                    f.flush()
+                    os.fsync(f.fileno())
+            except Exception:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                raise
+            os.replace(tmp_path, dest)
+            dest.chmod(0o600)
+        except OSError as exc:
+            return False, f"amass: no se pudo escribir {dest}: {exc}"
+        finally:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
+
+        return True, f"amass: {filled} de {total} campos"
+
+    def ingerir(self, reg):
+        """Lee valores no vacíos de datasources.yaml para campos vacíos en el registro."""
+        result = {}
+        dest = self._destino()
+        if not dest.exists():
+            return result
+        try:
+            data = self._leer_existente(dest)
+        except _ProyeccionIlegible as exc:
+            print(f"⚠️  {exc}", file=sys.stderr)
+            return result
+        datasources = data.get("datasources")
+        if not isinstance(datasources, list):
+            return result
+        reg_section = reg.get("amass", {})
+        for campo in self._campos():
+            source_name, leaf = campo.split(".", 1)
+            val_reg, ok_reg = _get_nested(reg_section, campo)
+            if ok_reg and val_reg:
+                continue
+            entry = self._entry_by_name(datasources, source_name)
+            if entry is None:
+                continue
+            creds = entry.get("creds")
+            if not isinstance(creds, dict):
+                continue
+            if leaf not in creds:
+                continue
+            val_ext = creds.get(leaf)
+            if isinstance(val_ext, str) and val_ext:
+                result[campo] = val_ext
+        return result
+
+
 class _H8mailAdapter:
     """Adaptador de proyección/ingesta para h8mail."""
 
@@ -488,6 +634,7 @@ def _construir_herramientas():
                 "shodan.key", "censys.id", "censys.secret", "securitytrails.key",
                 "virustotal.key", "urlscan.key",
             ],
+            "adaptador": _AmassAdapter(),
         },
         "recon-ng": {
             "nombre": "recon-ng",
