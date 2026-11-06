@@ -245,5 +245,25 @@ class CollectTests(unittest.TestCase):
                 )
 
 
+from lib.parsers import ffuf
+
+def ffuf_json(base, results):
+    return json.dumps({"commandline": f"ffuf -u http://127.0.0.1:8080/FUZZ -mc 200 {base}",
+                       "results": results})
+
+class FfufTests(unittest.TestCase):
+    def test_hit_equal_to_baseline_is_discarded(self):
+        r = ffuf.parse(write("web/ffuf_a.json", ffuf_json("-fs 96", [{"status":200,"length":96,"url":"u"}])), ROOT)
+        self.assertEqual(r.findings, []); self.assertEqual(len(r.descartados), 1)
+
+    def test_hit_with_different_length_is_inventory_observation(self):
+        r = ffuf.parse(write("web/ffuf_b.json", ffuf_json("-fs 96", [{"status":200,"length":5000,"url":"http://127.0.0.1:8080/admin"}])), ROOT)
+        self.assertEqual((r.findings[0].confianza, r.findings[0].severidad), ("observacion", "info"))
+
+    def test_missing_baseline_is_no_evaluable(self):
+        r = ffuf.parse(write("web/ffuf_c.json", ffuf_json("", [{"status":200,"length":1,"url":"u"}])), ROOT)
+        self.assertEqual(r.findings, []); self.assertTrue(r.no_evaluable)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
