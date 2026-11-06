@@ -56,9 +56,25 @@ def _pareado(path: Path) -> Path:
 
 
 def _es_https(path: Path) -> bool:
-    """¿El activo se sirve por HTTPS? Se deduce del nombre y del sufijo."""
+    """¿El activo se sirve por HTTPS? Se deduce del nombre y del sufijo.
+    
+    Usa tokens exactos para evitar falsos positivos: `4430` no es https.
+    """
+    import re as _re
     nombre = path.name.lower()
-    return any(pista in nombre for pista in _PISTAS_HTTPS)
+    # Token exacto: "https" como palabra completa o sufijo
+    if "https" in nombre:
+        # Verificar que es un token completo, no parte de otro
+        if _re.search(r'\bhttps\b', nombre):
+            return True
+    # Tokens de puerto exactos: _443, _8443, o fin de sufijo
+    # Buscar patrones como _443, _8443, o que termine en 443 o 8443
+    if _re.search(r'[_\-]443(?:\D|$)', nombre) or _re.search(r'[_\-]8443(?:\D|$)', nombre):
+        return True
+    # Si termina en 443 o 8443 (sin más dígitos después)
+    if _re.search(r'(?:^|[_\-])443$', nombre) or _re.search(r'(?:^|[_\-])8443$', nombre):
+        return True
+    return False
 
 
 def _guarda(pareado: Path, repo_root: Path) -> tuple[int, str, str] | None:
@@ -84,6 +100,18 @@ def _presente(nombre: str, lineas: list[str]) -> bool:
     """¿El fichero de cabeceras trae ya esa cabecera?"""
     buscado = nombre + ":"
     return any(linea.strip().lower().startswith(buscado) for linea in lineas)
+
+
+def _csp_tiene_frame_ancestors(lineas: list[str]) -> bool:
+    """¿La CSP contiene la directiva frame-ancestors?"""
+    for linea in lineas:
+        stripped = linea.strip().lower()
+        if stripped.startswith("content-security-policy:"):
+            # Extraer el valor de CSP
+            valor = stripped[len("content-security-policy:"):].strip()
+            if "frame-ancestors" in valor:
+                return True
+    return False
 
 
 def _primera_cabecera(lineas: list[str]) -> tuple[int, str] | None:
@@ -121,9 +149,13 @@ def parse_security(path: Path, repo_root: Path) -> ParseResult:
 
     activo = guess_host(path.name) or ""
     https = _es_https(path)
+    csp_tiene_frame_ancestors = _csp_tiene_frame_ancestors(lineas)
     findings = []
     for nombre, regla in REQUIRED:
         if nombre == "strict-transport-security" and not https:
+            continue
+        # Si CSP tiene frame-ancestors, no reportar XFO ausente
+        if nombre == "x-frame-options" and csp_tiene_frame_ancestors:
             continue
         if _presente(nombre, lineas):
             continue

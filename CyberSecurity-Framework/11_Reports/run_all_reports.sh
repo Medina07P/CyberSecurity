@@ -43,4 +43,16 @@ if [[ -d "$MODULE_DIR/generated" ]]; then
         sed "s|$MODULE_DIR/|  |"
 fi
 
+# Empaquetar evidencias (si el gestor está disponible)
+EVIDENCE_MANAGER="$MODULE_DIR/../10_Evidence/evidence_manager.sh"
+if [[ -x "$EVIDENCE_MANAGER" ]]; then
+    echo ""
+    echo "📦 Empaquetando evidencias..."
+    if "$EVIDENCE_MANAGER" --package "audit_$(date +%Y%m%d_%H%M%S)" 2>/dev/null; then
+        echo "✅ Evidencias empaquetadas"
+    else
+        echo "⚠️  No se pudieron empaquetar las evidencias (continuando sin error)"
+    fi
+fi
+
 exit $RC

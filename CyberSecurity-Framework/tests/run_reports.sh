@@ -23,6 +23,15 @@ section() { printf '\n── %s\n' "$1"; }
 TMPD="$(mktemp -d)"
 trap 'rm -rf "$TMPD"' EXIT
 
+# Snapshot del perfil real antes de los tests
+REAL_PROFILE="$FW/11_Reports/.report_profile"
+if [ -f "$REAL_PROFILE" ]; then
+    cp "$REAL_PROFILE" "$TMPD/.report_profile.snapshot"
+    HAD_REAL_PROFILE=1
+else
+    HAD_REAL_PROFILE=0
+fi
+
 # ──────────────────────────────────────────────────────────
 section "report_generator.sh: modo y huecos"
 eq "report_generator.sh es slots" \
@@ -200,6 +209,29 @@ python3 tests/test_report_engine.py
 PY_RC=$?
 
 rm -rf "$TMPD"
+
+# Verificar que el perfil real no fue modificado
+if [ "$HAD_REAL_PROFILE" -eq 1 ]; then
+    if [ -f "$REAL_PROFILE" ]; then
+        if diff -q "$TMPD/.report_profile.snapshot" "$REAL_PROFILE" >/dev/null 2>&1; then
+            ok "perfil real no fue modificado"
+        else
+            bad "perfil real fue modificado"
+            FAIL=$((FAIL + 1))
+        fi
+    else
+        bad "perfil real fue eliminado"
+        FAIL=$((FAIL + 1))
+    fi
+else
+    # Si no había perfil, verificar que no se creó uno
+    if [ -f "$REAL_PROFILE" ]; then
+        bad "se creó un perfil real cuando no existía"
+        FAIL=$((FAIL + 1))
+    else
+        ok "no se creó perfil real"
+    fi
+fi
 
 printf '\n────────────────────────────────────────\n'
 printf 'shell: pasan %s  fallan %s\n' "$PASS" "$FAIL"

@@ -76,7 +76,7 @@ def _cve(numero: int, linea: str, cve: str, activo: str, archivo: str) -> Findin
     """Un `nikto.cve` confirmado; nikto no publica CVSS, así que no se inventa."""
     return build(
         "nikto.cve",
-        key=f"nikto.cve:{activo}:{cve}",
+        key=f"cve|{cve}|{activo}",
         activo=activo,
         evidencia=_evidencia(archivo, numero, linea),
         severidad="media",

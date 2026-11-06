@@ -177,7 +177,7 @@ def _cves_de_script(
     findings = []
 
     for cve in sorted(set(_CVE_RE.findall(salida))):
-        key = f"nmap.cve:{host}:{puerto or 0}:{cve}"
+        key = f"cve|{cve}|{host}"
         if key in vistos:
             continue
         vistos.add(key)

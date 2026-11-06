@@ -31,10 +31,20 @@ _NIVEL = {
 _CLASE_RULE = {
     "cmd": "http_inject.cmd",
     "sqli": "http_inject.sqli",
+    "sqli_bool": "http_inject.sqli",
+    "sqli_error": "http_inject.sqli",
+    "sqli_time": "http_inject.sqli",
     "ssti": "http_inject.ssti",
     "xss": "http_inject.xss",
     "redirect": "http_inject.redirect",
 }
+
+
+def _canonical_clase(clase: str) -> str:
+    """Clase canónica para la clave de dedup: `sqli_*` → `sqli`, resto tal cual."""
+    if clase.startswith("sqli"):
+        return "sqli"
+    return clase
 
 
 def _vacio(archivo: str) -> ParseResult:
@@ -128,7 +138,8 @@ def parse(path: Path, repo_root: Path) -> ParseResult:
             })
             continue
 
-        clave = f"{clase}|{host}|{param}"
+        clase_canon = _canonical_clase(clase)
+        clave = f"{clase_canon}|{host}|{param}"
         if clave in vistos:
             continue
         vistos.add(clave)
