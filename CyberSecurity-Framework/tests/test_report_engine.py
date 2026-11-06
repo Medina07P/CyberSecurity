@@ -75,5 +75,27 @@ class CatalogTests(unittest.TestCase):
             build("no.existe", key="k", activo="a", evidencia=[])
 
 
+from lib.attribution import slug, normalize_host, guess_host, belongs_to
+
+class AttributionTests(unittest.TestCase):
+    def test_slug_matches_bash_convention(self):
+        self.assertEqual(slug("https://127.0.0.1:8080"), "https___127.0.0.1_8080")
+
+    def test_partial_octet_is_not_the_same_target(self):
+        self.assertFalse(belongs_to("http://127.0.0.10/x", "127.0.0.1"))
+        self.assertTrue(belongs_to("https://127.0.0.1:8443/a?b=1", "127.0.0.1"))
+
+    def test_domains_are_case_insensitive_and_port_agnostic(self):
+        self.assertTrue(belongs_to("https://Example.COM:443/", "example.com"))
+
+    def test_guess_host_reads_slugs_but_not_unlabelled_names(self):
+        self.assertEqual(guess_host("nuclei_https___127.0.0.1_8080.txt"), "127.0.0.1")
+        self.assertEqual(guess_host("security_headers_8080.txt"), None)
+        self.assertEqual(guess_host("rate_limit_sgcrc.example.com_443.txt"), "sgcrc.example.com")
+
+    def test_normalize_keeps_ipv4_and_strips_scheme_path_port(self):
+        self.assertEqual(normalize_host("https://u:p@10.1.2.3:8443/x"), "10.1.2.3")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
