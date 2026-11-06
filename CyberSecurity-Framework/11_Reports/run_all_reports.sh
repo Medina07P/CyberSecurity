@@ -2,33 +2,45 @@
 
 # ============================================================
 # RUN ALL REPORTS - Genera todos los informes
-# Uso: ./run_all_reports.sh
+# Uso: ./run_all_reports.sh <objetivo>
+# Ejemplo: ./run_all_reports.sh 192.168.1.10
 # ============================================================
+
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$MODULE_DIR" || exit 1
+
+OBJETIVO="${1:-}"
 
 echo "════════════════════════════════════════════════════════"
 echo "  GENERANDO TODOS LOS INFORMES"
 echo "════════════════════════════════════════════════════════"
 
-# Los hijos se invocan con rutas relativas: ejecutar desde este directorio.
-MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$MODULE_DIR" || exit 1
-
 echo ""
 echo "📊 GENERANDO INFORMES..."
 echo "────────────────────────────────────────"
-./report_generator.sh --all
 
-if [[ -d "$MODULE_DIR/../10_Evidence" ]]; then
-    echo ""
-    echo "📦 EMPAQUETANDO EVIDENCIAS..."
-    echo "────────────────────────────────────────"
-    ( cd "$MODULE_DIR/../10_Evidence" && ./evidence_manager.sh --package "audit_$(date +%Y%m%d)" )
+if [[ -n "$OBJETIVO" ]]; then
+    ./report_generator.sh --all --objetivo "$OBJETIVO"
+else
+    ./report_generator.sh --all
+fi
+RC=$?
+
+echo ""
+echo "════════════════════════════════════════════════════════"
+if [[ $RC -eq 0 ]]; then
+    echo "  ✅ INFORMES COMPLETADOS"
+else
+    echo "  ⚠️  INFORMES FINALIZADOS CON CÓDIGO $RC"
+fi
+echo "════════════════════════════════════════════════════════"
+echo ""
+
+# Listar lo generado en generated/
+if [[ -d "$MODULE_DIR/generated" ]]; then
+    echo "📁 Informes generados:"
+    find "$MODULE_DIR/generated" -type f \( -name '*.md' -o -name '*.html' -o -name '*.json' \) 2>/dev/null | \
+        sed "s|$MODULE_DIR/|  |"
 fi
 
-echo ""
-echo "════════════════════════════════════════════════════════"
-echo "  ✅ INFORMES COMPLETADOS"
-echo "════════════════════════════════════════════════════════"
-echo ""
-echo "📁 Archivos generados:"
-find . -name "*.md" -o -name "*.html" -o -name "*.pdf" | sed 's/^/  /'
+exit $RC

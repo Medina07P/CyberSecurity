@@ -82,7 +82,6 @@ eq "ping_sweep <red> es TEXTO" "$(params_slots 02_Recon/scripts/ping_sweep.sh | 
 # ──────────────────────────────────────────────────────────
 section "D1: scripts con banderas o subcomandos van en modo manual"
 for f in 10_Evidence/evidence_manager.sh \
-         11_Reports/report_generator.sh \
          09_Automation/python/report_generator.py \
          09_Automation/python/orchestrator.py \
          07_Wireless/scripts/interface_manager.sh \
@@ -90,6 +89,8 @@ for f in 10_Evidence/evidence_manager.sh \
     eq "manual: $f" "$(params_mode "$f")" "manual"
 done
 eq "masscan NO es manual" "$(params_mode 03_Scanners/network_scanners/masscan/masscan_scan.sh)" "slots"
+eq "report_generator.sh es slots con 1 hueco" "$(params_mode 11_Reports/report_generator.sh)" "slots"
+eq "report_generator.sh tiene 1 hueco" "$(params_slot_count 11_Reports/report_generator.sh)" "1"
 
 # ──────────────────────────────────────────────────────────
 section "D3: el ejemplo solo se usa si cuadra"
