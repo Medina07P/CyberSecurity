@@ -7,7 +7,8 @@
 INTERFACE="$1"
 BSSID="$2"
 CHANNEL="$3"
-OUTPUT_DIR="../captures/logs"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/captures/logs"
 
 if [[ -z "$INTERFACE" ]] || [[ -z "$BSSID" ]] || [[ -z "$CHANNEL" ]]; then
     echo "Uso: ./wifi_deauth.sh <INTERFACE> <BSSID> <CHANNEL>"

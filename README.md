@@ -444,6 +444,7 @@ Además de este README:
 
 | Documento | Contenido |
 |---|---|
+| `docs/MANUAL-GESTOR.md` | Manual de uso del gestor interactivo: arranque, navegación, informes, veredictos y problemas frecuentes |
 | `AGENTS.md` | Conocimiento operativo: cómo están hechas las cosas y por qué. Empieza por aquí si vas a tocar el código |
 | `docs/CLEANUP-2026-10-30.md` | Sesión de limpieza: 44 ficheros en cuarentena, 8 bugs corregidos, rutas absolutas eliminadas |
 | `docs/SCANS-PATHS-2026-10-30.md` | Por qué todos los resultados van a `<repo>/scans/` y cómo verificarlo en Kali |
@@ -457,6 +458,7 @@ cd CyberSecurity-Framework
 ./tests/run_tests.sh    # librería del gestor (61 comprobaciones)
 ./tests/run_e2e.sh      # el script recibe el argumento tecleado (11)
 ./tests/run_smoke.sh    # navegación del menú con entrada simulada
+./tests/run_reports.sh  # motor de informes y documentación
 ```
 
 No necesitan terminal interactiva ni herramientas de pentesting instaladas: se

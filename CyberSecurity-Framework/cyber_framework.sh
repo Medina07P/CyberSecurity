@@ -18,6 +18,8 @@ source "$LIB_DIR/params.bash"
 source "$LIB_DIR/session.bash"
 source "$LIB_DIR/phase_status.bash"
 source "$LIB_DIR/prompt.bash"
+source "$LIB_DIR/report_profile.bash"
+source "$LIB_DIR/scans.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -443,9 +445,10 @@ module_labs() {
 
 # ─── Flujo Completo ──────────────────────────────────────────
 
-# La fase de reconocimiento se lanza con auto_recon.sh, que sí acepta el
-# objetivo. run_all_recon.sh ignora sus argumentos y usa los tres primeros
-# de 00_Config/targets.txt, así que no sirve para un objetivo de sesión.
+# La fase de reconocimiento se lanza con auto_recon.sh, no con
+# run_all_recon.sh: este último ya acepta objetivo desde 2026-10-31, pero
+# encadena los seis scripts del módulo y multiplicaría por seis lo que hace
+# la opción 99. Se mantiene auto_recon.sh por alcance, no por limitación.
 run_recon_phase() {
     local script="02_Recon/scripts/auto_recon.sh"
     if [[ ! -f "$script" ]]; then
@@ -529,6 +532,123 @@ full_workflow() {
     pause
 }
 
+# ─── Informe rápido (acción R) ──────────────────────────────
+
+quick_report() {
+    local eleccion tipo cliente auditor target per_file
+    local -a engine_args=()
+
+    clear_screen
+    echo -e "${CYAN}${BOLD}━━━ INFORME RÁPIDO ━━━${NC}"
+    echo ""
+    echo -e "  ${GREEN}1${NC}) Informe técnico"
+    echo -e "  ${GREEN}2${NC}) Informe de cliente"
+    echo -e "  ${GREEN}3${NC}) Ambos informes"
+    echo -e "  ${GREEN}0${NC}) Volver al menú principal"
+    echo ""
+    echo -ne "${BOLD}➜ Elige tipo de informe [0-3]: ${NC}"
+    if ! IFS= read -r eleccion; then
+        return 0
+    fi
+
+    case "$eleccion" in
+        0) return 0 ;;
+        1) tipo="tecnico" ;;
+        2) tipo="cliente" ;;
+        3) tipo="ambos" ;;
+        *)
+            echo -e "${RED}❌ Opción inválida${NC}"
+            pause
+            return 0
+            ;;
+    esac
+
+    # Perfil: si falta cliente o auditor, preguntar
+    per_file="$(report_profile_path)"
+    cliente="$(report_profile_get cliente)"
+    auditor="$(report_profile_get auditor)"
+
+    if [[ -z "$cliente" ]]; then
+        echo ""
+        echo -ne "${BOLD}➜ Nombre del cliente (Enter = vacío): ${NC}"
+        IFS= read -r cliente || cliente=""
+        if [[ -n "$cliente" ]]; then
+            report_profile_set cliente "$cliente"
+        fi
+    fi
+
+    if [[ -z "$auditor" ]]; then
+        echo ""
+        echo -ne "${BOLD}➜ Nombre del auditor (Enter = $(whoami)): ${NC}"
+        IFS= read -r auditor || auditor=""
+        if [[ -z "$auditor" ]]; then
+            auditor="$(whoami)"
+        fi
+        report_profile_set auditor "$auditor"
+    fi
+
+    # Construir argumentos del motor
+    if [[ -n "$cliente" ]]; then
+        engine_args+=(--cliente "$cliente")
+    fi
+    if [[ -n "$auditor" ]]; then
+        engine_args+=(--auditor "$auditor")
+    fi
+
+    target="$(session_target)"
+    if [[ -n "$target" ]]; then
+        engine_args+=(--objetivo "$target")
+    fi
+
+    echo ""
+    echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}Generando informe $tipo...${NC}"
+    echo ""
+
+    (cd 11_Reports && ./report_generator.sh "$tipo" "${engine_args[@]}")
+    local rc=$?
+
+    echo ""
+    echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+    # Listar solo los ficheros recién escritos de este objetivo
+    # (la salida por defecto del motor es generated/<slug del objetivo>)
+    local slug out_dir
+    if [[ -n "$target" ]]; then
+        slug="$(scans_slug "$target")"
+    else
+        slug="sin_objetivo"
+    fi
+    out_dir="11_Reports/generated/$slug"
+    if [[ -d "$out_dir" ]]; then
+        echo -e "${GREEN}📁 Informes generados${NC}${DIM} ($out_dir)${NC}:"
+        find "$out_dir" -maxdepth 1 -type f \( -name '*.md' -o -name '*.html' -o -name '*.json' \) 2>/dev/null | \
+            while read -r f; do echo "  $f"; done
+    fi
+
+    # Ofrecer abrir el HTML recién generado de este objetivo
+    local html_file
+    html_file=$(find "$out_dir" -maxdepth 1 -name '*.html' -type f 2>/dev/null | head -1)
+    if [[ -n "$html_file" ]]; then
+        echo ""
+        echo -ne "${BOLD}¿Abrir informe HTML? (s/N): ${NC}"
+        local abrir=""
+        IFS= read -r abrir || abrir=""
+        case "$abrir" in
+            s|S|si|Si|SI|sí|Sí)
+                xdg-open "$html_file" 2>/dev/null || true
+                ;;
+        esac
+    fi
+
+    if [[ $rc -ne 0 ]]; then
+        echo ""
+        echo -e "${YELLOW}⚠️  Código de salida del motor: $rc${NC}"
+    fi
+
+    pause
+}
+
 # ─── Ayuda ───────────────────────────────────────────────────
 
 show_help() {
@@ -568,9 +688,16 @@ show_help() {
     echo ""
     echo -e "${YELLOW}⌨️  ATAJOS:${NC}"
     echo -e "  ${GREEN}T${NC}   Cambiar objetivo"
-    echo -e "  ${GREEN}R${NC}   Recargar la lista de scripts de un módulo"
+    echo -e "  ${GREEN}R${NC}   Informe rápido (técnico, cliente o ambos)"
     echo -e "  ${GREEN}0${NC}   Volver al menú principal"
     echo -e "  ${GREEN}Q${NC}   Salir"
+    echo ""
+    echo -e "${YELLOW}📝 INFORMES:${NC}"
+    echo -e "  Con ${GREEN}R${NC} generas los informes técnico y de cliente desde lo ya escaneado."
+    echo ""
+    echo -e "${YELLOW}📖 DOCUMENTACIÓN:${NC}"
+    echo -e "  Manual completo del gestor: ${DIM}../docs/MANUAL-GESTOR.md${NC}"
+    echo -e "  ${DIM}(o ejecuta desde la raíz del repo: less docs/MANUAL-GESTOR.md)${NC}"
     echo ""
     echo -e "${YELLOW}ℹ️  MARCAS EN LA LISTA:${NC}"
     echo -e "  ${RED}[intrusiva]${NC}  pide confirmación extra antes de ejecutarse"
@@ -610,8 +737,9 @@ main_menu() {
     echo -e "  ${CYAN}13${NC}  ${WHITE}🧪 Laboratorios (HTB/THM/AD)${NC}"
     echo ""
     echo -e "  ${CYAN}99${NC}  ${WHITE}🚀 Ejecutar Flujo Completo${NC}"
+    echo -e "  ${CYAN}R ${NC}  ${WHITE}📊 Informe rápido${NC}"
     echo -e "  ${CYAN}T ${NC}  ${WHITE}🎯 Cambiar objetivo${NC} ${DIM}(actual: ${target:-sin definir})${NC}"
-    echo -e "  ${CYAN}??${NC}  ${WHITE}📖 Ayuda y Comandos Útiles${NC}"
+    echo -e "  ${CYAN}? ${NC}  ${WHITE}📖 Ayuda y Comandos Útiles${NC}"
     echo -e "  ${CYAN}Q ${NC}  ${RED}Salir${NC}"
     echo ""
 
@@ -620,7 +748,7 @@ main_menu() {
         echo -e "  ${DIM}Siguiente paso sugerido:${NC} ${YELLOW}${next}${NC}"
     fi
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, T, ?, Q]: ${NC}"
+    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, R, T, ?, Q]: ${NC}"
 }
 
 # ─── Bucle Principal ─────────────────────────────────────────
@@ -657,8 +785,9 @@ main() {
             12) module_knowledge ;;
             13) module_labs ;;
             99) full_workflow ;;
+            R|r) quick_report ;;
             T|t) change_target ;;
-            \?|help|HELP|H|h) show_help ;;
+            \?|\?\?|help|HELP|H|h) show_help ;;
             Q|q|salir|exit)
                 echo -e "\n${GREEN}👋 ¡Hasta luego!${NC}"
                 exit 0
@@ -666,7 +795,7 @@ main() {
             "") : ;;
             *)
                 echo -e "\n${RED}❌ Opción inválida: '$choice'${NC}"
-                echo -e "${YELLOW}Prueba con 00-13, 99, T, ? o Q.${NC}"
+                echo -e "${YELLOW}Prueba con 00-13, 99, R, T, ? o Q.${NC}"
                 pause
                 ;;
         esac

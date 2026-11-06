@@ -18,6 +18,9 @@ fi
 echo "📸 Capturando evidencias de: $TARGET"
 echo "════════════════════════════════════════════════════════"
 
+# Todo se guarda junto al módulo, no en el cwd desde el que se lance
+cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
+
 # 1. Captura de pantalla web
 echo "  → Capturando pantalla web..."
 if command -v cutycapt &>/dev/null; then

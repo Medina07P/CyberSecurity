@@ -4,7 +4,8 @@
 # Uso: ./memory_dump.sh [OUTPUT_DIR]
 # Ejemplo: ./memory_dump.sh
 
-OUTPUT_DIR="${1:-../captures/memory}"
+FW_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+OUTPUT_DIR="${1:-$FW_DIR/captures/memory}"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p "$OUTPUT_DIR"

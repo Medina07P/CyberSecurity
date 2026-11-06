@@ -5,7 +5,8 @@
 # Ejemplo: ./disk_forensics.sh /dev/sda1
 
 DISK="$1"
-OUTPUT_DIR="../analysis/disk"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="$MODULE_DIR/analysis/disk"
 
 if [[ -z "$DISK" ]]; then
     echo "Uso: ./disk_forensics.sh <DISK_IMAGE>"

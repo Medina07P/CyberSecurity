@@ -5,7 +5,7 @@
 #  No guarda estado propio: mira lo que hay en disco.
 # ============================================================
 
-PHASE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PHASE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PHASE_FW_DIR="${PHASE_FW_DIR:-$(cd "$PHASE_LIB_DIR/../.." && pwd)}"
 PHASE_REPO_DIR="${PHASE_REPO_DIR:-$(cd "$PHASE_FW_DIR/.." && pwd)}"
 PHASE_SCANS_DIR="${PHASE_SCANS_DIR:-$PHASE_REPO_DIR/scans}"
@@ -60,8 +60,10 @@ phase_state() {
             fi
             ;;
         11_Reports)
-            if _has_files "$PHASE_FW_DIR/11_Reports/final_report" ||
-               _has_files "$PHASE_FW_DIR/11_Reports/technical"; then
+            if compgen -G "$PHASE_FW_DIR/11_Reports/generated/*/findings.json" >/dev/null 2>&1; then
+                printf 'done\n'
+            elif _has_files "$PHASE_FW_DIR/11_Reports/final_report" ||
+                 _has_files "$PHASE_FW_DIR/11_Reports/technical"; then
                 printf 'done\n'
             else
                 printf 'pending\n'
