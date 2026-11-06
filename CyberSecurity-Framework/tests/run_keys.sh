@@ -113,6 +113,7 @@ echo ""; echo "=== shodan y h8mail ==="
 py poner shodan key shodan-key-123456 >/dev/null 2>&1
 eq "shodan: contenido" "$(cat "$HOME/.shodan/api_key")" "shodan-key-123456"
 [[ "$(stat -c %a "$HOME/.shodan/api_key")" == "600" ]] && ok "shodan 600" || ko "shodan 600"
+[[ "$(stat -c %a "$HOME/.shodan")" == "700" ]] && ok "shodan dir 700" || ko "shodan dir 700"
 py poner h8mail dehashed_key h8-dehashed-123456 >/dev/null 2>&1
 py poner h8mail hibp hibp-key-123456 >/dev/null 2>&1
 INI="$HOME/.h8mail_config.ini"
@@ -123,6 +124,39 @@ eq "h8mail: sección" "$(python3 -c "import configparser;c=configparser.ConfigPa
 py poner shodan key shodan-key-999999 >/dev/null 2>&1
 [[ -f "$HOME/.shodan/api_key.bak" ]] && ok "shodan deja .bak" || ko "shodan deja .bak"
 eq "shodan: valor nuevo" "$(cat "$HOME/.shodan/api_key")" "shodan-key-999999"
+# importar desde fichero
+py poner shodan key - >/dev/null 2>&1
+rm -rf "$HOME/.shodan"; mkdir -p "$HOME/.shodan"
+printf 'shodan-importada-123456\n' > "$HOME/.shodan/api_key"
+py importar shodan >/dev/null 2>&1
+eq "importar shodan" "$(python3 -c "import yaml;print(yaml.safe_load(open('$KEYS_FILE'))['shodan']['key'])")" "shodan-importada-123456"
+py poner h8mail hibp - >/dev/null 2>&1
+rm -f "$INI"
+printf '[h8mail]\nhibp=hibp-importada-123456\n' > "$INI"; chmod 600 "$INI"
+py importar h8mail >/dev/null 2>&1
+eq "importar h8mail" "$(python3 -c "import yaml;print(yaml.safe_load(open('$KEYS_FILE'))['h8mail']['hibp'])")" "hibp-importada-123456"
+# %-survival en h8mail
+py poner h8mail intelx_key 'abc%def' >/dev/null 2>&1
+eq "h8mail: porcentaje sobrevive" "$(python3 -c "import configparser;c=configparser.ConfigParser(interpolation=None);c.read('$INI');print(c['h8mail']['intelx_key'])")" "abc%def"
+# estado exacto
+out=$(py poner h8mail dehashed_key h8-dehashed-123456 2>&1)
+[[ "$out" == *"puesta (h8mail necesita -c)"* ]] && ok "h8mail: status exacto" || ko "h8mail: status exacto"
+# h8mail .bak
+[[ -f "$INI.bak" ]] && ok "h8mail deja .bak" || ko "h8mail deja .bak"
+[[ "$(stat -c %a "$INI.bak")" == "600" ]] && ok "h8mail .bak 600" || ko "h8mail .bak 600"
+# conservación: shodan (vía sincronizar, solo tiene un campo)
+rm -rf "$HOME/.shodan"; mkdir -p "$HOME/.shodan"
+printf 'shodan-conservada-123456\n' > "$HOME/.shodan/api_key"
+py poner shodan key - >/dev/null 2>&1
+py sincronizar shodan >/dev/null 2>&1
+eq "shodan: conserva valor ajeno" "$(cat "$HOME/.shodan/api_key")" "shodan-conservada-123456"
+# conservación: h8mail, un campo ajeno sobrevive a poner otro
+py poner h8mail dehashed_key - >/dev/null 2>&1
+rm -f "$INI"
+printf '[h8mail]\nhibp=hibp-ajena-123456\ndehashed_key=dehashed-ajena-123456\n' > "$INI"; chmod 600 "$INI"
+py poner h8mail hibp hibp-nueva-123456 >/dev/null 2>&1
+eq "h8mail: conserva dehashed ajena" "$(python3 -c "import configparser;c=configparser.ConfigParser(interpolation=None);c.read('$INI');print(c['h8mail']['dehashed_key'])")" "dehashed-ajena-123456"
+eq "h8mail: actualiza hibp" "$(python3 -c "import configparser;c=configparser.ConfigParser(interpolation=None);c.read('$INI');print(c['h8mail']['hibp'])")" "hibp-nueva-123456"
 
 echo ""
 echo "pasan: $pasan  fallan: $fallan"
