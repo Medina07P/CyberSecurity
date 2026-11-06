@@ -16,7 +16,8 @@ from pathlib import Path
 
 # Resolución de rutas del framework: este script vive en 11_Reports/
 _THIS_DIR = Path(__file__).resolve().parent
-_FW_ROOT = _THIS_DIR.parent.parent  # 11_Reports -> CyberSecurity-Framework
+_FRAMEWORK_ROOT = _THIS_DIR.parent          # CyberSecurity-Framework/
+_REPO_ROOT = _FRAMEWORK_ROOT.parent         # repo root
 
 # Imports relativos al paquete lib que vive junto a este script
 sys.path.insert(0, str(_THIS_DIR))
@@ -60,7 +61,7 @@ def _default_scans_dir() -> Path:
     env = os.environ.get("REPORT_SCANS_DIR")
     if env:
         return Path(env)
-    return _FW_ROOT.parent / "scans"
+    return _REPO_ROOT / "scans"
 
 
 def _default_out_dir(objetivo: str | None) -> Path:
@@ -68,19 +69,19 @@ def _default_out_dir(objetivo: str | None) -> Path:
     if env:
         return Path(env)
     s = target_slug(objetivo) if objetivo else "sin_objetivo"
-    return _THIS_DIR / "generated" / s
+    return _FRAMEWORK_ROOT / "11_Reports" / "generated" / s
 
 
 def _default_profile_path() -> Path:
     env = os.environ.get("REPORT_PROFILE")
     if env:
         return Path(env)
-    return _THIS_DIR / ".report_profile"
+    return _FRAMEWORK_ROOT / "11_Reports" / ".report_profile"
 
 
 def _session_target() -> str | None:
     """Primera línea de ``00_Config/.session`` si existe y no está vacía."""
-    session_file = _FW_ROOT / "00_Config" / ".session"
+    session_file = _FRAMEWORK_ROOT / "00_Config" / ".session"
     if not session_file.exists():
         return None
     try:
@@ -171,9 +172,7 @@ def run(argv: list[str] | None = None) -> int:
         return 1
 
     # --- Cargar perfil y resolver valores por defecto ---
-    profile_path = Path(args.salida).parent / ".report_profile" if args.salida else _default_profile_path()
-    # El perfil real se resuelve desde la env o la ruta por defecto del framework
-    profile_path = Path(os.environ.get("REPORT_PROFILE", str(_default_profile_path())))
+    profile_path = _default_profile_path()
     profile = read_profile(profile_path)
 
     # Objetivo: flag > session > None
@@ -247,7 +246,7 @@ def run(argv: list[str] | None = None) -> int:
     try:
         collected = collect(
             Path(scans_dir),
-            _FW_ROOT,
+            _REPO_ROOT,
             objetivo,
             incluir_sin_objetivo=args.incluir_sin_objetivo,
             todos=todos,
@@ -260,12 +259,6 @@ def run(argv: list[str] | None = None) -> int:
         print("No se evaluó ningún parser con éxito; no hay material para informar.",
               file=sys.stderr)
         return 3
-
-    # Sanitizar activos: el render espera 'protocolo' en cada puerto, pero el
-    # parser de nmap no lo incluye. Lo añadimos con valor por defecto 'tcp'.
-    for _host_data in collected.activos.values():
-        for _puerto in _host_data.get("puertos", []):
-            _puerto.setdefault("protocolo", "tcp")
 
     meta = {
         "cliente": cliente,
