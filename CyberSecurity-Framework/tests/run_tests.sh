@@ -1585,6 +1585,10 @@ eq "el scope.yaml real no cambió" \
 eq "el targets.txt real no cambió" \
    "$(md5sum "$FW/00_Config/targets.txt" 2>/dev/null | cut -d' ' -f1)" "$MD5_TARGETS_REAL"
 
+# El gestor ofrece las claves de API como opción de primer nivel
+grep -q 'K|k) keys_menu' "$FW/cyber_framework.sh" && ok "menú: opción K" || bad "menú: opción K" "no aparece"
+grep -q 'api_keys.py' "$FW/cyber_framework.sh" && ok "menú: llama al helper" || bad "menú: llama al helper" "no aparece"
+
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
 printf 'pasan: %s   fallan: %s\n' "$PASS" "$FAIL"

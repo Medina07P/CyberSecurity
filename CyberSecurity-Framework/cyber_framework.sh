@@ -689,6 +689,7 @@ show_help() {
     echo -e "${YELLOW}⌨️  ATAJOS:${NC}"
     echo -e "  ${GREEN}T${NC}   Cambiar objetivo"
     echo -e "  ${GREEN}R${NC}   Informe rápido (técnico, cliente o ambos)"
+    echo -e "  ${GREEN}K${NC}   Claves de API (pide y guarda las que falten)"
     echo -e "  ${GREEN}0${NC}   Volver al menú principal"
     echo -e "  ${GREEN}Q${NC}   Salir"
     echo ""
@@ -739,6 +740,7 @@ main_menu() {
     echo -e "  ${CYAN}99${NC}  ${WHITE}🚀 Ejecutar Flujo Completo${NC}"
     echo -e "  ${CYAN}R ${NC}  ${WHITE}📊 Informe rápido${NC}"
     echo -e "  ${CYAN}T ${NC}  ${WHITE}🎯 Cambiar objetivo${NC} ${DIM}(actual: ${target:-sin definir})${NC}"
+    echo -e "  ${CYAN}K ${NC}  ${WHITE}🔑 Claves de API${NC} ${DIM}($(keys_resumen_line))${NC}"
     echo -e "  ${CYAN}? ${NC}  ${WHITE}📖 Ayuda y Comandos Útiles${NC}"
     echo -e "  ${CYAN}Q ${NC}  ${RED}Salir${NC}"
     echo ""
@@ -748,7 +750,112 @@ main_menu() {
         echo -e "  ${DIM}Siguiente paso sugerido:${NC} ${YELLOW}${next}${NC}"
     fi
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, R, T, ?, Q]: ${NC}"
+    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, R, T, K, ?, Q]: ${NC}"
+}
+
+# ─── Claves de API ───────────────────────────────────────────
+
+keys_helper() {
+    python3 00_Config/scripts/api_keys.py "$@"
+}
+
+# Resumen de una línea para el menú principal (nunca muestra valores)
+keys_resumen_line() {
+    keys_helper estado --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    datos = json.load(sys.stdin)["herramientas"]
+except Exception:
+    print("registro no disponible")
+    raise SystemExit
+puestas = sum(1 for h in datos if h["puestas"])
+vacias = sum(1 for h in datos if h["estado"] == "vacía")
+print(f"{len(datos)} herramientas · {puestas} con claves · {vacias} vacías")
+'
+}
+
+# Lista numerada; el nombre elegido queda en KEYS_ELECCION (vacío si no hay)
+keys_elegir_herramienta() {
+    local -a herramientas=(theharvester shodan h8mail amass recon-ng spiderfoot)
+    local i numero
+    KEYS_ELECCION=""
+    for i in "${!herramientas[@]}"; do
+        numero=$((i + 1))
+        echo -e "  ${GREEN}${numero}${NC}) ${herramientas[$i]}"
+    done
+    echo ""
+    echo -ne "${BOLD}➜ Herramienta [1-${#herramientas[@]}, 0 = volver]: ${NC}"
+    if ! IFS= read -r numero; then
+        return 0
+    fi
+    case "$numero" in
+        0|"") return 0 ;;
+    esac
+    if [[ "$numero" =~ ^[0-9]+$ ]] && (( numero >= 1 && numero <= ${#herramientas[@]} )); then
+        KEYS_ELECCION="${herramientas[$((numero - 1))]}"
+    fi
+    return 0
+}
+
+keys_menu() {
+    local eleccion herramienta
+
+    clear_screen
+    echo -e "${CYAN}${BOLD}━━━ CLAVES DE API ━━━${NC}"
+    echo ""
+    keys_helper estado | sed 's/^/  /'
+    echo ""
+    echo -e "  ${GREEN}1${NC}) Pedir las claves que falten en cada herramienta"
+    echo -e "  ${GREEN}2${NC}) Pedir las claves de una herramienta"
+    echo -e "  ${GREEN}3${NC}) Ver el estado detallado"
+    echo -e "  ${GREEN}4${NC}) Sincronizar el registro con las herramientas"
+    echo -e "  ${GREEN}5${NC}) Importar lo que ya tienen las herramientas"
+    echo -e "  ${GREEN}0${NC}) Volver al menú principal"
+    echo ""
+    echo -e "  ${DIM}Enter deja la clave como está; '-' la borra.${NC}"
+    echo ""
+    echo -ne "${BOLD}➜ Elige una opción [0-5]: ${NC}"
+    if ! IFS= read -r eleccion; then
+        return 0
+    fi
+
+    case "$eleccion" in
+        0) return 0 ;;
+        1)
+            local t
+            for t in theharvester shodan h8mail amass recon-ng spiderfoot; do
+                echo ""
+                echo -e "${BOLD}▶ ${t}${NC}"
+                keys_helper pedir "$t"
+            done
+            ;;
+        2)
+            echo ""
+            keys_elegir_herramienta
+            herramienta="$KEYS_ELECCION"
+            if [[ -z "$herramienta" ]]; then
+                pause
+                return 0
+            fi
+            keys_helper pedir "$herramienta"
+            ;;
+        3) keys_helper estado ;;
+        4) keys_helper sincronizar ;;
+        5)
+            echo ""
+            keys_elegir_herramienta
+            herramienta="$KEYS_ELECCION"
+            if [[ -z "$herramienta" ]]; then
+                pause
+                return 0
+            fi
+            keys_helper importar "$herramienta"
+            ;;
+        *)
+            echo -e "${RED}❌ Opción inválida${NC}"
+            ;;
+    esac
+    pause
 }
 
 # ─── Bucle Principal ─────────────────────────────────────────
@@ -787,6 +894,7 @@ main() {
             99) full_workflow ;;
             R|r) quick_report ;;
             T|t) change_target ;;
+            K|k) keys_menu ;;
             \?|\?\?|help|HELP|H|h) show_help ;;
             Q|q|salir|exit)
                 echo -e "\n${GREEN}👋 ¡Hasta luego!${NC}"
@@ -795,7 +903,7 @@ main() {
             "") : ;;
             *)
                 echo -e "\n${RED}❌ Opción inválida: '$choice'${NC}"
-                echo -e "${YELLOW}Prueba con 00-13, 99, R, T, ? o Q.${NC}"
+                echo -e "${YELLOW}Prueba con 00-13, 99, R, T, K, ? o Q.${NC}"
                 pause
                 ;;
         esac
