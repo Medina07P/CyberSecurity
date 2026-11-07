@@ -147,12 +147,13 @@ out=$(py poner h8mail dehashed_key h8-dehashed-123456 2>&1)
 # h8mail .bak
 [[ -f "$INI.bak" ]] && ok "h8mail deja .bak" || ko "h8mail deja .bak"
 [[ "$(stat -c %a "$INI.bak")" == "600" ]] && ok "h8mail .bak 600" || ko "h8mail .bak 600"
-# conservación: shodan (vía sincronizar, solo tiene un campo)
+# conservación: shodan (vía sincronizar, con el registro sin ese valor)
 rm -rf "$HOME/.shodan"; mkdir -p "$HOME/.shodan"
 printf 'shodan-conservada-123456\n' > "$HOME/.shodan/api_key"
-py poner shodan key - >/dev/null 2>&1
+KEYS_SAVE="$KEYS_FILE"; export KEYS_FILE="$TMPD/registro-shodan.yaml"
 py sincronizar shodan >/dev/null 2>&1
 eq "shodan: conserva valor ajeno" "$(cat "$HOME/.shodan/api_key")" "shodan-conservada-123456"
+export KEYS_FILE="$KEYS_SAVE"
 # conservación: h8mail, un campo ajeno sobrevive a poner otro
 py poner h8mail dehashed_key - >/dev/null 2>&1
 rm -f "$INI"
@@ -192,11 +193,12 @@ chmod 600 "$HOME/.config/amass/datasources.yaml"
 eq "fichero ilegible: código 3" "$code" "3"
 [[ "$out" == *"amass: no se pudo leer"* ]] && ok "fichero ilegible: aviso en español" || ko "fichero ilegible: aviso en español"
 [[ "$out" != *"Traceback"* ]] && ok "fichero ilegible: sin traceback" || ko "fichero ilegible: sin traceback"
-# importar amass round-trip
+# importar amass round-trip (registro nuevo, para que el campo esté vacío)
 printf 'datasources:\n  - name: shodan\n    ttl: 4320\n    creds:\n      key: "importada-amass-123456"\n' > "$HOME/.config/amass/datasources.yaml"; chmod 600 "$HOME/.config/amass/datasources.yaml"
-py poner amass shodan.key - >/dev/null 2>&1
+KEYS_SAVE="$KEYS_FILE"; export KEYS_FILE="$TMPD/registro-amass.yaml"
 py importar amass >/dev/null 2>&1
 eq "importar amass" "$(python3 -c "import yaml;print(yaml.safe_load(open('$KEYS_FILE'))['amass']['shodan']['key'])")" "importada-amass-123456"
+export KEYS_FILE="$KEYS_SAVE"
 # entrada con name no-string no rompe el merge
 printf 'datasources:\n  - name: 123\n    ttl: 4320\n  - name: shodan\n    ttl: 4320\n    creds:\n      key: ""\n' > "$HOME/.config/amass/datasources.yaml"; chmod 600 "$HOME/.config/amass/datasources.yaml"
 py poner amass shodan.key amass-malformado-123456 >/dev/null 2>&1
@@ -270,6 +272,37 @@ HOME="$H4" KEYS_FILE="$TMPD/reg4.yaml" "$PY" "$KEYS" poner shodan key sk-solo-12
 HOME="$H4" KEYS_FILE="$TMPD/reg4.yaml" "$PY" "$KEYS" sincronizar >/dev/null 2>&1
 [[ -f "$H4/.shodan/api_key" ]] && ok "sincronizar escribe la que sí tiene valores" || ko "sincronizar escribe la que sí tiene valores"
 [[ -e "$H4/.h8mail_config.ini" ]] && ko "sincronizar sigue sin crear h8mail" || ok "sincronizar sigue sin crear h8mail"
+
+echo ""; echo "=== pedir ==="
+# Por tubería: cae a stdin, no se cuelga, guarda y confirma con longitud
+py poner shodan key - >/dev/null 2>&1
+out=$(printf 'shodan-pipe-123456\n' | timeout 10 "$PY" "$KEYS" pedir shodan 2>&1)
+printf '%s' "$out" | grep -q 'definida (18 caracteres)' && ok "confirma con longitud" || ko "confirma con longitud"
+printf '%s' "$out" | grep -q 'shodan-pipe-123456' && ko "no imprime el valor" || ok "no imprime el valor"
+eq "guardó lo tecleado" "$(cat "$HOME/.shodan/api_key")" "shodan-pipe-123456"
+printf '\n' | timeout 10 "$PY" "$KEYS" pedir shodan --campo key 2>&1 | grep -q 'sin terminal' && ok "avisa del eco" || ko "avisa del eco"
+# Sin --campo solo pide lo que falta: con todo puesto no pregunta y no pisa nada
+out=$(printf 'otro-valor-123456\n' | timeout 10 "$PY" "$KEYS" pedir shodan 2>&1)
+printf '%s' "$out" | grep -q 'no queda ningún campo vacío' && ok "sin --campo solo pide lo vacío" || ko "sin --campo solo pide lo vacío"
+eq "no pisa lo ya puesto" "$(cat "$HOME/.shodan/api_key")" "shodan-pipe-123456"
+# Enter deja como está; '-' borra
+printf '\n' | timeout 10 "$PY" "$KEYS" pedir shodan --campo key >/dev/null 2>&1
+eq "Enter conserva" "$(cat "$HOME/.shodan/api_key")" "shodan-pipe-123456"
+printf -- '-\n' | timeout 10 "$PY" "$KEYS" pedir shodan --campo key >/dev/null 2>&1
+eq "'-' borra" "$(cat "$HOME/.shodan/api_key")" ""
+# valor inválido: espacios internos no son una clave
+printf 'a b c\n' | timeout 10 "$PY" "$KEYS" pedir shodan --campo key >/dev/null 2>&1; eq "espacios internos" "$?" "1"
+py pedir inexistente >/dev/null 2>&1; eq "herramienta desconocida: 1" "$?" "1"
+printf 'x\n' | timeout 10 "$PY" "$KEYS" pedir shodan --campo noexiste >/dev/null 2>&1; eq "campo desconocido: 1" "$?" "1"
+# --campo concreto
+printf 'hunter-campo-123456\n' | timeout 10 "$PY" "$KEYS" pedir theharvester --campo hunter.key >/dev/null 2>&1
+eq "pedir --campo" "$(python3 -c "import yaml;print(yaml.safe_load(open('$KEYS_FILE'))['theharvester']['hunter']['key'])")" "hunter-campo-123456"
+# '-' borra de verdad: también del fichero de la herramienta
+py poner shodan key shodan-borrar-123456 >/dev/null 2>&1
+out=$(py poner shodan key - 2>&1)
+[[ "$out" == *"borrada"* ]] && ok "poner - lo anuncia" || ko "poner - lo anuncia"
+eq "poner - vacía el fichero" "$(cat "$HOME/.shodan/api_key")" ""
+py importar inexistente >/dev/null 2>&1; eq "importar desconocida: 2" "$?" "2"
 
 echo ""
 echo "pasan: $pasan  fallan: $fallan"
