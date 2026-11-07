@@ -14,6 +14,7 @@ ok()  { echo "  ok   $1"; pasan=$((pasan+1)); }
 ko()  { echo "  FALLO $1"; fallan=$((fallan+1)); }
 eq()  { [[ "$2" == "$3" ]] && ok "$1" || ko "$1 (esperado '$3', obtenido '$2')"; }
 py()  { python3 "$KEYS" "$@"; }
+est() { python3 -c 'import json,sys;print([h for h in json.load(sys.stdin)["herramientas"] if h["nombre"]==sys.argv[1]][0]["estado"])' "$1"; }
 PY="$(command -v python3)"
 
 # Guardas: estas dos huellas se comparan al final de la suite (tarea 9)
@@ -60,6 +61,8 @@ HT="$HOME/.theHarvester/api-keys.yaml"
 eq "espejo: 3 huecos" "$(python3 -c "import yaml;print(len(yaml.safe_load(open('$HT'))['apikeys']))")" "3"
 eq "espejo: censys.secret" "$(python3 -c "import yaml;print(yaml.safe_load(open('$HT'))['apikeys']['censys']['secret'])")" "censys-secret-123456"
 [[ "$(stat -c %a "$HT")" == "600" ]] && ok "proyección 600" || ko "proyección 600"
+[[ -f "$HT.bak" ]] && ok "theHarvester deja .bak" || ko "theHarvester deja .bak"
+[[ "$(stat -c %a "$HT.bak")" == "600" ]] && ok "theHarvester .bak 600" || ko "theHarvester .bak 600"
 # Gana ~ sobre el /etc simulado
 mkdir -p "$TMPD/etc"; printf 'apikeys:\n  shodan:\n    key: del-etc\n' > "$TMPD/etc/api-keys.yaml"
 MD5_ETC=$(md5sum "$TMPD/etc/api-keys.yaml" | cut -d' ' -f1)
@@ -211,6 +214,62 @@ mkdir -p "$HOME/.spiderfoot"
 python3 -c "import sqlite3;c=sqlite3.connect('$HOME/.spiderfoot/spiderfoot.db');c.execute('CREATE TABLE tbl_config (scope TEXT, opt TEXT, val TEXT, UNIQUE(scope,opt))');c.commit()"
 py poner spiderfoot sfp_shodan.api_key sf-shodan-123456 >/dev/null 2>&1
 eq "spiderfoot: scope/opt" "$(python3 -c "import sqlite3;print(sqlite3.connect('$HOME/.spiderfoot/spiderfoot.db').execute(\"select val from tbl_config where scope='sfp_shodan' and opt='api_key'\").fetchone()[0])")" "sf-shodan-123456"
+
+echo ""; echo "=== estado, faltan, divergencia ==="
+py --help >/dev/null 2>&1 || ko "hay ayuda"
+# estado no escribe nada ni crea el registro
+rm -f "$KEYS_FILE"
+py estado >/dev/null 2>&1
+[[ -e "$KEYS_FILE" ]] && ko "estado no crea el registro" || ok "estado no crea el registro"
+py poner theharvester shodan.key shodan-estado-123456 >/dev/null 2>&1
+# h8mail con un único valor, para que su estado sea el del recordatorio del -c
+rm -f "$HOME/.h8mail_config.ini"
+py poner h8mail hibp hibp-tabla-123456 >/dev/null 2>&1
+out=$(py estado)
+printf '%s' "$out" | grep -q 'theHarvester' && ok "estado lista theHarvester" || ko "estado lista theHarvester"
+printf '%s' "$out" | grep -q 'recon-ng' && ok "estado lista recon-ng" || ko "estado lista recon-ng"
+printf '%s' "$out" | grep -q 'h8mail necesita -c' && ok "estado avisa del -c de h8mail" || ko "estado avisa del -c de h8mail"
+eq "h8mail: estado en la tabla" "$(py estado --json | est h8mail)" "puesta (h8mail necesita -c)"
+# Fichero/base con valores que el registro no explica: divergen aunque el registro esté vacío
+eq "amass con valores ajenos diverge" "$(py estado --json | est amass)" "diverge"
+eq "recon-ng con valores ajenos diverge" "$(py estado --json | est recon-ng)" "diverge"
+# vacía: la herramienta está inicializada y no hay valor ni en el registro ni en su fichero
+rm -rf "$HOME/.shodan"; mkdir -p "$HOME/.shodan"; : > "$HOME/.shodan/api_key"
+eq "shodan vacía" "$(py estado --json | est shodan)" "vacía"
+# sin inicializar: hay binario pero ni fichero ni base; sin binario tampoco, es no instalada
+mkdir -p "$TMPD/bin3"; printf '#!/bin/sh\n' > "$TMPD/bin3/amass"; chmod +x "$TMPD/bin3/amass"
+eq "con binario y sin fichero: sin inicializar" "$(HOME="$TMPD/home3" PATH="$TMPD/bin3" "$PY" "$KEYS" estado --json | est amass)" "sin inicializar"
+eq "sin binario ni fichero: no instalada" "$(HOME="$TMPD/home3" PATH="$TMPD/bin3" "$PY" "$KEYS" estado --json | est shodan)" "no instalada"
+eq "sin binarios: no instalada" "$(HOME="$TMPD/home2" PATH="$TMPD/bin" "$PY" "$KEYS" estado --json | python3 -c 'import json,sys;print({h["estado"] for h in json.load(sys.stdin)["herramientas"]})')" "{'no instalada'}"
+py estado --faltan theharvester >/dev/null 2>&1 && ko "faltan: 0 si falta alguna" || ok "faltan: código 1 si falta alguna"
+py estado --faltan inexistente >/dev/null 2>&1; eq "faltan: código 2 si no existe" "$?" "2"
+py poner theharvester hunter.key hunter-key-123456 >/dev/null 2>&1
+py estado --faltan theharvester >/dev/null 2>&1 && ko "faltan: sigue faltando shodan" || ok "faltan: sigue faltando shodan"
+# divergencia: valor ajeno no vacío
+python3 - "$HOME/.theHarvester/api-keys.yaml" <<'EOS'
+import sys, yaml
+p = sys.argv[1]; d = yaml.safe_load(open(p)); d["apikeys"]["censys"]["id"] = "ajena-123456"
+yaml.safe_dump(d, open(p, "w"), sort_keys=False)
+EOS
+eq "diverge" "$(py estado --json | est theharvester)" "diverge"
+py importar theharvester >/dev/null 2>&1
+eq "importar quita la divergencia" "$(py estado --json | est theharvester)" "puesta (sin verificar)"
+# seguridad: ninguna salida contiene el valor
+py poner shodan key SUPER-SECRETO-999999 >/dev/null 2>&1
+for o in estado "estado --json" "estado --faltan theharvester"; do
+    py $o 2>&1 | grep -q 'SUPER-SECRETO-999999' && ko "no filtra en '$o'" || ok "no filtra en '$o'"
+done
+
+# sincronizar no fabrica ficheros vacíos para herramientas sin valores
+H4="$TMPD/home4"; mkdir -p "$H4"
+HOME="$H4" KEYS_FILE="$TMPD/reg4.yaml" "$PY" "$KEYS" sincronizar >/dev/null 2>&1
+[[ -e "$H4/.shodan/api_key" ]] && ko "sincronizar no crea shodan vacío" || ok "sincronizar no crea shodan vacío"
+[[ -e "$H4/.h8mail_config.ini" ]] && ko "sincronizar no crea h8mail vacío" || ok "sincronizar no crea h8mail vacío"
+[[ -e "$H4/.theHarvester/api-keys.yaml" ]] && ko "sincronizar no crea theHarvester vacío" || ok "sincronizar no crea theHarvester vacío"
+HOME="$H4" KEYS_FILE="$TMPD/reg4.yaml" "$PY" "$KEYS" poner shodan key sk-solo-123456 >/dev/null 2>&1
+HOME="$H4" KEYS_FILE="$TMPD/reg4.yaml" "$PY" "$KEYS" sincronizar >/dev/null 2>&1
+[[ -f "$H4/.shodan/api_key" ]] && ok "sincronizar escribe la que sí tiene valores" || ko "sincronizar escribe la que sí tiene valores"
+[[ -e "$H4/.h8mail_config.ini" ]] && ko "sincronizar sigue sin crear h8mail" || ok "sincronizar sigue sin crear h8mail"
 
 echo ""
 echo "pasan: $pasan  fallan: $fallan"
