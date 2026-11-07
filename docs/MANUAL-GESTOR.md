@@ -326,7 +326,8 @@ Entra con `K` en el menú principal:
 - **Pedir** (`2` o la CLI `pedir <herramienta> [--campo X]`): sin `--campo` pregunta solo
   los campos vacíos. Enter deja el campo como está; `-` lo borra también del fichero de la
   herramienta. Con terminal no se ve lo que tecleas; por tubería avisa de que el eco es
-  visible. No acepta valores con espacios: parece texto, no una clave.
+  visible. No acepta valores con espacios: parece texto, no una clave. Si la clave tiene
+  menos de 8 caracteres avisa (no bloquea): puede ser un error de tecleo.
 - **Estado** (`3`): tabla con las claves puestas y el estado de cada herramienta.
   - `puesta (sin verificar)` — hay valor, no se ha probado contra el servicio.
   - `puesta (h8mail necesita -c)` — h8mail solo lee su INI si lo llamas con `-c`.

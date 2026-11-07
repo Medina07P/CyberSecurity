@@ -1,7 +1,7 @@
 # Diseño — Claves de API en el gestor (enfoque A: registro único y materialización)
 
 - **Fecha:** 2026-11-06
-- **Estado:** pendiente de aprobación
+- **Estado:** aprobado e implementado (2026-11-06)
 - **Origen:** pendiente nº 1 del handoff. Hoy ninguna herramienta pide su clave y el fallo es
   mudo: `email_harvester.sh` solo intenta Dehashed si existe `$DEHASHED_API_KEY`, que nadie
   define, y las dos llamadas a `theHarvester` tiran a `/dev/null` justo los avisos de clave

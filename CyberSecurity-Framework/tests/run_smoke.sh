@@ -13,8 +13,10 @@ export TERM=xterm
 # Sesión aislada: no toca la configuración real
 SESION_TMP="$(mktemp -d)"
 export SESSION_FILE="$SESION_TMP/.session"
-# Registro de claves aislado: la opción K nunca lee ni escribe el real
+# HOME y registro de claves aislados: la opción K nunca lee ni escribe los reales
+export HOME="$SESION_TMP/home"; mkdir -p "$HOME"
 export KEYS_FILE="$SESION_TMP/keys.yaml"
+export KEYS_HARVESTER_DIRS="$SESION_TMP/ht"
 trap 'rm -rf "$SESION_TMP"' EXIT
 
 fail=0

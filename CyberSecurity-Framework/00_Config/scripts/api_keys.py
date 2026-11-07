@@ -53,7 +53,12 @@ def _harvester_template_path():
 
 
 def _cargar_plantilla_theharvester():
-    """Carga la plantilla de huecos de theHarvester."""
+    """Carga la plantilla de huecos de theHarvester.
+
+    Nunca lanza: esta función se ejecuta al importar el módulo (para construir
+    `HERRAMIENTAS`), así que una plantilla ilegible o con otra forma no puede
+    tumbar la CLI entera.
+    """
     path = _harvester_template_path()
     if not path.exists():
         if "KEYS_HARVESTER_TEMPLATE" not in os.environ:
@@ -61,11 +66,21 @@ def _cargar_plantilla_theharvester():
         return {}
     try:
         with open(path) as f:
-            data = yaml.safe_load(f) or {}
+            data = yaml.safe_load(f)
     except yaml.YAMLError as exc:
         print(f"⚠️  Plantilla de theHarvester ilegible: {exc}", file=sys.stderr)
         return {}
-    return data.get("apikeys", {})
+    except (OSError, UnicodeDecodeError) as exc:
+        print(f"⚠️  Plantilla de theHarvester ilegible: {exc}", file=sys.stderr)
+        return {}
+    if not isinstance(data, dict):
+        print(
+            f"⚠️  Plantilla de theHarvester con formato inesperado: {path}",
+            file=sys.stderr,
+        )
+        return {}
+    apikeys = data.get("apikeys")
+    return apikeys if isinstance(apikeys, dict) else {}
 
 
 def _campos_theharvester(plantilla):
@@ -155,11 +170,20 @@ class _TheHarvesterAdapter:
             raise _ProyeccionIlegible(
                 f"theHarvester: {dest} no es YAML válido: {exc}"
             )
+        except (OSError, UnicodeDecodeError) as exc:
+            raise _ProyeccionIlegible(
+                f"theHarvester: no se pudo leer {dest}: {exc}"
+            )
         if not isinstance(data, dict):
             raise _ProyeccionIlegible(
                 f"theHarvester: {dest} no contiene un diccionario"
             )
-        return data.get("apikeys", {})
+        apikeys = data.get("apikeys", {})
+        if not isinstance(apikeys, dict):
+            raise _ProyeccionIlegible(
+                f"theHarvester: {dest} tiene 'apikeys' con formato inesperado"
+            )
+        return apikeys
 
     def inicializado(self):
         """True si existe el fichero de claves de theHarvester en ~/.theHarvester."""
@@ -292,7 +316,7 @@ class _ShodanAdapter:
             return result
         try:
             val = dest.read_text().strip()
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             return result
         if val:
             result["key"] = val
@@ -309,7 +333,7 @@ class _ShodanAdapter:
         if dest.exists():
             try:
                 existente = dest.read_text().strip()
-            except OSError as exc:
+            except (OSError, UnicodeDecodeError) as exc:
                 return False, f"shodan: no se pudo leer {dest}: {exc}"
         if not val and existente and "key" not in borrar:
             val = existente
@@ -376,7 +400,7 @@ class _AmassAdapter:
         try:
             with open(dest) as f:
                 data = yaml.safe_load(f)
-        except (OSError, yaml.YAMLError) as exc:
+        except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
             raise _ProyeccionIlegible(
                 f"amass: no se pudo leer {dest}: {exc}"
             )
@@ -446,7 +470,8 @@ class _AmassAdapter:
         reg_section = reg.get("amass", {})
         total = 0
         filled = 0
-        modified = False
+        modificado = False
+        sin_sitio = 0
 
         for campo in self._campos():
             total += 1
@@ -459,25 +484,32 @@ class _AmassAdapter:
                         f"⚠️  amass: la fuente {source_name} no está en datasources.yaml",
                         file=sys.stderr,
                     )
+                    sin_sitio += 1
                 continue
             creds = entry.get("creds")
             if not isinstance(creds, dict):
+                if ok_reg and isinstance(val_reg, str) and val_reg:
+                    sin_sitio += 1
                 continue
             if leaf not in creds:
+                if ok_reg and isinstance(val_reg, str) and val_reg:
+                    sin_sitio += 1
                 continue
             if ok_reg and isinstance(val_reg, str) and val_reg:
                 creds[leaf] = val_reg
                 filled += 1
-                modified = True
+                modificado = True
             elif campo in borrar:
                 creds[leaf] = ""
-                modified = True
+                modificado = True
             elif creds.get(leaf):
                 # conserva el valor ajeno: ya está ahí
                 pass
 
-        if not modified:
-            return False, "amass: no se pudo escribir ningún campo"
+        if not modificado:
+            if sin_sitio:
+                return False, "amass: no se pudo escribir ningún campo"
+            return True, "amass: nada que escribir"
 
         tmp_path = dest.with_suffix(".tmp")
         try:
@@ -544,7 +576,7 @@ class _H8mailAdapter:
             config = configparser.ConfigParser(interpolation=None)
             with open(dest) as f:
                 config.read_file(f)
-        except (OSError, configparser.Error):
+        except (OSError, UnicodeDecodeError, configparser.Error):
             return result
         if "h8mail" not in config.sections():
             return result
@@ -556,25 +588,30 @@ class _H8mailAdapter:
         return result
 
     def proyectar(self, reg, forzar=False, borrar=()):
-        """Vuelca los valores de h8mail a ~/.h8mail_config.ini, conservando ajenos."""
+        """Vuelca los valores de h8mail a ~/.h8mail_config.ini, conservando ajenos.
+
+        Se parte del INI existente: las secciones y opciones que no gestiona el
+        framework se quedan donde están. Solo se tocan los 14 campos de h8mail.
+        """
         dest = self._destino()
         reg_section = reg.get("h8mail", {})
 
+        config = configparser.ConfigParser(interpolation=None)
         existente = {}
         if dest.exists():
             try:
-                config_ex = configparser.ConfigParser(interpolation=None)
                 with open(dest) as f:
-                    config_ex.read_file(f)
-                if "h8mail" in config_ex.sections():
-                    for campo in self._campos():
-                        if config_ex.has_option("h8mail", campo):
-                            existente[campo] = config_ex.get("h8mail", campo).strip()
-            except (OSError, configparser.Error) as exc:
+                    config.read_file(f)
+            except (OSError, UnicodeDecodeError, configparser.Error) as exc:
                 return False, f"h8mail: no se pudo leer {dest}: {exc}"
+            if "h8mail" in config.sections():
+                for campo in self._campos():
+                    if config.has_option("h8mail", campo):
+                        existente[campo] = config.get("h8mail", campo).strip()
 
-        config = configparser.ConfigParser(interpolation=None)
-        config.add_section("h8mail")
+        if "h8mail" not in config.sections():
+            config.add_section("h8mail")
+
         puestas = 0
         for campo in self._campos():
             val, ok = _get_nested(reg_section, campo)
@@ -975,7 +1012,7 @@ def cargar_registro():
     except yaml.YAMLError as exc:
         print(f"❌ Registro ilegible: {exc}", file=sys.stderr)
         sys.exit(2)
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         print(f"❌ No se pudo leer el registro: {exc}", file=sys.stderr)
         sys.exit(2)
     if data is None:
@@ -1053,6 +1090,12 @@ def poner_valor(reg, herramienta, campo, valor):
         _set_nested(reg[herramienta], campo, "")
     else:
         _set_nested(reg[herramienta], campo, valor)
+        if len(valor) < 8:
+            print(
+                f"⚠️  {herramienta}/{campo}: la clave es muy corta "
+                f"({len(valor)} caracteres); ¿es correcta?",
+                file=sys.stderr,
+            )
 
 
 def sembrar_theharvester(reg):
@@ -1072,6 +1115,47 @@ def sembrar_theharvester(reg):
                 _set_nested(reg["theharvester"], path, "")
                 creados.append(path)
     return creados
+
+
+def absorber_theharvester(reg):
+    """Trae al registro lo que haya fuera de ~ antes de que ~ lo deje ciego.
+
+    theHarvester se queda con el primer `api-keys.yaml` que encuentra (`~`,
+    `/etc`, `/usr/local/etc`). En cuanto el framework escribe `~`, el `/etc`
+    deja de leerse para siempre; para no perder esas claves en silencio, la
+    primera vez se copian al registro y se anuncian. Devuelve la lista de
+    campos absorbidos (vacía si no había nada o si `~` ya existía).
+    """
+    adaptador = _TheHarvesterAdapter()
+    if adaptador.inicializado():
+        return []
+    for origen in harvester_dirs()[1:]:
+        candidato = origen / "api-keys.yaml"
+        if not candidato.exists():
+            continue
+        try:
+            existente = adaptador._leer_existente(candidato)
+        except _ProyeccionIlegible as exc:
+            print(f"⚠️  {exc}", file=sys.stderr)
+            return []
+        absorbidos = []
+        for campo in adaptador._campos():
+            val_ext, ok_ext = _get_nested(existente, campo)
+            if not (ok_ext and isinstance(val_ext, str) and val_ext):
+                continue
+            if _valor_registro(reg.get("theharvester", {}), campo):
+                continue
+            _set_nested(reg.setdefault("theharvester", {}), campo, val_ext)
+            absorbidos.append(campo)
+        if absorbidos:
+            print(
+                f"ℹ️  theHarvester: {len(absorbidos)} valores de {candidato} "
+                "se importan al registro antes de que ~/.theHarvester deje de "
+                "leerlo (a partir de ahora manda el fichero de ~)"
+            )
+        # theHarvester solo lee el primer fichero que existe: no hay más.
+        return absorbidos
+    return []
 
 
 # ─── Adaptadores ───
@@ -1140,6 +1224,7 @@ def pedir(herramienta, campo=None):
         return 1
     reg = cargar_registro()
     sembrar_theharvester(reg)
+    absorbidos = absorber_theharvester(reg)
     if campo:
         campos = [campo]
     else:
@@ -1148,10 +1233,12 @@ def pedir(herramienta, campo=None):
             c for c in tool["campos"] if not _valor_registro(seccion, c)
         ]
     if not campos:
+        if absorbidos:
+            guardar_registro(reg)
         print(f"✅ {herramienta}: no queda ningún campo vacío")
         return 0
 
-    cambiado = False
+    cambiado = bool(absorbidos)
     borrados = []
     codigo = 0
     for c in campos:
@@ -1300,6 +1387,7 @@ def main():
             valor = args.valor
         reg = cargar_registro()
         sembrar_theharvester(reg)
+        absorber_theharvester(reg)
         poner_valor(reg, args.herramienta, args.campo, valor)
         guardar_registro(reg)
         borrada = valor.strip() == "-"
@@ -1340,6 +1428,14 @@ def main():
     elif args.orden == "sincronizar":
         reg = cargar_registro()
         sembrar_theharvester(reg)
+        if args.herramienta and _tool_by_name(args.herramienta) is None:
+            print(
+                f"❌ Herramienta desconocida: {args.herramienta}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if absorber_theharvester(reg):
+            guardar_registro(reg)
         herramientas = (
             [args.herramienta]
             if args.herramienta

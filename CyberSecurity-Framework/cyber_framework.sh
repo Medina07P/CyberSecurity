@@ -768,9 +768,9 @@ try:
 except Exception:
     print("registro no disponible")
     raise SystemExit
-puestas = sum(1 for h in datos if h["puestas"])
-vacias = sum(1 for h in datos if h["estado"] == "vacía")
-print(f"{len(datos)} herramientas · {puestas} con claves · {vacias} vacías")
+con_claves = sum(1 for h in datos if h["puestas"] > 0)
+sin_claves = len(datos) - con_claves
+print(f"{len(datos)} herramientas · {con_claves} con claves · {sin_claves} sin claves")
 '
 }
 
