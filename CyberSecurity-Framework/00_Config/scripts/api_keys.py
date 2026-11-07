@@ -9,6 +9,7 @@ import configparser
 import json
 import os
 import shutil
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -579,6 +580,171 @@ class _H8mailAdapter:
         return result
 
 
+class _ReconNgAdapter:
+    """Adaptador de proyección/ingesta para recon-ng (SQLite keys.db)."""
+
+    def _campos(self):
+        return _tool_by_name("recon-ng")["campos"]
+
+    def _destino(self):
+        return Path.home() / ".recon-ng" / "keys.db"
+
+    def _leer_existente(self, conn):
+        rows = {}
+        try:
+            for name, value in conn.execute("SELECT name, value FROM keys"):
+                rows[name] = value
+        except sqlite3.Error as exc:
+            print(f"⚠️  recon-ng: no se pudo leer la base: {exc}", file=sys.stderr)
+        return rows
+
+    def proyectar(self, reg):
+        """Vuelca los valores del registro a ~/.recon-ng/keys.db."""
+        dest = self._destino()
+        if not dest.exists():
+            return False, "recon-ng: sin inicializar"
+        reg_section = reg.get("recon-ng", {})
+        try:
+            conn = sqlite3.connect(str(dest))
+            try:
+                existente = self._leer_existente(conn)
+                total = 0
+                filled = 0
+                for campo in self._campos():
+                    total += 1
+                    val_reg, ok_reg = _get_nested(reg_section, campo)
+                    if ok_reg and isinstance(val_reg, str) and val_reg:
+                        nuevo = val_reg
+                    elif existente.get(campo):
+                        nuevo = existente[campo]
+                    else:
+                        continue
+                    conn.execute(
+                        "INSERT OR REPLACE INTO keys (name, value) VALUES (?, ?)",
+                        (campo, nuevo),
+                    )
+                    filled += 1
+                conn.commit()
+            finally:
+                conn.close()
+        except (sqlite3.Error, OSError) as exc:
+            return False, f"recon-ng: no se pudo escribir {dest}: {exc}"
+        return True, f"recon-ng: {filled} de {total} campos"
+
+    def ingerir(self, reg):
+        """Lee de ~/.recon-ng/keys.db los valores no vacíos que el registro tenga vacíos."""
+        result = {}
+        dest = self._destino()
+        if not dest.exists():
+            return result
+        reg_section = reg.get("recon-ng", {})
+        try:
+            conn = sqlite3.connect(str(dest))
+            try:
+                rows = {
+                    name: value
+                    for name, value in conn.execute("SELECT name, value FROM keys")
+                }
+            finally:
+                conn.close()
+        except (sqlite3.Error, OSError) as exc:
+            print(f"⚠️  recon-ng: no se pudo leer {dest}: {exc}", file=sys.stderr)
+            return result
+        for campo in self._campos():
+            val_reg, ok_reg = _get_nested(reg_section, campo)
+            if ok_reg and val_reg:
+                continue
+            val_ext = rows.get(campo)
+            if isinstance(val_ext, str) and val_ext:
+                result[campo] = val_ext
+        return result
+
+
+class _SpiderfootAdapter:
+    """Adaptador de proyección/ingesta para SpiderFoot (SQLite spiderfoot.db)."""
+
+    def _campos(self):
+        return _tool_by_name("spiderfoot")["campos"]
+
+    def _destino(self):
+        return Path.home() / ".spiderfoot" / "spiderfoot.db"
+
+    def _leer_existente(self, conn):
+        rows = {}
+        try:
+            for scope, opt, val in conn.execute(
+                "SELECT scope, opt, val FROM tbl_config"
+            ):
+                rows[f"{scope}.{opt}"] = val
+        except sqlite3.Error as exc:
+            print(f"⚠️  spiderfoot: no se pudo leer la base: {exc}", file=sys.stderr)
+        return rows
+
+    def proyectar(self, reg):
+        """Vuelca los valores del registro a ~/.spiderfoot/spiderfoot.db."""
+        dest = self._destino()
+        if not dest.exists():
+            return False, "spiderfoot: sin inicializar"
+        reg_section = reg.get("spiderfoot", {})
+        try:
+            conn = sqlite3.connect(str(dest))
+            try:
+                existente = self._leer_existente(conn)
+                total = 0
+                filled = 0
+                for campo in self._campos():
+                    total += 1
+                    val_reg, ok_reg = _get_nested(reg_section, campo)
+                    if ok_reg and isinstance(val_reg, str) and val_reg:
+                        nuevo = val_reg
+                    elif existente.get(campo):
+                        nuevo = existente[campo]
+                    else:
+                        continue
+                    scope, opt = campo.rsplit(".", 1)
+                    conn.execute(
+                        "REPLACE INTO tbl_config (scope, opt, val) VALUES (?, ?, ?)",
+                        (scope, opt, nuevo),
+                    )
+                    filled += 1
+                conn.commit()
+            finally:
+                conn.close()
+        except (sqlite3.Error, OSError) as exc:
+            return False, f"spiderfoot: no se pudo escribir {dest}: {exc}"
+        return True, f"spiderfoot: {filled} de {total} campos"
+
+    def ingerir(self, reg):
+        """Lee de ~/.spiderfoot/spiderfoot.db los valores no vacíos que el registro tenga vacíos."""
+        result = {}
+        dest = self._destino()
+        if not dest.exists():
+            return result
+        reg_section = reg.get("spiderfoot", {})
+        try:
+            conn = sqlite3.connect(str(dest))
+            try:
+                rows = {
+                    f"{scope}.{opt}": val
+                    for scope, opt, val in conn.execute(
+                        "SELECT scope, opt, val FROM tbl_config"
+                    )
+                }
+            finally:
+                conn.close()
+        except (sqlite3.Error, OSError) as exc:
+            print(f"⚠️  spiderfoot: no se pudo leer {dest}: {exc}", file=sys.stderr)
+            return result
+        for campo in self._campos():
+            val_reg, ok_reg = _get_nested(reg_section, campo)
+            if ok_reg and val_reg:
+                continue
+            val_ext = rows.get(campo)
+            if isinstance(val_ext, str) and val_ext:
+                result[campo] = val_ext
+        return result
+
+
 def proyectar(herramienta, reg):
     """Proyecta el registro al fichero de configuración de una herramienta."""
     tool = _tool_by_name(herramienta)
@@ -646,6 +812,7 @@ def _construir_herramientas():
                 "shodan_api", "censys_api_id", "censys_api_secret",
                 "securitytrails_api", "virustotal_api", "hunter_api", "github_api",
             ],
+            "adaptador": _ReconNgAdapter(),
         },
         "spiderfoot": {
             "nombre": "spiderfoot",
@@ -655,6 +822,7 @@ def _construir_herramientas():
                 "sfp_securitytrails.api_key", "sfp_virustotal.api_key",
                 "sfp_hunter.api_key", "sfp_urlscan.api_key",
             ],
+            "adaptador": _SpiderfootAdapter(),
         },
     }
 
