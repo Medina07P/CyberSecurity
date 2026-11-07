@@ -303,6 +303,47 @@ Si una herramienta no está instalada, el script avisa y continúa (o sale con e
 
 ---
 
+## Claves de API
+
+Las herramientas de OSINT y de reconocimiento leen sus claves de API de ficheros y bases
+de datos distintos, y cuando falta una clave casi ninguna lo dice: theHarvester y h8mail
+siguen arrancando y devuelven menos resultados. El framework centraliza las claves en un
+único registro (`00_Config/credentials/api-keys.yaml`, ignorado por git) y escribe desde
+ahí los ficheros de cada herramienta.
+
+Entra con `K` en el menú principal:
+
+```
+  K) 🔑 Claves de API  (6 herramientas · N con claves · M vacías)
+     1) Pedir las claves que falten en cada herramienta
+     2) Pedir las claves de una herramienta
+     3) Ver el estado detallado
+     4) Sincronizar el registro con las herramientas
+     5) Importar lo que ya tienen las herramientas
+     0) Volver al menú principal
+```
+
+- **Pedir** (`2` o la CLI `pedir <herramienta> [--campo X]`): sin `--campo` pregunta solo
+  los campos vacíos. Enter deja el campo como está; `-` lo borra también del fichero de la
+  herramienta. Con terminal no se ve lo que tecleas; por tubería avisa de que el eco es
+  visible. No acepta valores con espacios: parece texto, no una clave.
+- **Estado** (`3`): tabla con las claves puestas y el estado de cada herramienta.
+  - `puesta (sin verificar)` — hay valor, no se ha probado contra el servicio.
+  - `puesta (h8mail necesita -c)` — h8mail solo lee su INI si lo llamas con `-c`.
+  - `vacía` — la herramienta está inicializada y no hay ningún valor.
+  - `sin inicializar` — la herramienta no tiene todavía su fichero o base de datos.
+  - `no instalada` — ni binario ni fichero.
+  - `diverge` — la herramienta guarda un valor que el registro no explica; `5` lo importa.
+- **Sincronizar** (`4`): vuelca el registro en todas las herramientas que ya tengan fichero
+  o valores; no crea ficheros vacíos.
+- **Importar** (`5`): trae al registro lo que la herramienta ya tenía.
+
+Ninguna salida muestra el valor de una clave: solo presencia y longitud. El registro no
+sustituye a las herramientas: si borras `api-keys.yaml`, las claves que ya estaban en sus
+ficheros siguen ahí (`sincronizar`/`importar` las recuperan).
+
+---
+
 ## Referencia rápida de comandos
 
 ### Arranque y navegación
@@ -310,6 +351,7 @@ Si una herramienta no está instalada, el script avisa y continúa (o sale con e
 ```bash
 ./cyber_framework.sh          # Arrancar el gestor
 T                              # Cambiar objetivo
+K                              # Claves de API
 R                              # Generar informes
 99                             # Flujo completo
 ?                              # Ayuda
@@ -336,6 +378,19 @@ python3 11_Reports/report_engine.py --desde-json 11_Reports/generated/127.0.0.1/
 nano 00_Config/scope.yaml      # Editar alcance
 nano 00_Config/targets.txt     # Editar objetivos
 nano 11_Reports/.report_profile # Editar perfil de cliente
+```
+
+### Claves de API
+
+```bash
+H=00_Config/scripts/api_keys.py
+python3 $H estado                     # Tabla de estado
+python3 $H estado --json              # Lo mismo, para scripts
+python3 $H estado --faltan shodan     # 0 = completa, 1 = faltan, 2 = no existe
+python3 $H pedir theharvester         # Pide las vacías, una por una
+python3 $H pedir shodan --campo key   # Una concreta (Enter conserva, '-' borra)
+python3 $H sincronizar                # Registro → ficheros de herramienta
+python3 $H importar amass             # Fichero de herramienta → registro
 ```
 
 ### Verificación

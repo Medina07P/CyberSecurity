@@ -304,6 +304,18 @@ out=$(py poner shodan key - 2>&1)
 eq "poner - vacía el fichero" "$(cat "$HOME/.shodan/api_key")" ""
 py importar inexistente >/dev/null 2>&1; eq "importar desconocida: 2" "$?" "2"
 
+echo ""; echo "=== guardas ==="
+eq "el registro real no cambió" "$(md5sum "$FW/00_Config/credentials/api-keys.yaml" 2>/dev/null | cut -d' ' -f1)" "$MD5_REG_REAL"
+eq "el api-keys.yaml real no cambió" "$(md5sum "$REAL_HOME/.theHarvester/api-keys.yaml" 2>/dev/null | cut -d' ' -f1)" "$MD5_HT_REAL"
+grep -qF '## Claves de API' "$FW/../docs/MANUAL-GESTOR.md" && ok "manual: apartado de claves" || ko "manual: apartado de claves"
+grep -qF 'api-keys.yaml' "$FW/../AGENTS.md" && ok "AGENTS: menciona el registro" || ko "AGENTS: menciona el registro"
+[[ -f "$FW/../docs/API-KEYS-2026-11-06.md" ]] && ok "doc del cambio" || ko "doc del cambio"
+grep -qF 'api-keys.yaml' "$FW/00_Config/credentials/README.md" && ok "credentials: explica el registro" || ko "credentials: explica el registro"
+grep -qF 'K|k) keys_menu' "$FW/cyber_framework.sh" && ok "gestor: opción K cableada" || ko "gestor: opción K cableada"
+git -C "$FW/.." check-ignore -q "CyberSecurity-Framework/00_Config/credentials/api-keys.yaml" \
+    && ok "el registro está ignorado por git" || ko "el registro está ignorado por git"
+
 echo ""
-echo "pasan: $pasan  fallan: $fallan"
-[[ "$fallan" -eq 0 ]] && exit 0 || exit 1
+echo "----------------------------------------"
+echo "pasan: $pasan   fallan: $fallan"
+[[ "$fallan" -eq 0 ]]
