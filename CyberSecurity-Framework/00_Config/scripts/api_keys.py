@@ -6,6 +6,7 @@
 
 import argparse
 import configparser
+import getpass
 import json
 import os
 import shutil
@@ -186,7 +187,7 @@ class _TheHarvesterAdapter:
             return result
         return result
 
-    def proyectar(self, reg, forzar=False):
+    def proyectar(self, reg, forzar=False, borrar=()):
         """Vuelca el registro a ~/.theHarvester/api-keys.yaml conservando ajenos.
 
         Si forzar es True y el fichero existente no es legible, se respalda y
@@ -218,6 +219,8 @@ class _TheHarvesterAdapter:
                 if ok_reg and isinstance(val_reg, str) and val_reg:
                     contenido["apikeys"][slot][leaf] = val_reg
                     filled += 1
+                elif path in borrar:
+                    contenido["apikeys"][slot][leaf] = ""
                 else:
                     val_ext, ok_ext = _get_nested(existente, path)
                     if ok_ext and val_ext:
@@ -295,7 +298,7 @@ class _ShodanAdapter:
             result["key"] = val
         return result
 
-    def proyectar(self, reg, forzar=False):
+    def proyectar(self, reg, forzar=False, borrar=()):
         """Vuelca shodan.key a ~/.shodan/api_key, conservando un valor ajeno."""
         dest = self._destino()
         reg_section = reg.get("shodan", {})
@@ -308,7 +311,7 @@ class _ShodanAdapter:
                 existente = dest.read_text().strip()
             except OSError as exc:
                 return False, f"shodan: no se pudo leer {dest}: {exc}"
-        if not val and existente:
+        if not val and existente and "key" not in borrar:
             val = existente
 
         tmp_path = dest.with_suffix(".tmp")
@@ -423,7 +426,7 @@ class _AmassAdapter:
                 result[campo] = val_ext
         return result
 
-    def proyectar(self, reg, forzar=False):
+    def proyectar(self, reg, forzar=False, borrar=()):
         """Fusiona el registro en ~/.config/amass/datasources.yaml sin alterar el esquema."""
         dest = self._destino()
         if not dest.exists():
@@ -465,6 +468,9 @@ class _AmassAdapter:
             if ok_reg and isinstance(val_reg, str) and val_reg:
                 creds[leaf] = val_reg
                 filled += 1
+                modified = True
+            elif campo in borrar:
+                creds[leaf] = ""
                 modified = True
             elif creds.get(leaf):
                 # conserva el valor ajeno: ya está ahí
@@ -549,7 +555,7 @@ class _H8mailAdapter:
                     result[campo] = file_val
         return result
 
-    def proyectar(self, reg, forzar=False):
+    def proyectar(self, reg, forzar=False, borrar=()):
         """Vuelca los valores de h8mail a ~/.h8mail_config.ini, conservando ajenos."""
         dest = self._destino()
         reg_section = reg.get("h8mail", {})
@@ -575,6 +581,8 @@ class _H8mailAdapter:
             if ok and isinstance(val, str) and val:
                 config.set("h8mail", campo, val)
                 puestas += 1
+            elif campo in borrar:
+                config.set("h8mail", campo, "")
             elif existente.get(campo):
                 config.set("h8mail", campo, existente[campo])
                 puestas += 1
@@ -671,7 +679,7 @@ class _ReconNgAdapter:
                 result[campo] = val_ext
         return result
 
-    def proyectar(self, reg, forzar=False):
+    def proyectar(self, reg, forzar=False, borrar=()):
         """Vuelca los valores del registro a ~/.recon-ng/keys.db."""
         dest = self._destino()
         if not dest.exists():
@@ -688,6 +696,8 @@ class _ReconNgAdapter:
                     val_reg, ok_reg = _get_nested(reg_section, campo)
                     if ok_reg and isinstance(val_reg, str) and val_reg:
                         nuevo = val_reg
+                    elif campo in borrar:
+                        nuevo = ""
                     elif existente.get(campo):
                         nuevo = existente[campo]
                     else:
@@ -765,7 +775,7 @@ class _SpiderfootAdapter:
                 result[campo] = val_ext
         return result
 
-    def proyectar(self, reg, forzar=False):
+    def proyectar(self, reg, forzar=False, borrar=()):
         """Vuelca los valores del registro a ~/.spiderfoot/spiderfoot.db."""
         dest = self._destino()
         if not dest.exists():
@@ -782,6 +792,8 @@ class _SpiderfootAdapter:
                     val_reg, ok_reg = _get_nested(reg_section, campo)
                     if ok_reg and isinstance(val_reg, str) and val_reg:
                         nuevo = val_reg
+                    elif campo in borrar:
+                        nuevo = ""
                     elif existente.get(campo):
                         nuevo = existente[campo]
                     else:
@@ -811,12 +823,16 @@ class _SpiderfootAdapter:
         return result
 
 
-def proyectar(herramienta, reg, forzar=False):
-    """Proyecta el registro al fichero de configuración de una herramienta."""
+def proyectar(herramienta, reg, forzar=False, borrar=()):
+    """Proyecta el registro al fichero de configuración de una herramienta.
+
+    `borrar` son campos que el operador ha vaciado a propósito: la proyección
+    escribe vacío en ellos en vez de conservar lo que hubiera en el fichero.
+    """
     tool = _tool_by_name(herramienta)
     if tool is None or "adaptador" not in tool:
         return False, f"{herramienta}: sin adaptador"
-    return tool["adaptador"].proyectar(reg, forzar=forzar)
+    return tool["adaptador"].proyectar(reg, forzar=forzar, borrar=borrar)
 
 
 def ingerir(herramienta):
@@ -1096,6 +1112,84 @@ def _tiene_valores(reg, nombre):
     )
 
 
+def leer_valor(etiqueta):
+    """Pide un valor sin mostrarlo por pantalla; sin terminal cae a stdin.
+
+    Todo el texto de la petición va a stderr: stdout queda para los resultados.
+    """
+    if sys.stdin.isatty():
+        return getpass.getpass(f"{etiqueta}: ")
+    print("⚠️  sin terminal: el eco es visible", file=sys.stderr)
+    print(f"{etiqueta}: ", end="", file=sys.stderr)
+    return sys.stdin.readline()
+
+
+def pedir(herramienta, campo=None):
+    """Pide por teclado las claves vacías de una herramienta (o una concreta).
+
+    Enter deja el campo como está; `-` lo borra. Devuelve el código de salida de
+    la CLI: 0 bien, 1 valor inválido, 3 el registro se guardó pero la proyección
+    falló.
+    """
+    tool = _tool_by_name(herramienta)
+    if tool is None:
+        print(f"❌ Herramienta desconocida: {herramienta}", file=sys.stderr)
+        return 1
+    if campo and campo not in tool["campos"]:
+        print(f"❌ Campo desconocido: {herramienta}.{campo}", file=sys.stderr)
+        return 1
+    reg = cargar_registro()
+    sembrar_theharvester(reg)
+    if campo:
+        campos = [campo]
+    else:
+        seccion = reg.get(herramienta, {})
+        campos = [
+            c for c in tool["campos"] if not _valor_registro(seccion, c)
+        ]
+    if not campos:
+        print(f"✅ {herramienta}: no queda ningún campo vacío")
+        return 0
+
+    cambiado = False
+    borrados = []
+    codigo = 0
+    for c in campos:
+        actual = _valor_registro(reg.get(herramienta, {}), c)
+        situacion = "definida" if actual else "vacía"
+        valor = leer_valor(f"{herramienta}/{c} ({situacion})").strip()
+        if not valor:
+            print(f"· {herramienta}/{c}: sin cambios")
+            continue
+        if any(ch.isspace() for ch in valor):
+            print(
+                f"❌ {herramienta}/{c}: el valor no puede llevar espacios "
+                "(parece texto, no una clave)",
+                file=sys.stderr,
+            )
+            codigo = 1
+            break
+        if valor == "-":
+            poner_valor(reg, herramienta, c, "-")
+            borrados.append(c)
+            print(f"🗑️  {herramienta}/{c}: borrada")
+        else:
+            poner_valor(reg, herramienta, c, valor)
+            largo = len(_valor_registro(reg.get(herramienta, {}), c))
+            print(f"✅ {herramienta}/{c}: definida ({largo} caracteres)")
+        cambiado = True
+
+    if cambiado:
+        guardar_registro(reg)
+        ok, msg = proyectar(
+            herramienta, reg, forzar=True, borrar=tuple(borrados)
+        )
+        if not ok:
+            print(f"⚠️  {msg}", file=sys.stderr)
+            return 3
+    return codigo
+
+
 def estado_herramienta(nombre, reg):
     """Devuelve el estado consolidado de una herramienta sin revelar secretos."""
     tool = _tool_by_name(nombre)
@@ -1189,6 +1283,12 @@ def main():
     )
     imp_parser.add_argument("herramienta")
 
+    pedir_parser = subparsers.add_parser(
+        "pedir", help="Pide por teclado las claves que faltan"
+    )
+    pedir_parser.add_argument("herramienta")
+    pedir_parser.add_argument("--campo", metavar="CAMPO")
+
     args = parser.parse_args()
 
     if args.orden == "poner":
@@ -1202,11 +1302,18 @@ def main():
         sembrar_theharvester(reg)
         poner_valor(reg, args.herramienta, args.campo, valor)
         guardar_registro(reg)
-        print(
-            f"✅ {args.herramienta}/{args.campo}: "
-            f"definida ({len(valor.strip())} caracteres)"
+        borrada = valor.strip() == "-"
+        if borrada:
+            print(f"🗑️  {args.herramienta}/{args.campo}: borrada")
+        else:
+            print(
+                f"✅ {args.herramienta}/{args.campo}: "
+                f"definida ({len(valor.strip())} caracteres)"
+            )
+        ok, msg = proyectar(
+            args.herramienta, reg, forzar=True,
+            borrar=(args.campo,) if borrada else (),
         )
-        ok, msg = proyectar(args.herramienta, reg, forzar=True)
         if not ok:
             print(f"⚠️  {msg}", file=sys.stderr)
             sys.exit(3)
@@ -1251,13 +1358,22 @@ def main():
             else:
                 print(f"✅ {msg}")
         sys.exit(exit_code)
+    elif args.orden == "pedir":
+        sys.exit(pedir(args.herramienta, args.campo))
     elif args.orden == "importar":
         if not args.herramienta:
             imp_parser.error("Falta la herramienta")
+        if _tool_by_name(args.herramienta) is None:
+            print(
+                f"❌ Herramienta desconocida: {args.herramienta}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
         vals = ingerir(args.herramienta)
         if vals:
             reg = cargar_registro()
             sembrar_theharvester(reg)
+            reg.setdefault(args.herramienta, {})
             for path, val in vals.items():
                 _set_nested(reg[args.herramienta], path, val)
             guardar_registro(reg)
