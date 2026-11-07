@@ -345,9 +345,9 @@ class _AmassAdapter:
         try:
             with open(dest) as f:
                 data = yaml.safe_load(f)
-        except yaml.YAMLError as exc:
+        except (OSError, yaml.YAMLError) as exc:
             raise _ProyeccionIlegible(
-                f"amass: {dest} no es YAML válido: {exc}"
+                f"amass: no se pudo leer {dest}: {exc}"
             )
         if not isinstance(data, dict):
             raise _ProyeccionIlegible(
@@ -357,7 +357,10 @@ class _AmassAdapter:
 
     def _entry_by_name(self, entries, nombre):
         for entry in entries:
-            if isinstance(entry, dict) and entry.get("name", "").lower() == nombre.lower():
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get("name")
+            if isinstance(name, str) and name.lower() == nombre.lower():
                 return entry
         return None
 

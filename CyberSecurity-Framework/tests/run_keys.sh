@@ -181,6 +181,24 @@ eq "fusiona creds.key" "$(python3 -c "import yaml;d=yaml.safe_load(open('$HOME/.
 eq "no toca otras fuentes" "$(python3 -c "import yaml;d=yaml.safe_load(open('$HOME/.config/amass/datasources.yaml'));print(len(d['datasources']))")" "3"
 py poner amass securitytrails.key st-123456 >/dev/null 2>&1
 eq "fuente desconocida: no se inventa" "$(python3 -c "import yaml;d=yaml.safe_load(open('$HOME/.config/amass/datasources.yaml'));print(len(d['datasources']))")" "3"
+# fichero ilegible por permisos: aviso en español, código 3, sin traceback
+chmod 000 "$HOME/.config/amass/datasources.yaml"
+out=$(py poner amass shodan.key amass-ilegible-123456 2>&1)
+code=$?
+chmod 600 "$HOME/.config/amass/datasources.yaml"
+eq "fichero ilegible: código 3" "$code" "3"
+[[ "$out" == *"amass: no se pudo leer"* ]] && ok "fichero ilegible: aviso en español" || ko "fichero ilegible: aviso en español"
+[[ "$out" != *"Traceback"* ]] && ok "fichero ilegible: sin traceback" || ko "fichero ilegible: sin traceback"
+# importar amass round-trip
+printf 'datasources:\n  - name: shodan\n    ttl: 4320\n    creds:\n      key: "importada-amass-123456"\n' > "$HOME/.config/amass/datasources.yaml"; chmod 600 "$HOME/.config/amass/datasources.yaml"
+py poner amass shodan.key - >/dev/null 2>&1
+py importar amass >/dev/null 2>&1
+eq "importar amass" "$(python3 -c "import yaml;print(yaml.safe_load(open('$KEYS_FILE'))['amass']['shodan']['key'])")" "importada-amass-123456"
+# entrada con name no-string no rompe el merge
+printf 'datasources:\n  - name: 123\n    ttl: 4320\n  - name: shodan\n    ttl: 4320\n    creds:\n      key: ""\n' > "$HOME/.config/amass/datasources.yaml"; chmod 600 "$HOME/.config/amass/datasources.yaml"
+py poner amass shodan.key amass-malformado-123456 >/dev/null 2>&1
+eq "name no-string no rompe" "$?" "0"
+eq "name no-string: merge sigue" "$(python3 -c "import yaml;d=yaml.safe_load(open('$HOME/.config/amass/datasources.yaml'));print([x for x in d['datasources'] if isinstance(x.get('name'),str) and x['name']=='shodan'][0]['creds']['key'])")" "amass-malformado-123456"
 
 echo ""
 echo "pasan: $pasan  fallan: $fallan"
