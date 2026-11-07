@@ -160,14 +160,47 @@ class _TheHarvesterAdapter:
             )
         return data.get("apikeys", {})
 
-    def proyectar(self, reg):
-        """Vuelca el registro a ~/.theHarvester/api-keys.yaml conservando ajenos."""
+    def inicializado(self):
+        """True si existe el fichero de claves de theHarvester en ~/.theHarvester."""
+        return (harvester_dirs()[0] / "api-keys.yaml").exists()
+
+    def _valores_externos(self, reg):
+        """Devuelve los valores no vacíos de la proyección para campos del registro."""
+        result = {}
+        for d in harvester_dirs():
+            candidate = d / "api-keys.yaml"
+            if not candidate.exists():
+                continue
+            try:
+                existente = self._leer_existente(candidate)
+            except _ProyeccionIlegible:
+                continue
+            for campo in self._campos():
+                slot, leaf = campo.split(".", 1)
+                slot_val = existente.get(slot)
+                if not isinstance(slot_val, dict):
+                    continue
+                val_ext = slot_val.get(leaf)
+                if isinstance(val_ext, str) and val_ext:
+                    result[campo] = val_ext
+            return result
+        return result
+
+    def proyectar(self, reg, forzar=False):
+        """Vuelca el registro a ~/.theHarvester/api-keys.yaml conservando ajenos.
+
+        Si forzar es True y el fichero existente no es legible, se respalda y
+        se sobrescribe; esto permite que `poner` recupere un fichero corrupto.
+        """
         dest = self._destino()
         try:
             existente = self._leer_existente(dest)
         except _ProyeccionIlegible as exc:
-            print(f"⚠️  {exc}", file=sys.stderr)
-            return False, str(exc)
+            if not forzar:
+                print(f"⚠️  {exc}", file=sys.stderr)
+                return False, str(exc)
+            print(f"⚠️  {exc}; se sobrescribe con copia de seguridad", file=sys.stderr)
+            existente = {}
         plantilla = self._plantilla(reg, existente)
         reg_section = reg.get("theharvester", {})
 
@@ -192,11 +225,13 @@ class _TheHarvesterAdapter:
                     else:
                         contenido["apikeys"][slot][leaf] = ""
 
-        tmp_path = dest.with_suffix(".tmp")
+        tmp_path = dest.with_name(dest.name + ".tmp")
         try:
             dest.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
             if dest.exists():
-                shutil.copy2(dest, dest.with_suffix(".bak"))
+                respaldo = dest.with_name(dest.name + ".bak")
+                shutil.copy2(dest, respaldo)
+                respaldo.chmod(0o600)
             fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             try:
                 with os.fdopen(fd, "w") as f:
@@ -229,28 +264,11 @@ class _TheHarvesterAdapter:
         """Lee de la proyección valores no vacíos que el registro tenga vacíos."""
         reg_section = reg.get("theharvester", {})
         result = {}
-        for d in harvester_dirs():
-            candidate = d / "api-keys.yaml"
-            if not candidate.exists():
+        for campo, val_ext in self._valores_externos(reg).items():
+            val_reg, ok_reg = _get_nested(reg_section, campo)
+            if ok_reg and val_reg:
                 continue
-            try:
-                existente = self._leer_existente(candidate)
-            except _ProyeccionIlegible as exc:
-                print(f"⚠️  {exc}", file=sys.stderr)
-                continue
-            plantilla = self._plantilla(reg, existente)
-            for slot, leaves in plantilla.items():
-                if not isinstance(leaves, dict):
-                    continue
-                for leaf in leaves.keys():
-                    path = f"{slot}.{leaf}"
-                    val_reg, ok_reg = _get_nested(reg_section, path)
-                    if ok_reg and val_reg:
-                        continue
-                    val_ext, ok_ext = _get_nested(existente, path)
-                    if ok_ext and val_ext:
-                        result[path] = val_ext
-            return result
+            result[campo] = val_ext
         return result
 
 
@@ -260,7 +278,24 @@ class _ShodanAdapter:
     def _destino(self):
         return Path.home() / ".shodan" / "api_key"
 
-    def proyectar(self, reg):
+    def inicializado(self):
+        """True si la herramienta ya tiene su fichero o base de datos."""
+        return self._destino().exists()
+
+    def _valores_externos(self, reg):
+        result = {}
+        dest = self._destino()
+        if not dest.exists():
+            return result
+        try:
+            val = dest.read_text().strip()
+        except OSError:
+            return result
+        if val:
+            result["key"] = val
+        return result
+
+    def proyectar(self, reg, forzar=False):
         """Vuelca shodan.key a ~/.shodan/api_key, conservando un valor ajeno."""
         dest = self._destino()
         reg_section = reg.get("shodan", {})
@@ -313,21 +348,13 @@ class _ShodanAdapter:
 
     def ingerir(self, reg):
         """Lee ~/.shodan/api_key si el registro tiene shodan.key vacío."""
-        result = {}
-        dest = self._destino()
-        if not dest.exists():
-            return result
-        try:
-            val = dest.read_text().strip()
-        except OSError:
-            return result
-        if not val:
-            return result
         reg_section = reg.get("shodan", {})
-        val_reg, ok_reg = _get_nested(reg_section, "key")
-        if ok_reg and val_reg:
-            return result
-        result["key"] = val
+        result = {}
+        for campo, val_ext in self._valores_externos(reg).items():
+            val_reg, ok_reg = _get_nested(reg_section, campo)
+            if ok_reg and val_reg:
+                continue
+            result[campo] = val_ext
         return result
 
 
@@ -365,7 +392,38 @@ class _AmassAdapter:
                 return entry
         return None
 
-    def proyectar(self, reg):
+    def inicializado(self):
+        """True si la herramienta ya tiene su fichero o base de datos."""
+        return self._destino().exists()
+
+    def _valores_externos(self, reg):
+        result = {}
+        dest = self._destino()
+        if not dest.exists():
+            return result
+        try:
+            data = self._leer_existente(dest)
+        except _ProyeccionIlegible:
+            return result
+        datasources = data.get("datasources")
+        if not isinstance(datasources, list):
+            return result
+        for campo in self._campos():
+            source_name, leaf = campo.split(".", 1)
+            entry = self._entry_by_name(datasources, source_name)
+            if entry is None:
+                continue
+            creds = entry.get("creds")
+            if not isinstance(creds, dict):
+                continue
+            if leaf not in creds:
+                continue
+            val_ext = creds.get(leaf)
+            if isinstance(val_ext, str) and val_ext:
+                result[campo] = val_ext
+        return result
+
+    def proyectar(self, reg, forzar=False):
         """Fusiona el registro en ~/.config/amass/datasources.yaml sin alterar el esquema."""
         dest = self._destino()
         if not dest.exists():
@@ -448,35 +506,13 @@ class _AmassAdapter:
 
     def ingerir(self, reg):
         """Lee valores no vacíos de datasources.yaml para campos vacíos en el registro."""
-        result = {}
-        dest = self._destino()
-        if not dest.exists():
-            return result
-        try:
-            data = self._leer_existente(dest)
-        except _ProyeccionIlegible as exc:
-            print(f"⚠️  {exc}", file=sys.stderr)
-            return result
-        datasources = data.get("datasources")
-        if not isinstance(datasources, list):
-            return result
         reg_section = reg.get("amass", {})
-        for campo in self._campos():
-            source_name, leaf = campo.split(".", 1)
+        result = {}
+        for campo, val_ext in self._valores_externos(reg).items():
             val_reg, ok_reg = _get_nested(reg_section, campo)
             if ok_reg and val_reg:
                 continue
-            entry = self._entry_by_name(datasources, source_name)
-            if entry is None:
-                continue
-            creds = entry.get("creds")
-            if not isinstance(creds, dict):
-                continue
-            if leaf not in creds:
-                continue
-            val_ext = creds.get(leaf)
-            if isinstance(val_ext, str) and val_ext:
-                result[campo] = val_ext
+            result[campo] = val_ext
         return result
 
 
@@ -489,7 +525,31 @@ class _H8mailAdapter:
     def _destino(self):
         return Path.home() / ".h8mail_config.ini"
 
-    def proyectar(self, reg):
+    def inicializado(self):
+        """True si la herramienta ya tiene su fichero o base de datos."""
+        return self._destino().exists()
+
+    def _valores_externos(self, reg):
+        result = {}
+        dest = self._destino()
+        if not dest.exists():
+            return result
+        try:
+            config = configparser.ConfigParser(interpolation=None)
+            with open(dest) as f:
+                config.read_file(f)
+        except (OSError, configparser.Error):
+            return result
+        if "h8mail" not in config.sections():
+            return result
+        for campo in self._campos():
+            if config.has_option("h8mail", campo):
+                file_val = config.get("h8mail", campo).strip()
+                if file_val:
+                    result[campo] = file_val
+        return result
+
+    def proyectar(self, reg, forzar=False):
         """Vuelca los valores de h8mail a ~/.h8mail_config.ini, conservando ajenos."""
         dest = self._destino()
         reg_section = reg.get("h8mail", {})
@@ -556,27 +616,13 @@ class _H8mailAdapter:
 
     def ingerir(self, reg):
         """Lee ~/.h8mail_config.ini para campos vacíos en el registro."""
-        result = {}
-        dest = self._destino()
-        if not dest.exists():
-            return result
-        try:
-            config = configparser.ConfigParser(interpolation=None)
-            with open(dest) as f:
-                config.read_file(f)
-        except (OSError, configparser.Error):
-            return result
-        if "h8mail" not in config.sections():
-            return result
         reg_section = reg.get("h8mail", {})
-        for campo in self._campos():
-            val, ok = _get_nested(reg_section, campo)
-            if ok and val:
+        result = {}
+        for campo, val_ext in self._valores_externos(reg).items():
+            val_reg, ok_reg = _get_nested(reg_section, campo)
+            if ok_reg and val_reg:
                 continue
-            if config.has_option("h8mail", campo):
-                file_val = config.get("h8mail", campo).strip()
-                if file_val:
-                    result[campo] = file_val
+            result[campo] = val_ext
         return result
 
 
@@ -598,7 +644,34 @@ class _ReconNgAdapter:
             print(f"⚠️  recon-ng: no se pudo leer la base: {exc}", file=sys.stderr)
         return rows
 
-    def proyectar(self, reg):
+    def inicializado(self):
+        """True si la herramienta ya tiene su fichero o base de datos."""
+        return self._destino().exists()
+
+    def _valores_externos(self, reg):
+        result = {}
+        dest = self._destino()
+        if not dest.exists():
+            return result
+        try:
+            conn = sqlite3.connect(str(dest))
+            try:
+                rows = {
+                    name: value
+                    for name, value in conn.execute("SELECT name, value FROM keys")
+                }
+            finally:
+                conn.close()
+        except (sqlite3.Error, OSError) as exc:
+            print(f"⚠️  recon-ng: no se pudo leer {dest}: {exc}", file=sys.stderr)
+            return result
+        for campo in self._campos():
+            val_ext = rows.get(campo)
+            if isinstance(val_ext, str) and val_ext:
+                result[campo] = val_ext
+        return result
+
+    def proyectar(self, reg, forzar=False):
         """Vuelca los valores del registro a ~/.recon-ng/keys.db."""
         dest = self._destino()
         if not dest.exists():
@@ -633,30 +706,13 @@ class _ReconNgAdapter:
 
     def ingerir(self, reg):
         """Lee de ~/.recon-ng/keys.db los valores no vacíos que el registro tenga vacíos."""
-        result = {}
-        dest = self._destino()
-        if not dest.exists():
-            return result
         reg_section = reg.get("recon-ng", {})
-        try:
-            conn = sqlite3.connect(str(dest))
-            try:
-                rows = {
-                    name: value
-                    for name, value in conn.execute("SELECT name, value FROM keys")
-                }
-            finally:
-                conn.close()
-        except (sqlite3.Error, OSError) as exc:
-            print(f"⚠️  recon-ng: no se pudo leer {dest}: {exc}", file=sys.stderr)
-            return result
-        for campo in self._campos():
+        result = {}
+        for campo, val_ext in self._valores_externos(reg).items():
             val_reg, ok_reg = _get_nested(reg_section, campo)
             if ok_reg and val_reg:
                 continue
-            val_ext = rows.get(campo)
-            if isinstance(val_ext, str) and val_ext:
-                result[campo] = val_ext
+            result[campo] = val_ext
         return result
 
 
@@ -680,7 +736,36 @@ class _SpiderfootAdapter:
             print(f"⚠️  spiderfoot: no se pudo leer la base: {exc}", file=sys.stderr)
         return rows
 
-    def proyectar(self, reg):
+    def inicializado(self):
+        """True si la herramienta ya tiene su fichero o base de datos."""
+        return self._destino().exists()
+
+    def _valores_externos(self, reg):
+        result = {}
+        dest = self._destino()
+        if not dest.exists():
+            return result
+        try:
+            conn = sqlite3.connect(str(dest))
+            try:
+                rows = {
+                    f"{scope}.{opt}": val
+                    for scope, opt, val in conn.execute(
+                        "SELECT scope, opt, val FROM tbl_config"
+                    )
+                }
+            finally:
+                conn.close()
+        except (sqlite3.Error, OSError) as exc:
+            print(f"⚠️  spiderfoot: no se pudo leer {dest}: {exc}", file=sys.stderr)
+            return result
+        for campo in self._campos():
+            val_ext = rows.get(campo)
+            if isinstance(val_ext, str) and val_ext:
+                result[campo] = val_ext
+        return result
+
+    def proyectar(self, reg, forzar=False):
         """Vuelca los valores del registro a ~/.spiderfoot/spiderfoot.db."""
         dest = self._destino()
         if not dest.exists():
@@ -716,41 +801,22 @@ class _SpiderfootAdapter:
 
     def ingerir(self, reg):
         """Lee de ~/.spiderfoot/spiderfoot.db los valores no vacíos que el registro tenga vacíos."""
-        result = {}
-        dest = self._destino()
-        if not dest.exists():
-            return result
         reg_section = reg.get("spiderfoot", {})
-        try:
-            conn = sqlite3.connect(str(dest))
-            try:
-                rows = {
-                    f"{scope}.{opt}": val
-                    for scope, opt, val in conn.execute(
-                        "SELECT scope, opt, val FROM tbl_config"
-                    )
-                }
-            finally:
-                conn.close()
-        except (sqlite3.Error, OSError) as exc:
-            print(f"⚠️  spiderfoot: no se pudo leer {dest}: {exc}", file=sys.stderr)
-            return result
-        for campo in self._campos():
+        result = {}
+        for campo, val_ext in self._valores_externos(reg).items():
             val_reg, ok_reg = _get_nested(reg_section, campo)
             if ok_reg and val_reg:
                 continue
-            val_ext = rows.get(campo)
-            if isinstance(val_ext, str) and val_ext:
-                result[campo] = val_ext
+            result[campo] = val_ext
         return result
 
 
-def proyectar(herramienta, reg):
+def proyectar(herramienta, reg, forzar=False):
     """Proyecta el registro al fichero de configuración de una herramienta."""
     tool = _tool_by_name(herramienta)
     if tool is None or "adaptador" not in tool:
         return False, f"{herramienta}: sin adaptador"
-    return tool["adaptador"].proyectar(reg)
+    return tool["adaptador"].proyectar(reg, forzar=forzar)
 
 
 def ingerir(herramienta):
@@ -832,6 +898,31 @@ HERRAMIENTAS = _construir_herramientas()
 
 def _tool_by_name(nombre):
     return HERRAMIENTAS.get(nombre)
+
+
+def _binario_herramienta(nombre):
+    """Nombre del ejecutable esperado en PATH para una herramienta."""
+    return {
+        "theharvester": "theHarvester",
+        "shodan": "shodan",
+        "h8mail": "h8mail",
+        "amass": "amass",
+        "recon-ng": "recon-ng",
+        "spiderfoot": "spiderfoot",
+    }.get(nombre)
+
+
+def _hay_binario(nombre):
+    """True si el ejecutable de la herramienta está disponible en PATH."""
+    nombre_bin = _binario_herramienta(nombre)
+    if not nombre_bin:
+        return False
+    if shutil.which(nombre_bin):
+        return True
+    # Fallback para theHarvester, que a veces se instala en minúsculas.
+    if nombre == "theharvester" and shutil.which("theharvester"):
+        return True
+    return False
 
 
 def _get_nested(d, path):
@@ -977,39 +1068,99 @@ def _longitud_valor(valor):
     return len(valor) if isinstance(valor, str) else 0
 
 
+def _valor_registro(seccion, campo):
+    """Valor del registro para un campo, como cadena vacía si no lo hay."""
+    val, ok = _get_nested(seccion, campo)
+    return val if ok and isinstance(val, str) else ""
+
+
+def _diverge(tool, seccion, valores_ext):
+    """True si la herramienta guarda un valor no vacío que el registro no explica.
+
+    Un hueco vacío en la herramienta no es divergencia: solo cuenta lo que el
+    registro no puede justificar (valor distinto del registrado o desconocido).
+    """
+    for campo in tool["campos"]:
+        val_ext = valores_ext.get(campo)
+        if val_ext and val_ext != _valor_registro(seccion, campo):
+            return True
+    return False
+
+
+def _tiene_valores(reg, nombre):
+    """True si el registro guarda algún valor para esa herramienta."""
+    seccion = reg.get(nombre, {})
+    return any(
+        _valor_registro(seccion, campo)
+        for campo in _tool_by_name(nombre)["campos"]
+    )
+
+
+def estado_herramienta(nombre, reg):
+    """Devuelve el estado consolidado de una herramienta sin revelar secretos."""
+    tool = _tool_by_name(nombre)
+    seccion = reg.get(nombre, {})
+    campos_json = []
+    puestas = 0
+    for campo in tool["campos"]:
+        val, ok = _get_nested(seccion, campo)
+        longitud = _longitud_valor(val) if ok else 0
+        puesta = longitud > 0
+        if puesta:
+            puestas += 1
+        campos_json.append({
+            "campo": campo,
+            "puesta": puesta,
+            "longitud": longitud,
+        })
+
+    hay_binario = _hay_binario(nombre)
+    inicializado = tool["adaptador"].inicializado()
+    valores_ext = tool["adaptador"]._valores_externos(reg)
+
+    if not hay_binario and not inicializado:
+        estado = "no instalada"
+    elif _diverge(tool, seccion, valores_ext):
+        estado = "diverge"
+    elif not inicializado:
+        estado = "sin inicializar"
+    elif puestas == 0:
+        estado = "vacía"
+    elif nombre == "h8mail":
+        estado = "puesta (h8mail necesita -c)"
+    else:
+        estado = "puesta (sin verificar)"
+
+    return {
+        "nombre": nombre,
+        "etiqueta": tool["etiqueta"],
+        "puestas": puestas,
+        "total": len(tool["campos"]),
+        "estado": estado,
+        "campos": campos_json,
+    }
+
+
 def estado_json(reg):
     """Devuelve el estado del registro sin escribir ni revelar secretos."""
-    herramientas = []
-    for h in HERRAMIENTAS.values():
-        seccion = reg.get(h["nombre"], {})
-        campos_json = []
-        puestas = 0
-        for campo in h["campos"]:
-            val, ok = _get_nested(seccion, campo)
-            longitud = _longitud_valor(val) if ok else 0
-            puesta = longitud > 0
-            if puesta:
-                puestas += 1
-            campos_json.append({
-                "campo": campo,
-                "puesta": puesta,
-                "longitud": longitud,
-            })
-        herramientas.append({
-            "nombre": h["nombre"],
-            "etiqueta": h["etiqueta"],
-            "puestas": puestas,
-            "total": len(h["campos"]),
-            "campos": campos_json,
-        })
-    return {"herramientas": herramientas}
+    return {
+        "herramientas": [
+            estado_herramienta(nombre, reg)
+            for nombre in HERRAMIENTAS.keys()
+        ]
+    }
 
 
 def _mostrar_estado(reg):
     print("\n🔐 ESTADO DE CLAVES DE API")
-    print("=" * 50)
-    for h in estado_json(reg)["herramientas"]:
-        print(f"  {h['etiqueta']}: {h['puestas']}/{h['total']}")
+    print("=" * 60)
+    herramientas = estado_json(reg)["herramientas"]
+    ancho = max(len(h["etiqueta"]) for h in herramientas)
+    for h in herramientas:
+        print(
+            f"  {h['etiqueta']:<{ancho}}  "
+            f"{h['puestas']:>2}/{h['total']:<2}  {h['estado']}"
+        )
 
 
 def main():
@@ -1026,6 +1177,7 @@ def main():
 
     estado_parser = subparsers.add_parser("estado", help="Muestra el estado")
     estado_parser.add_argument("--json", action="store_true")
+    estado_parser.add_argument("--faltan", metavar="HERRAMIENTA")
 
     sinc_parser = subparsers.add_parser(
         "sincronizar", help="Vuelca el registro a los ficheros de herramienta"
@@ -1054,7 +1206,7 @@ def main():
             f"✅ {args.herramienta}/{args.campo}: "
             f"definida ({len(valor.strip())} caracteres)"
         )
-        ok, msg = proyectar(args.herramienta, reg)
+        ok, msg = proyectar(args.herramienta, reg, forzar=True)
         if not ok:
             print(f"⚠️  {msg}", file=sys.stderr)
             sys.exit(3)
@@ -1062,6 +1214,18 @@ def main():
     elif args.orden == "estado":
         reg = cargar_registro()
         sembrar_theharvester(reg)
+        if args.faltan:
+            tool = _tool_by_name(args.faltan)
+            if tool is None:
+                print(f"❌ Herramienta desconocida: {args.faltan}", file=sys.stderr)
+                sys.exit(2)
+            info = estado_herramienta(args.faltan, reg)
+            faltan = info["total"] - info["puestas"]
+            if faltan > 0:
+                print(f"⚠️  {args.faltan}: faltan {faltan} de {info['total']} campos")
+                sys.exit(1)
+            print(f"✅ {args.faltan}: todos los campos están definidos")
+            sys.exit(0)
         if args.json:
             print(json.dumps(estado_json(reg)))
         else:
@@ -1069,9 +1233,17 @@ def main():
     elif args.orden == "sincronizar":
         reg = cargar_registro()
         sembrar_theharvester(reg)
-        herramientas = [args.herramienta] if args.herramienta else ["theharvester"]
+        herramientas = (
+            [args.herramienta]
+            if args.herramienta
+            else list(HERRAMIENTAS.keys())
+        )
         exit_code = 0
         for nombre in herramientas:
+            tool = _tool_by_name(nombre)
+            if not _tiene_valores(reg, nombre) and not tool["adaptador"].inicializado():
+                print(f"⬜ {tool['etiqueta']}: sin valores y sin fichero, no se crea")
+                continue
             ok, msg = proyectar(nombre, reg)
             if not ok:
                 print(f"⚠️  {msg}", file=sys.stderr)
