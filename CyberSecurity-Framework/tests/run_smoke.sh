@@ -13,6 +13,8 @@ export TERM=xterm
 # Sesión aislada: no toca la configuración real
 SESION_TMP="$(mktemp -d)"
 export SESSION_FILE="$SESION_TMP/.session"
+# Registro de claves aislado: la opción K nunca lee ni escribe el real
+export KEYS_FILE="$SESION_TMP/keys.yaml"
 trap 'rm -rf "$SESION_TMP"' EXIT
 
 fail=0
@@ -104,6 +106,14 @@ echo "=== informes: acción R ==="
 # La acción R del menú principal muestra el submenu de informe rápido.
 # La generación real se prueba en run_reports.sh con fixtures aislados.
 run "R muestra el submenu de informes" 'R\n0\nQ\n' "Informe técnico"
+
+echo ""
+echo "=== claves de API: acción K ==="
+run "menú: K aparece"                 'Q\n'            "Claves de API"
+run "menú: K abre el submenú"         'K\n0\nQ\n'     "CLAVES DE API"
+run "menú: K muestra el estado"       'K\n3\n0\nQ\n' "theHarvester"
+[[ -e "$KEYS_FILE" ]] && { echo "  FALLO    K no debe crear el registro"; fail=$((fail+1)); } \
+    || echo "  OK       K no crea el registro"
 
 echo ""
 echo "----------------------------------------"
