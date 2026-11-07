@@ -257,7 +257,7 @@ instalado, para que la suite siga pasando en un clon limpio, como las otras cuat
 5. **h8mail**: INI con `[h8mail]` y los campos curados.
 6. **amass**: fusiona `creds` sobre un `datasources.yaml` ya existente sin borrar el resto;
    sin fichero → `sin inicializar` y no se escribe nada.
-7. **recon-ng**: fila en `keys.db`; base ausente → aviso y código 0 sin crear nada.
+7. **recon-ng**: fila en `keys.db`; base ausente → aviso y código 3 sin crear nada.
 8. **spiderfoot**: fila en `tbl_config` con `scope`/`opt` partidos; base ausente → aviso.
 9. **Estado**: totales correctos, `--faltan` con sus tres códigos, `--json` sin secretos.
 10. **Divergencia**: proyección con una clave extra no vacía → `diverge` e `importar` la trae;
