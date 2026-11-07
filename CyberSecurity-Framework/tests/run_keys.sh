@@ -263,13 +263,13 @@ for o in estado "estado --json" "estado --faltan theharvester"; do
 done
 
 # sincronizar no fabrica ficheros vacíos para herramientas sin valores
-H4="$TMPD/home4"; mkdir -p "$H4"
-HOME="$H4" KEYS_FILE="$TMPD/reg4.yaml" "$PY" "$KEYS" sincronizar >/dev/null 2>&1
+H4="$TMPD/home4"; mkdir -p "$H4" "$TMPD/ht4"
+HOME="$H4" KEYS_HARVESTER_DIRS="$TMPD/ht4" KEYS_FILE="$TMPD/reg4.yaml" "$PY" "$KEYS" sincronizar >/dev/null 2>&1
 [[ -e "$H4/.shodan/api_key" ]] && ko "sincronizar no crea shodan vacío" || ok "sincronizar no crea shodan vacío"
 [[ -e "$H4/.h8mail_config.ini" ]] && ko "sincronizar no crea h8mail vacío" || ok "sincronizar no crea h8mail vacío"
 [[ -e "$H4/.theHarvester/api-keys.yaml" ]] && ko "sincronizar no crea theHarvester vacío" || ok "sincronizar no crea theHarvester vacío"
-HOME="$H4" KEYS_FILE="$TMPD/reg4.yaml" "$PY" "$KEYS" poner shodan key sk-solo-123456 >/dev/null 2>&1
-HOME="$H4" KEYS_FILE="$TMPD/reg4.yaml" "$PY" "$KEYS" sincronizar >/dev/null 2>&1
+HOME="$H4" KEYS_HARVESTER_DIRS="$TMPD/ht4" KEYS_FILE="$TMPD/reg4.yaml" "$PY" "$KEYS" poner shodan key sk-solo-123456 >/dev/null 2>&1
+HOME="$H4" KEYS_HARVESTER_DIRS="$TMPD/ht4" KEYS_FILE="$TMPD/reg4.yaml" "$PY" "$KEYS" sincronizar >/dev/null 2>&1
 [[ -f "$H4/.shodan/api_key" ]] && ok "sincronizar escribe la que sí tiene valores" || ko "sincronizar escribe la que sí tiene valores"
 [[ -e "$H4/.h8mail_config.ini" ]] && ko "sincronizar sigue sin crear h8mail" || ok "sincronizar sigue sin crear h8mail"
 
@@ -303,6 +303,97 @@ out=$(py poner shodan key - 2>&1)
 [[ "$out" == *"borrada"* ]] && ok "poner - lo anuncia" || ko "poner - lo anuncia"
 eq "poner - vacía el fichero" "$(cat "$HOME/.shodan/api_key")" ""
 py importar inexistente >/dev/null 2>&1; eq "importar desconocida: 2" "$?" "2"
+
+echo ""; echo "=== robustez: herramientas, /etc y ficheros raros ==="
+# sincronizar con una herramienta inexistente: error de uso, sin traza
+out=$(py sincronizar inexistente 2>&1); code=$?
+eq "sincronizar desconocida: 2" "$code" "2"
+[[ "$out" != *"Traceback"* ]] && ok "sincronizar desconocida: sin traceback" || ko "sincronizar desconocida: sin traceback"
+
+# claves que solo están en /etc: se absorben al registro antes de crear ~
+H5="$TMPD/home5"; ETC5="$TMPD/etc5"; R5="$TMPD/reg5.yaml"
+mkdir -p "$H5" "$ETC5"
+printf 'apikeys:\n  shodan:\n    key: "etc-shodan-123456"\n  censys:\n    id: "etc-censys-123456"\n    secret: ""\n' > "$ETC5/api-keys.yaml"
+out=$(HOME="$H5" KEYS_HARVESTER_DIRS="$ETC5" KEYS_FILE="$R5" "$PY" "$KEYS" poner theharvester hunter.key hunter-nueva-123456 2>&1)
+printf '%s' "$out" | grep -q '2 valores de' && ok "absorbe /etc: lo anuncia" || ko "absorbe /etc: lo anuncia"
+eq "absorbe /etc: al registro" "$(python3 -c "import yaml;print(yaml.safe_load(open('$R5'))['theharvester']['shodan']['key'])")" "etc-shodan-123456"
+eq "absorbe /etc: al fichero de ~" "$(python3 -c "import yaml;print(yaml.safe_load(open('$H5/.theHarvester/api-keys.yaml'))['apikeys']['censys']['id'])")" "etc-censys-123456"
+eq "absorbe /etc: lo pedido manda" "$(python3 -c "import yaml;print(yaml.safe_load(open('$R5'))['theharvester']['hunter']['key'])")" "hunter-nueva-123456"
+out=$(HOME="$H5" KEYS_HARVESTER_DIRS="$ETC5" KEYS_FILE="$R5" "$PY" "$KEYS" poner theharvester hunter.key hunter-otra-123456 2>&1)
+printf '%s' "$out" | grep -q 'se importan al registro' && ko "no reabsorbe con ~ creado" || ok "no reabsorbe con ~ creado"
+
+# theHarvester con fichero no UTF-8: aviso, código 3 y sin traza
+H6="$TMPD/home6"; mkdir -p "$H6/.theHarvester"
+printf '\xff\xfe\x00' > "$H6/.theHarvester/api-keys.yaml"
+out=$(HOME="$H6" KEYS_FILE="$TMPD/reg6.yaml" "$PY" "$KEYS" sincronizar theharvester 2>&1); code=$?
+eq "theHarvester no UTF-8: código 3" "$code" "3"
+[[ "$out" != *"Traceback"* ]] && ok "theHarvester no UTF-8: sin traceback" || ko "theHarvester no UTF-8: sin traceback"
+[[ "$out" == *"theHarvester: no se pudo leer"* ]] && ok "theHarvester no UTF-8: aviso en español" || ko "theHarvester no UTF-8: aviso en español"
+
+# shodan y h8mail con ficheros no UTF-8: código 3 y sin traza
+H7="$TMPD/home7"; mkdir -p "$H7/.shodan"
+printf '\xff\xfe\x00' > "$H7/.shodan/api_key"
+out=$(HOME="$H7" KEYS_FILE="$TMPD/reg7.yaml" "$PY" "$KEYS" poner shodan key sk-utf-123456 2>&1); code=$?
+eq "shodan no UTF-8: código 3" "$code" "3"
+[[ "$out" != *"Traceback"* ]] && ok "shodan no UTF-8: sin traceback" || ko "shodan no UTF-8: sin traceback"
+printf '\xff\xfe\x00' > "$H7/.h8mail_config.ini"
+out=$(HOME="$H7" KEYS_FILE="$TMPD/reg7.yaml" "$PY" "$KEYS" poner h8mail hibp hibp-utf-123456 2>&1); code=$?
+eq "h8mail no UTF-8: código 3" "$code" "3"
+[[ "$out" != *"Traceback"* ]] && ok "h8mail no UTF-8: sin traceback" || ko "h8mail no UTF-8: sin traceback"
+
+# un registro no UTF-8 se trata como ilegible (código 2), sin traza
+printf '\xff\xfe\x00' > "$TMPD/reg-binario.yaml"
+out=$(KEYS_FILE="$TMPD/reg-binario.yaml" "$PY" "$KEYS" estado 2>&1); code=$?
+eq "registro no UTF-8: código 2" "$code" "2"
+[[ "$out" != *"Traceback"* ]] && ok "registro no UTF-8: sin traceback" || ko "registro no UTF-8: sin traceback"
+
+# amass con un fichero no UTF-8: estado sigue funcionando, sin traza
+H11="$TMPD/home11"; mkdir -p "$H11/.config/amass"
+printf '\xff\xfe\x00' > "$H11/.config/amass/datasources.yaml"
+out=$(HOME="$H11" KEYS_FILE="$TMPD/reg11.yaml" "$PY" "$KEYS" estado --json 2>&1); code=$?
+eq "amass no UTF-8: estado sigue" "$code" "0"
+[[ "$out" != *"Traceback"* ]] && ok "amass no UTF-8: sin traceback" || ko "amass no UTF-8: sin traceback"
+
+# theHarvester con 'apikeys' que no es diccionario: código 3 y estado sin traza
+H12="$TMPD/home12"; mkdir -p "$H12/.theHarvester"
+printf 'apikeys: [1, 2]\n' > "$H12/.theHarvester/api-keys.yaml"
+out=$(HOME="$H12" KEYS_FILE="$TMPD/reg12.yaml" "$PY" "$KEYS" sincronizar theharvester 2>&1); code=$?
+eq "apikeys no-dict: código 3" "$code" "3"
+[[ "$out" != *"Traceback"* ]] && ok "apikeys no-dict: sin traceback" || ko "apikeys no-dict: sin traceback"
+out=$(HOME="$H12" KEYS_FILE="$TMPD/reg12.yaml" "$PY" "$KEYS" estado --json 2>&1); code=$?
+eq "apikeys no-dict: estado sigue" "$code" "0"
+[[ "$out" != *"Traceback"* ]] && ok "apikeys no-dict: estado sin traceback" || ko "apikeys no-dict: estado sin traceback"
+
+# una plantilla de theHarvester con otra forma no tumba la CLI entera
+printf 'solo-texto\n' > "$TMPD/plantilla-no-dict.yaml"
+KEYS_HARVESTER_TEMPLATE="$TMPD/plantilla-no-dict.yaml" HOME="$H7" KEYS_FILE="$TMPD/reg7.yaml" \
+    "$PY" "$KEYS" estado >/dev/null 2>&1 && ok "plantilla no-dict no tumba la CLI" || ko "plantilla no-dict no tumba la CLI"
+printf '\xff\xfe\x00' > "$TMPD/plantilla-binaria.yaml"
+KEYS_HARVESTER_TEMPLATE="$TMPD/plantilla-binaria.yaml" HOME="$H7" KEYS_FILE="$TMPD/reg7.yaml" \
+    "$PY" "$KEYS" estado >/dev/null 2>&1 && ok "plantilla binaria no tumba la CLI" || ko "plantilla binaria no tumba la CLI"
+
+# amass sin nada que escribir: 0, no un 3 espurio
+H8="$TMPD/home8"; mkdir -p "$H8/.config/amass"
+printf 'datasources:\n  - name: shodan\n    creds:\n      key: "ajena-amass-123456"\n' > "$H8/.config/amass/datasources.yaml"
+out=$(HOME="$H8" KEYS_FILE="$TMPD/reg8.yaml" "$PY" "$KEYS" sincronizar amass 2>&1); code=$?
+eq "amass nada que escribir: 0" "$code" "0"
+printf '%s' "$out" | grep -q 'nada que escribir' && ok "amass nada que escribir: lo dice" || ko "amass nada que escribir: lo dice"
+
+# h8mail conserva secciones y opciones que no gestiona
+H9="$TMPD/home9"; mkdir -p "$H9"
+printf '[h8mail]\nhibp=vieja-123456\nopcion_ajena=se-queda\n[otra]\nclave=valor-ajeno\n' > "$H9/.h8mail_config.ini"
+chmod 600 "$H9/.h8mail_config.ini"
+HOME="$H9" KEYS_FILE="$TMPD/reg9.yaml" "$PY" "$KEYS" poner h8mail hibp hibp-nueva-123456 >/dev/null 2>&1
+eq "h8mail: actualiza la suya" "$(python3 -c "import configparser;c=configparser.ConfigParser(interpolation=None);c.read('$H9/.h8mail_config.ini');print(c['h8mail']['hibp'])")" "hibp-nueva-123456"
+eq "h8mail: conserva opción ajena" "$(python3 -c "import configparser;c=configparser.ConfigParser(interpolation=None);c.read('$H9/.h8mail_config.ini');print(c['h8mail']['opcion_ajena'])")" "se-queda"
+eq "h8mail: conserva sección ajena" "$(python3 -c "import configparser;c=configparser.ConfigParser(interpolation=None);c.read('$H9/.h8mail_config.ini');print(c['otra']['clave'])")" "valor-ajeno"
+
+# clave muy corta: avisa pero no bloquea
+H10="$TMPD/home10"; mkdir -p "$H10"
+out=$(HOME="$H10" KEYS_FILE="$TMPD/reg10.yaml" "$PY" "$KEYS" poner shodan key corta 2>&1)
+[[ "$out" == *"muy corta"* ]] && ok "clave corta: avisa" || ko "clave corta: avisa"
+out=$(HOME="$H10" KEYS_FILE="$TMPD/reg10.yaml" "$PY" "$KEYS" poner shodan key sk-larga-123456 2>&1)
+[[ "$out" == *"muy corta"* ]] && ko "clave larga: no avisa" || ok "clave larga: no avisa"
 
 echo ""; echo "=== guardas ==="
 eq "el registro real no cambió" "$(md5sum "$FW/00_Config/credentials/api-keys.yaml" 2>/dev/null | cut -d' ' -f1)" "$MD5_REG_REAL"
