@@ -200,6 +200,18 @@ py poner amass shodan.key amass-malformado-123456 >/dev/null 2>&1
 eq "name no-string no rompe" "$?" "0"
 eq "name no-string: merge sigue" "$(python3 -c "import yaml;d=yaml.safe_load(open('$HOME/.config/amass/datasources.yaml'));print([x for x in d['datasources'] if isinstance(x.get('name'),str) and x['name']=='shodan'][0]['creds']['key'])")" "amass-malformado-123456"
 
+echo ""; echo "=== recon-ng y spiderfoot ==="
+py poner recon-ng shodan_api rn-shodan-123456 >/dev/null 2>&1 && ko "no escribe sin base" || ok "no escribe sin base"
+[[ -e "$HOME/.recon-ng/keys.db" ]] && ko "no crea la base de recon-ng" || ok "no crea la base de recon-ng"
+mkdir -p "$HOME/.recon-ng"
+python3 -c "import sqlite3;c=sqlite3.connect('$HOME/.recon-ng/keys.db');c.execute('CREATE TABLE keys (name TEXT PRIMARY KEY, value TEXT)');c.commit()"
+py poner recon-ng shodan_api rn-shodan-123456 >/dev/null 2>&1
+eq "recon-ng: fila" "$(python3 -c "import sqlite3;print(sqlite3.connect('$HOME/.recon-ng/keys.db').execute(\"select value from keys where name='shodan_api'\").fetchone()[0])")" "rn-shodan-123456"
+mkdir -p "$HOME/.spiderfoot"
+python3 -c "import sqlite3;c=sqlite3.connect('$HOME/.spiderfoot/spiderfoot.db');c.execute('CREATE TABLE tbl_config (scope TEXT, opt TEXT, val TEXT, UNIQUE(scope,opt))');c.commit()"
+py poner spiderfoot sfp_shodan.api_key sf-shodan-123456 >/dev/null 2>&1
+eq "spiderfoot: scope/opt" "$(python3 -c "import sqlite3;print(sqlite3.connect('$HOME/.spiderfoot/spiderfoot.db').execute(\"select val from tbl_config where scope='sfp_shodan' and opt='api_key'\").fetchone()[0])")" "sf-shodan-123456"
+
 echo ""
 echo "pasan: $pasan  fallan: $fallan"
 [[ "$fallan" -eq 0 ]] && exit 0 || exit 1
