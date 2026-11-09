@@ -171,6 +171,16 @@ Modificar las seis entradas actuales de `01_OSINT` para delegar al paquete. Crea
   repositorio oficial porque su portal devolvió 403 al lector.
 - Worktree: rama `feat/osint-real`. No se ha consultado un objetivo real ni
   utilizado credenciales reales durante la implementación.
+- Revisión independiente: cuatro hallazgos importantes reproducidos y corregidos
+  RED→GREEN: rutas especiales de redes, whatweb exit 0 con error en stderr,
+  excepciones HTTP de protocolo saneadas y plazo HTTP absoluto contra goteo.
+  Suite acumulada: 57 tests pasando, incluido servidor propio de loopback.
+- Decisión de plataforma: plazo HTTP absoluto POSIX en hilo principal; si falta
+  o está ocupado, se omite la fuente antes de conectar, sin degradación silenciosa.
+  Coste: consultas HTTP no disponibles en otros entornos; producto objetivo Kali.
+- Regresión de inventario: nuevos slots visibles incrementan de 40 a 44 scripts
+  con varios argumentos. Se verificaron los cuatro contratos responsables y se
+  actualizó la expectativa obsoleta, sin eliminar comprobaciones funcionales.
 
 - [x] Diseño aprobado y contratos existentes inspeccionados.
 - [x] Plan contrastado con diseño: fuentes, compatibilidad, secretos, fuerza bruta DNS, estados, salidas y pruebas cubiertos por tareas 1–5.

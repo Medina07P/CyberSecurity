@@ -121,10 +121,15 @@ El motor de informes de vulnerabilidades no consume estos datos OSINT todavía.
 - Cada fuente indica CON RESULTADOS, SIN RESULTADOS, OMITIDA, BLOQUEADA, FALLIDA
   o TIEMPO AGOTADO. Cero resultados no equivale a fuente fallida.
 
-Máximo 15 s por solicitud HTTP, 120 s por herramienta/fuente y 10 solicitudes
+Máximo 15 s absolutos por solicitud HTTP (incluye apertura y lectura), 120 s por herramienta/fuente y 10 solicitudes
 por API y ejecución (incluidos reintentos). Ante 429/503 reintenta una vez con
 Retry-After; si la espera no cabe, corta sin dormir indefinidamente. El bloqueo
 persistente no genera resultados de esa fuente.
+
+Los plazos HTTP absolutos usan temporizadores POSIX desde el hilo principal,
+como en Kali. Si no están disponibles o ya hay un temporizador ajeno ocupado,
+se omite la fuente con explicación antes de consultar: no se sustituye el plazo
+por un timeout de inactividad que una respuesta por goteo pueda prolongar.
 
 Códigos: **0**, fuentes ejecutadas completadas (incluso vacías); **1**, ejecución
 parcial, bloqueo, fallo, timeout o ninguna fuente utilizable; **2**, argumentos,
