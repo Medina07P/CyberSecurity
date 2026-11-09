@@ -291,5 +291,110 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(rows[0].attribution, 'candidato')
 
 
+class DnsTests(unittest.TestCase):
+    def setUp(self):
+        RuntimeTests.setUp(self)
+        self.assertTrue((LIB/'osint/dns.py').exists(), 'Falta DNS acotado')
+        from osint import dns
+        self.dns = dns
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.run = Run('example.test', self.root, Limits())
+        self.wordlist = self.root/'words.txt'
+        self.wordlist.write_text('www\nmail\n')
+
+    def test_domain_normalization(self):
+        self.assertEqual(self.dns.normalize_domain('ÉXAMPLE.test.'), 'xn--xample-9ua.test')
+        for value in ('127.0.0.1', '-bad.test', 'https://example.test/', 'example.test:443', 'bad..test', 'a'*64+'.test'):
+            with self.assertRaises(ValueError):
+                self.dns.normalize_domain(value)
+
+    def test_active_requires_confirmation(self):
+        with patch('osint.dns.resolve_name', side_effect=AssertionError('No DNS sin permiso')):
+            with self.assertRaises(ValueError):
+                self.dns.enumerate_dns(self.run, 'example.test', self.wordlist, None, False)
+
+    def test_wordlist_limit_1000(self):
+        self.wordlist.write_text('\n'.join(f'host{i}' for i in range(1001)))
+        with patch('osint.dns.resolve_name', side_effect=AssertionError('Validar antes de consultar')):
+            with self.assertRaises(ValueError):
+                self.dns.enumerate_dns(self.run, 'example.test', self.wordlist, None, True)
+
+    def test_wordlist_deduplicates_and_rejects_invalid(self):
+        self.wordlist.write_text('www\nWWW\n# comment\nmail\n')
+        self.assertEqual(self.dns.load_wordlist(self.wordlist, 'example.test', 1000), ['www.example.test', 'mail.example.test'])
+        self.wordlist.write_text('www;touch-file\n')
+        with self.assertRaises(ValueError):
+            self.dns.load_wordlist(self.wordlist, 'example.test', 1000)
+
+    def test_dns_nxdomain_not_failure(self):
+        clock = Clock()
+        with patch('osint.dns.run_tool', return_value=subprocess.CompletedProcess([], 0, ';; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 1\n', '')):
+            result = self.dns.resolve_name('missing.example.test', None, self.dns.DnsLimiter(clock=clock, sleep=clock.sleep))
+        self.assertEqual(result.status, 'absent')
+
+    def test_dns_servfail_not_absence(self):
+        with patch('osint.dns.run_tool', return_value=subprocess.CompletedProcess([], 0, ';; ->>HEADER<<- opcode: QUERY, status: SERVFAIL, id: 1\n', '')):
+            result = self.dns.resolve_name('www.example.test', None, self.dns.DnsLimiter())
+        self.assertEqual(result.status, 'failed')
+
+    def test_wildcard_ambiguous(self):
+        with patch('osint.dns.resolve_name', side_effect=lambda name, *args: self.dns.DnsAnswer(name, 'resolved', {'A':['192.0.2.1']})):
+            result = self.dns.enumerate_dns(self.run, 'example.test', self.wordlist, None, True)
+        self.assertEqual([e.attribution for e in result.evidence], ['ambiguo_wildcard', 'ambiguo_wildcard'])
+
+    def test_rotating_wildcard_not_confirmed(self):
+        count = 0
+        def resolve(name, *args):
+            nonlocal count
+            count += 1
+            return self.dns.DnsAnswer(name, 'resolved', {'A':[f'192.0.2.{count}']})
+        with patch('osint.dns.resolve_name', side_effect=resolve):
+            result = self.dns.enumerate_dns(self.run, 'example.test', self.wordlist, None, True)
+        self.assertTrue(all(e.attribution == 'ambiguo_wildcard' for e in result.evidence))
+
+    def test_global_qps_includes_controls(self):
+        clock = Clock()
+        limiter = self.dns.DnsLimiter(clock=clock, sleep=clock.sleep)
+        queried = []
+        def tool(argv, timeout):
+            queried.append((clock(), argv))
+            return subprocess.CompletedProcess(argv, 0, ';; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 1\nwww.example.test. 60 IN A 192.0.2.1\n', '')
+        with patch('osint.dns.run_tool', side_effect=tool):
+            for name in ('random1.example.test', 'random2.example.test', 'random3.example.test', 'www.example.test'):
+                self.dns.resolve_name(name, None, limiter)
+        self.assertEqual(len(queried), 12)
+        self.assertTrue(all(b[0]-a[0] >= .199999 for a,b in zip(queried, queried[1:])))
+        self.assertTrue(all('+tries=1' in argv for _,argv in queried))
+        self.assertTrue(all(not any(arg.startswith('@') for arg in argv) for _,argv in queried))
+
+    def test_dns_workers_at_most_two(self):
+        import threading
+        active, peak = 0, 0
+        lock = threading.Lock()
+        def resolve(name, *args):
+            nonlocal active, peak
+            with lock:
+                active += 1; peak = max(peak, active)
+            with lock:
+                active -= 1
+            return self.dns.DnsAnswer(name, 'absent', {})
+        with patch('osint.dns.resolve_name', side_effect=resolve):
+            result = self.dns.enumerate_dns(self.run, 'example.test', self.wordlist, None, True)
+        self.assertLessEqual(peak, 2)
+        self.assertEqual(result.status, 'empty')
+
+    def test_persistent_failures_stop(self):
+        self.wordlist.write_text('\n'.join(f'host{i}' for i in range(10)))
+        names = []
+        def resolve(name, *args):
+            names.append(name)
+            return self.dns.DnsAnswer(name, 'absent' if name.startswith('osint-control-') else 'failed', {})
+        with patch('osint.dns.resolve_name', side_effect=resolve):
+            result = self.dns.enumerate_dns(self.run, 'example.test', self.wordlist, None, True)
+        self.assertEqual(result.status, 'failed')
+        self.assertEqual(len(names), 6)  # tres controles + tres candidatos fallidos
+
+
 if __name__ == '__main__':
     unittest.main()

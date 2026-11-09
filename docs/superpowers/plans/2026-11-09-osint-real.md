@@ -152,6 +152,10 @@ Modificar las seis entradas actuales de `01_OSINT` para delegar al paquete. Crea
 - Tarea 1: implementada, 12 tests RED→GREEN; commit `b408bb5`.
 - Tarea 2: implementada, suite acumulada 20 tests RED→GREEN; commit `f4a53a7`.
 - Tarea 3: implementada, suite acumulada 31 tests RED→GREEN.
+- Tarea 4: implementada, suite acumulada 42 tests RED→GREEN. DNS usa un
+  trabajador (dentro del máximo de dos), ritmo agregado y presupuesto de 120 s;
+  diccionarios grandes pueden quedar parciales, anunciado explícitamente.
+- Línea base: seis suites originales pasando, incluida run_tests 388/388.
 - Decisión técnica: theHarvester se anuncia omitido; las implementaciones locales
   inspeccionadas hacen reintentos opacos y ocultan errores. Se reemplazan sus
   fuentes integradas por adaptadores directos; otras fuentes no se consultan.
