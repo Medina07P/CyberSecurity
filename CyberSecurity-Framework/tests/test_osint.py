@@ -214,5 +214,82 @@ class SourcesTests(unittest.TestCase):
         self.assertNotIn('secret-fixture', result.error)
 
 
+class DiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        RuntimeTests.setUp(self)
+        self.assertTrue((LIB/'osint/discovery.py').exists(), 'Falta descubrimiento real de perfiles')
+        from osint import discovery
+        self.d = discovery
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.run = Run('example.test', Path(self.tmp.name), Limits())
+
+    def test_no_generated_profile_urls(self):
+        self.assertEqual(self.d.extract_profiles('Example Corp', 'https://example.test/', True), [])
+
+    def test_official_link_not_ownership(self):
+        evidence = self.d.extract_profiles('<a href="https://github.com/example">Org</a>', 'https://example.test/', True)
+        self.assertEqual(len(evidence), 1)
+        self.assertEqual(evidence[0].attribution, 'vinculado_desde_sitio')
+
+    def test_name_match_is_candidate(self):
+        evidence = self.d.extract_profiles('<a href="https://github.com/example">Org</a>', 'https://search.test/', False)
+        self.assertEqual(evidence[0].attribution, 'candidato')
+
+    def test_social_host_and_route_validation(self):
+        urls = ['https://github.com.attacker.test/example', 'javascript:alert(1)', 'https://github.com/search?q=example',
+                'https://facebook.com/sharer.php?u=x', 'https://instagram.com/p/post', 'https://x.com/login',
+                'https://github.com/login?return_to=example', 'https://github.com@example.test/acme']
+        self.assertEqual(self.d.extract_profiles(''.join(f'<a href="{u}">x</a>' for u in urls), 'https://example.test/', True), [])
+        good = ['https://www.linkedin.com/company/acme', 'https://x.com/acme', 'https://github.com/acme',
+                'https://instagram.com/acme/', 'https://www.facebook.com/acme', 'https://www.tiktok.com/@acme']
+        self.assertEqual(len(self.d.extract_profiles(''.join(f'<a href="{u}">x</a>' for u in good), 'https://example.test/', True)), 6)
+
+    def test_mailto_normalized(self):
+        rows = self.d.extract_emails('<a href="mailto:Info%40example.test?subject=Hi">Info</a> info@example.test', 'example.test', 'site')
+        self.assertEqual([e.value for e in rows], ['info@example.test'])
+
+    def test_email_domain_boundary(self):
+        rows = self.d.extract_emails('ok@example.test bad@example.test.attacker.test other@badexample.test', 'example.test', 'site')
+        self.assertEqual([e.value for e in rows], ['ok@example.test'])
+
+    def test_github_login_not_email(self):
+        client = HttpClient(opener=lambda *a, **k: Response(body=b'{"total_count":1,"incomplete_results":false,"items":[{"login":"acme","html_url":"https://github.com/acme","type":"Organization"}]}'))
+        results = self.d.discover_social(self.run, client, 'Acme', None, {})
+        self.assertEqual([e.kind for r in results for e in r.evidence], ['profile'])
+        self.assertEqual([e.value for r in results for e in r.evidence], ['https://github.com/acme'])
+
+    def test_api_missing_coverage_visible(self):
+        results = self.d.discover_social(self.run, HttpClient(opener=lambda *a, **k: Response(body=b'{"items":[],"total_count":0,"incomplete_results":false}')), 'Acme', None, {})
+        self.assertTrue(any(r.source == 'brave' and r.status == 'skipped' for r in results))
+
+    def test_hunter_header_and_real_emails(self):
+        requests = []
+        def opener(req, **kwargs):
+            requests.append(req)
+            if 'hunter.io' in req.full_url:
+                return Response(body=b'{"data":{"emails":[{"value":"info@example.test","sources":[{"uri":"https://example.test/contact"}]}]},"meta":{"results":1}}')
+            return Response(body=b'<html>contact info@example.test</html>', url='https://example.test/')
+        self.run.secrets.append('hunter-fixture-key')
+        results = self.d.discover_emails(self.run, HttpClient(opener=opener), 'example.test', {'hunter':'hunter-fixture-key'})
+        hunter = next(r for r in results if r.source == 'hunter')
+        self.assertEqual([e.value for e in hunter.evidence], ['info@example.test'])
+        request = next(req for req in requests if 'hunter.io' in req.full_url)
+        self.assertNotIn('hunter-fixture-key', request.full_url)
+        self.assertEqual(request.get_header('X-api-key'), 'hunter-fixture-key')
+
+    def test_malformed_api_shape_fails(self):
+        results = self.d.discover_social(self.run, HttpClient(opener=lambda *a, **k: Response(body=b'{"error":"denied"}')), 'Acme', None, {'brave':'key'})
+        self.assertTrue(all(r.status == 'failed' for r in results))
+
+    def test_redirected_official_site_does_not_attribute(self):
+        def opener(req, **kwargs):
+            if 'api.github' in req.full_url:
+                return Response(body=b'{"items":[],"total_count":0,"incomplete_results":false}')
+            return Response(body=b'<a href="https://github.com/other">Other</a>', url='https://unrelated.test/')
+        results = self.d.discover_social(self.run, HttpClient(opener=opener), 'Acme', 'example.test', {})
+        rows = [e for r in results for e in r.evidence if e.kind == 'profile']
+        self.assertEqual(rows[0].attribution, 'candidato')
+
+
 if __name__ == '__main__':
     unittest.main()

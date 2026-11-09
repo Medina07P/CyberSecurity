@@ -147,6 +147,20 @@ Modificar las seis entradas actuales de `01_OSINT` para delegar al paquete. Crea
 
 ## Handoff
 
+### Progreso persistente (recuperación tras cortes)
+
+- Tarea 1: implementada, 12 tests RED→GREEN; commit `b408bb5`.
+- Tarea 2: implementada, suite acumulada 20 tests RED→GREEN; commit `f4a53a7`.
+- Tarea 3: implementada, suite acumulada 31 tests RED→GREEN.
+- Decisión técnica: theHarvester se anuncia omitido; las implementaciones locales
+  inspeccionadas hacen reintentos opacos y ocultan errores. Se reemplazan sus
+  fuentes integradas por adaptadores directos; otras fuentes no se consultan.
+- Hunter permite autenticación por `X-API-KEY` según documentación vigente;
+  se usa cabecera, no query con clave. Documentación Brave contrastada con su
+  repositorio oficial porque su portal devolvió 403 al lector.
+- Worktree: rama `feat/osint-real`. No se ha consultado un objetivo real ni
+  utilizado credenciales reales durante la implementación.
+
 - [x] Diseño aprobado y contratos existentes inspeccionados.
 - [x] Plan contrastado con diseño: fuentes, compatibilidad, secretos, fuerza bruta DNS, estados, salidas y pruebas cubiertos por tareas 1–5.
 - [x] Usuario aprueba ejecución nativa, worktree aislado, commits de progreso y merge posterior a develop.
