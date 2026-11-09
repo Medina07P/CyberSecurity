@@ -1,6 +1,6 @@
 # OSINT real, trazable y con APIs
 
-Fecha: 2026-11-09. Estado: aprobado por el usuario el 2026-11-09; pendiente de implementación.
+Fecha: 2026-11-09. Estado: aprobado, implementado y verificado localmente; APIs en vivo no probadas.
 
 ## Intención y acuerdos
 
