@@ -75,7 +75,9 @@ for f in $(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | sort); do
     o=$(params_slots "$f" | awk -F'|' '$3=="obligatorio"' | wc -l | tr -d ' ')
     [ "$o" -ge 2 ] && oblig=$((oblig + 1))
 done
-eq "40 scripts con 2+ huecos" "$dos" "40"
+# OSINT declara ahora el directorio de salida antes oculto en email, metadata,
+# social y subdomains: cuatro scripts pasan de uno a varios huecos.
+eq "44 scripts con 2+ huecos" "$dos" "44"
 eq "8 scripts con 2+ obligatorios" "$oblig" "8"
 
 # ──────────────────────────────────────────────────────────
@@ -404,25 +406,11 @@ eq "run_all_recon: declara su hueco en Uso:"         "$(params_mode "$FW/02_Reco
 eq "run_all_recon: funciona desde cualquier cwd"      "$(grep -c '192.0.2.97' "$RMP_LOG")" "1"
 
 # ──────────────────────────────────────────────────────────
-section "run_all_osint acepta dominio (y archivo opcional)"
-# El bug: el script no declaraba parámetros y llamaba a sus hijos sin
-# argumentos, así que los cinco imprimían su Uso:, no hacían nada y se
-# anunciaba 'OSINT completado' con exit 0.
-OSP="$TMPD/osint"
-mkdir -p "$OSP/01_OSINT/scripts"
-cp "$FW/01_OSINT/run_all_osint.sh" "$OSP/01_OSINT/"
-export OSINT_LOG="$TMPD/osint_args"
-# Los hijos se sustituyen por dobles que solo registran lo que reciben.
-for s in email_harvester osint_harvester subdomain_finder social_media_search metadata_extractor; do
-    cat > "$OSP/01_OSINT/scripts/$s.sh" <<'EOS'
-#!/bin/bash
-printf '%s=%s\n' "$(basename "$0")" "$1" >> "$OSINT_LOG"
-EOS
-done
-: > "$OSINT_LOG"
-
+section "run_all_osint coordina dominio, archivo y empresa"
+# Los hijos ya no se invocan por separado: comparten núcleo y caché de sesión.
+# tests/run_osint.sh prueba el flujo completo con transporte local controlado.
 eq "run_all_osint: declara sus huecos en Uso:"  "$(params_mode "$FW/01_OSINT/run_all_osint.sh")" "slots"
-eq "run_all_osint: 2 huecos (dominio + archivo)" "$(params_slot_count "$FW/01_OSINT/run_all_osint.sh")" "2"
+eq "run_all_osint: 3 huecos (dominio + archivo + empresa)" "$(params_slot_count "$FW/01_OSINT/run_all_osint.sh")" "3"
 eq "run_all_osint: el archivo es opcional y FICHERO" \
    "$(params_slots "$FW/01_OSINT/run_all_osint.sh" | awk -F'|' 'NR==2{print $3" "$4}')" "opcional FICHERO"
 # Un Ejemplo: de un token no debe rellenar el hueco opcional con un
@@ -430,44 +418,16 @@ eq "run_all_osint: el archivo es opcional y FICHERO" \
 eq "run_all_osint: descarta el ejemplo incompleto" \
    "$(params_example_values "$FW/01_OSINT/run_all_osint.sh" >/dev/null 2>&1; echo $?)" "1"
 
-(cd "$TMPD" && bash "$OSP/01_OSINT/run_all_osint.sh" example.com >/dev/null 2>&1)
-eq "run_all_osint: funciona desde cualquier cwd" \
-   "$(grep -cE '^(email_harvester|osint_harvester|subdomain_finder)\.sh=example\.com$' "$OSINT_LOG")" "3"
-eq "run_all_osint: deriva el nombre de empresa para redes sociales" \
-   "$(grep -c '^social_media_search\.sh=example$' "$OSINT_LOG")" "1"
-eq "run_all_osint: no ejecuta metadatos sin archivo" \
-   "$(grep -c '^metadata_extractor\.sh=' "$OSINT_LOG")" "0"
-
-: > "$OSINT_LOG"
-printf 'x' > "$TMPD/documento.pdf"
-bash "$OSP/01_OSINT/run_all_osint.sh" example.com "$TMPD/documento.pdf" >/dev/null 2>&1
-eq "run_all_osint: con archivo ejecuta metadatos" \
-   "$(grep -cxF "metadata_extractor.sh=$TMPD/documento.pdf" "$OSINT_LOG")" "1"
-
-# Un hijo que falla no puede pasar por bueno: se cuenta, su stderr queda
-# en el log y el script sale ≠0 sin anunciar que completó.
-cat > "$OSP/01_OSINT/scripts/subdomain_finder.sh" <<'EOS'
-#!/bin/bash
-printf '%s=%s\n' "$(basename "$0")" "$1" >> "$OSINT_LOG"
-echo "dnsrecon no disponible" >&2
-exit 3
-EOS
-: > "$OSINT_LOG"
-OSOUT=$(bash "$OSP/01_OSINT/run_all_osint.sh" example.com 2>&1)
-eq "run_all_osint: sale ≠0 si un hijo falla" "$?" "1"
-case "$OSOUT" in
-    *"✅ OSINT completado"*) bad "run_all_osint: no anuncia éxito si algo falló" ;;
-    *) ok "run_all_osint: no anuncia éxito si algo falló" ;;
-esac
-eq "run_all_osint: guarda el stderr del hijo fallido" \
-   "$(grep -c 'dnsrecon no disponible' "$OSP/01_OSINT/osint_errores.log")" "1"
-eq "run_all_osint: sigue con los demás hijos" \
-   "$(grep -c '^email_harvester\.sh=' "$OSINT_LOG")" "1"
-
-bash "$OSP/01_OSINT/run_all_osint.sh" >/dev/null 2>&1
-eq "run_all_osint: sin dominio sale 1" "$?" "1"
-bash "$OSP/01_OSINT/run_all_osint.sh" example.com "$TMPD/no-existe.pdf" >/dev/null 2>&1
-eq "run_all_osint: archivo inexistente sale 1" "$?" "1"
+eq "run_all_osint: empresa opcional de texto" \
+   "$(params_slots "$FW/01_OSINT/run_all_osint.sh" | awk -F'|' 'NR==3{print $3" "$4}')" "opcional TEXTO"
+eq "redes: empresa, salida y dominio de referencia" "$(params_slot_count "$FW/01_OSINT/scripts/social_media_search.sh")" "3"
+eq "emails: dominio y directorio de salida" "$(params_slot_count "$FW/01_OSINT/scripts/email_harvester.sh")" "2"
+eq "metadatos: archivo y directorio de salida" "$(params_slot_count "$FW/01_OSINT/scripts/metadata_extractor.sh")" "2"
+eq "subdominios: cuatro slots sin pasar a modo manual" "$(params_slot_count "$FW/01_OSINT/scripts/subdomain_finder.sh") $(params_mode "$FW/01_OSINT/scripts/subdomain_finder.sh")" "4 slots"
+bash "$FW/01_OSINT/run_all_osint.sh" >/dev/null 2>&1
+eq "run_all_osint: sin dominio sale 2" "$?" "2"
+bash "$FW/01_OSINT/run_all_osint.sh" example.com "$TMPD/no-existe.pdf" >/dev/null 2>&1
+eq "run_all_osint: archivo inexistente sale 2" "$?" "2"
 
 # ──────────────────────────────────────────────────────────
 section "enum_web: nombres con objetivo y línea base de ffuf"

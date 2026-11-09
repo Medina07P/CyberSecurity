@@ -26,6 +26,17 @@ Las claves de API dejan de ser un fichero por herramienta que nadie recuerda rel
 
 ## Where it runs
 
+Actualización OSINT 2026-11-09: el contrato anterior de run_all descrito arriba
+queda sustituido por `<dominio> [archivo] [empresa]`. Las seis entradas delegan
+en `00_Config/lib/osint/`, comparten fuentes y producen resultados con evidencia
+y cobertura, no URLs construidas. APIs directas opcionales: Brave/GitHub/Hunter,
+lectura de claves sin sincronización. theHarvester CLI se anuncia omitido porque
+sus reintentos y errores opacos no permiten garantizar límites. Subdominios admite
+`<dominio> [directorio_salida] [diccionario] [resolver]`: diccionario local activa
+DNS acotado con `DNS_SI`, nunca implícito desde run_all; sin AXFR ni credenciales.
+Salidas por ejecución en árboles ignorados del módulo; códigos 0/1/2 y detalles
+en `01_OSINT/README.md`. Nueva suite aislada: `tests/run_osint.sh`.
+
 - On Kali it runs for real (this clone, `/home/kali/Documentos/CyberSecurity`). Tooling gaps as of 2026-10-31: `rustscan`, `volatility3`, `foremost` and `nmap-vulners` are not installed; `masscan` needs root; no WiFi/Bluetooth adapter.
 - The Windows checkout cannot run it. Scripts need Linux tooling (`nmap`, `sudo masscan`, `dig`, `md5sum`, `apt`) that is not installed there. WSL has no distro; Git Bash (`C:\Program Files\Git\bin\bash.exe`) only enables syntax checks.
 - Verification available without running a tool: `bash -n <file>` (all 122 `.sh` — 118 outside `tests/` plus the 4 under it — and the 6 `.bash` currently pass), and `python -m py_compile` for the `.py` files (all 8 pass). The six suites under `tests/` (`run_tests`, `run_e2e`, `run_smoke`, `run_reports`, `run_wizard`, `run_keys`) are the real check for the manager; none of them is wired into a runner, they are run by hand. Do not claim a scan or audit result you did not produce.
