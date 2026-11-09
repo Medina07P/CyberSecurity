@@ -156,6 +156,13 @@ Modificar las seis entradas actuales de `01_OSINT` para delegar al paquete. Crea
   trabajador (dentro del máximo de dos), ritmo agregado y presupuesto de 120 s;
   diccionarios grandes pueden quedar parciales, anunciado explícitamente.
 - Línea base: seis suites originales pasando, incluida run_tests 388/388.
+- Tarea 5: núcleo conectado a las seis entradas, documentación y suite aislada;
+  50 tests pasando. Regresión completa en curso antes de revisión/merge.
+- Corrección necesaria en prompt.bash: conserva opcionales vacíos intermedios
+  (empresa sin documento, diccionario sin salida explícita); solo recorta vacíos
+  finales. Test observado RED→GREEN; se revisa compatibilidad con gestor.
+- Sintaxis provisional: 132 Bash sin errores/avisos; 39 Python compilados con
+  caché temporal. Ningún archivo de configuración real fue modificado.
 - Decisión técnica: theHarvester se anuncia omitido; las implementaciones locales
   inspeccionadas hacen reintentos opacos y ocultan errores. Se reemplazan sus
   fuentes integradas por adaptadores directos; otras fuentes no se consultan.
