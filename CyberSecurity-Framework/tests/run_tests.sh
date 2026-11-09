@@ -75,7 +75,9 @@ for f in $(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | sort); do
     o=$(params_slots "$f" | awk -F'|' '$3=="obligatorio"' | wc -l | tr -d ' ')
     [ "$o" -ge 2 ] && oblig=$((oblig + 1))
 done
-eq "40 scripts con 2+ huecos" "$dos" "40"
+# OSINT declara ahora el directorio de salida antes oculto en email, metadata,
+# social y subdomains: cuatro scripts pasan de uno a varios huecos.
+eq "44 scripts con 2+ huecos" "$dos" "44"
 eq "8 scripts con 2+ obligatorios" "$oblig" "8"
 
 # ──────────────────────────────────────────────────────────
@@ -419,6 +421,8 @@ eq "run_all_osint: descarta el ejemplo incompleto" \
 eq "run_all_osint: empresa opcional de texto" \
    "$(params_slots "$FW/01_OSINT/run_all_osint.sh" | awk -F'|' 'NR==3{print $3" "$4}')" "opcional TEXTO"
 eq "redes: empresa, salida y dominio de referencia" "$(params_slot_count "$FW/01_OSINT/scripts/social_media_search.sh")" "3"
+eq "emails: dominio y directorio de salida" "$(params_slot_count "$FW/01_OSINT/scripts/email_harvester.sh")" "2"
+eq "metadatos: archivo y directorio de salida" "$(params_slot_count "$FW/01_OSINT/scripts/metadata_extractor.sh")" "2"
 eq "subdominios: cuatro slots sin pasar a modo manual" "$(params_slot_count "$FW/01_OSINT/scripts/subdomain_finder.sh") $(params_mode "$FW/01_OSINT/scripts/subdomain_finder.sh")" "4 slots"
 bash "$FW/01_OSINT/run_all_osint.sh" >/dev/null 2>&1
 eq "run_all_osint: sin dominio sale 2" "$?" "2"
