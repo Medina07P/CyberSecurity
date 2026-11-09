@@ -145,5 +145,74 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(cm.exception.status, 'timeout')
 
 
+class SourcesTests(unittest.TestCase):
+    def setUp(self):
+        RuntimeTests.setUp(self)
+        self.assertTrue((LIB/'osint/credentials.py').exists(), 'Falta lectura de claves OSINT')
+        from osint import credentials, sources
+        self.credentials, self.sources = credentials, sources
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.run = Run('example.test', self.root, Limits())
+
+    def test_registry_precedence_without_writes(self):
+        reg, one, two = self.root/'keys.yaml', self.root/'one', self.root/'two'
+        one.mkdir(); two.mkdir()
+        reg.write_text('theharvester:\n  brave:\n    key: registry-key\n')
+        (one/'api-keys.yaml').write_text('apikeys:\n  brave:\n    key: old-key\n  github:\n    key: github-key\n')
+        (two/'api-keys.yaml').write_text('apikeys:\n  hunter:\n    key: ignored-key\n')
+        before = {p: p.read_bytes() for p in (reg, one/'api-keys.yaml', two/'api-keys.yaml')}
+        self.assertEqual(self.credentials.load_credentials(reg, [one, two]), {'brave': 'registry-key', 'github': 'github-key'})
+        self.assertEqual(before, {p: p.read_bytes() for p in before})
+
+    def test_missing_keys_skip(self):
+        self.assertEqual(self.credentials.load_credentials(self.root/'none', []), {})
+
+    def test_corrupt_yaml_no_secret_leak(self):
+        reg = self.root/'bad.yaml'
+        reg.write_text('secret-fixture: [oops')
+        with self.assertRaises(ValueError) as cm:
+            self.credentials.load_credentials(reg, [])
+        self.assertNotIn('secret-fixture', str(cm.exception))
+
+    def test_crtsh_invalid_json_fails(self):
+        client = HttpClient(opener=lambda *a, **k: Response(body=b'<html>blocked</html>'))
+        result = self.sources.collect_certificates(self.run, client, 'example.test')
+        self.assertEqual(result.status, 'failed')
+        self.assertEqual(result.evidence, [])
+
+    def test_certificate_scope_boundary(self):
+        body = json.dumps([{'name_value': 'www.example.test\n*.example.test\nexampleXtest\nbadexample.test\nexample.test.attacker.test'}]).encode()
+        result = self.sources.collect_certificates(self.run, HttpClient(opener=lambda *a, **k: Response(body=body)), 'example.test')
+        self.assertEqual([(e.kind, e.value) for e in result.evidence], [('subdomain', 'www.example.test')])
+
+    def test_shared_collection_once(self):
+        calls = []
+        def opener(*a, **k):
+            calls.append(1)
+            return Response(body=b'<a href="https://github.com/acme">GitHub</a>')
+        client = HttpClient(opener=opener)
+        first = self.sources.collect_site(self.run, client, 'https://example.test/')
+        second = self.sources.collect_site(self.run, client, 'https://example.test/')
+        self.assertIs(first, second)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(self.run.results), 1)
+        self.assertIn('github.com/acme', self.run.cache['site:html'])
+
+    def test_harvester_selected_sources(self):
+        # El wrapper no debe esconder fallos/reintentos opacos de terceros.
+        with patch('osint.sources.run_tool', side_effect=AssertionError('No ejecutar all')):
+            result = self.sources.collect_tool(self.run, 'theHarvester', 'example.test')
+        self.assertEqual(result.status, 'skipped')
+        self.assertIn('presupuesto', result.error)
+
+    def test_provider_error_redacted(self):
+        self.run.secrets.append('secret-fixture')
+        result = self.sources.collect_site(self.run, HttpClient(opener=lambda *a, **k: (_ for _ in ()).throw(OSError('secret-fixture'))), 'https://example.test/')
+        self.assertEqual(result.status, 'failed')
+        self.assertNotIn('secret-fixture', result.error)
+
+
 if __name__ == '__main__':
     unittest.main()
