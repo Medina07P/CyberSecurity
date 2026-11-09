@@ -193,4 +193,9 @@ Modificar las seis entradas actuales de `01_OSINT` para delegar al paquete. Crea
 - [x] Implementar tareas 1–5 siguiendo pruebas primero y registrar resultados.
 - [x] Revisión independiente y corrección de sus cuatro hallazgos importantes.
 - [x] Siete suites completas pasando sobre la revisión de código final.
-- [ ] Merge local a develop y verificación del resultado integrado.
+- [x] Merge local a develop y verificación del resultado integrado: commit
+  `7ac52599d34715ec9cec447abd774f47a31ee29f`; siete suites pasando de nuevo
+  en clon local limpio del commit, sin tocar evidencias ni configuración del
+  checkout habitual. No push. scope.yaml conserva su huella previa al merge.
+- Worktree nativo conservado como respaldo local con commits y registro de
+  ejecución; la sesión vuelve al checkout habitual en develop.
