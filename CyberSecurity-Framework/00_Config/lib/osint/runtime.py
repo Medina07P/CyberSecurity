@@ -144,6 +144,16 @@ def redact(text, secrets):
     return text
 
 
+def _redact_data(value, secrets):
+    if isinstance(value, str):
+        return redact(value, secrets)
+    if isinstance(value, dict):
+        return {key: _redact_data(item, secrets) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_data(item, secrets) for item in value]
+    return value
+
+
 def write_run(run):
     slug = re.sub(r'[^\w.-]+', '_', run.target)[:100] or 'objetivo'
     destination = Path(run.output) / f'osint_{slug}_{run.run_id}'
@@ -160,9 +170,9 @@ def write_run(run):
         summary.extend(f'  {e.kind}: {e.value} [{e.attribution}] — {e.source}: {e.detail}' for e in r.evidence)
         if r.error:
             errors.append(f'{r.source}: {r.error}')
-    for name, text in [('resultados.json', json.dumps(payload, ensure_ascii=False, indent=2)),
+    for name, text in [('resultados.json', json.dumps(_redact_data(payload, run.secrets), ensure_ascii=False, indent=2)),
                        ('resumen.txt', '\n'.join(summary)), ('errores.log', '\n'.join(errors))]:
         path = destination / name
-        path.write_text(redact(text, run.secrets) + '\n', encoding='utf-8')
+        path.write_text((text if name == 'resultados.json' else redact(text, run.secrets)) + '\n', encoding='utf-8')
         path.chmod(0o600)
     return destination
