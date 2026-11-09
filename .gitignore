@@ -24,6 +24,8 @@ CyberSecurity-Framework/06_PostExploitation/persistence/
 CyberSecurity-Framework/07_Wireless/captures/
 
 # 01_OSINT: dominios, subdominios, emails, metadatos y redes sociales
+# Ejecuciones del núcleo OSINT: también JSON/logs anidados, no solo .txt sueltos.
+CyberSecurity-Framework/01_OSINT/*/osint_*/
 CyberSecurity-Framework/01_OSINT/domains/*.txt
 CyberSecurity-Framework/01_OSINT/domains/*.json
 CyberSecurity-Framework/01_OSINT/domains/*.xml

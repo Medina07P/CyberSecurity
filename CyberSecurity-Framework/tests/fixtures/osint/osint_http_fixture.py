@@ -5,6 +5,7 @@ import os
 import socket
 import urllib.request
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 
 class Response(io.BytesIO):
@@ -31,6 +32,9 @@ def install():
             data = {'total_count': 1, 'incomplete_results': False,
                     'items': [{'login': 'acme', 'html_url': 'https://github.com/acme', 'type': 'Organization'}]}
         elif url.startswith('https://crt.sh/'):
+            q = parse_qs(urlsplit(url).query)['q'][0]
+            if os.environ.get('OSINT_FIXTURE_MODE') == 'wildcard-fail' and q.startswith('%'):
+                return Response(b'Bad Gateway', url, 502)
             data = [{'name_value': 'www.example.test'}]
         elif url.startswith('https://example.test/'):
             if os.environ.get('OSINT_FIXTURE_MODE') == 'blocked':

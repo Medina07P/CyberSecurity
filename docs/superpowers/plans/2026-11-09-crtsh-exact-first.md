@@ -50,5 +50,8 @@ CLI resuelve evidencia aunque la unión sea parcial.
 
 ## Progreso
 - [x] Diseño corto aprobado; ejecución nativa y worktree aislado heredados.
+- [x] Baseline 57 tests; nuevas regresiones observadas fallar antes del cambio.
+- [x] Implementación y 69 tests OSINT pasando, con guardas de configuración intactas.
+- [x] Compilación Python y git diff --check sin errores.
 - [ ] Task 1 completa.
 - [ ] Revisión y merge verificados.
