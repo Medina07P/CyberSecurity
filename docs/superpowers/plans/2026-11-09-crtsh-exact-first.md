@@ -61,4 +61,7 @@ CLI resuelve evidencia aunque la unión sea parcial.
   seis nombres únicos de certificados conservados. No son seis hosts activos;
   no se resolvió ni escaneó el objetivo y no se guardó el dominio en git.
 - [x] Task 1 completa.
-- [ ] Revisión y merge verificados.
+- [x] Revisión y merge verificados: integrado en develop como
+  `b72d67ee052c3ad49901f9784e1dd135e772d282`; las siete suites volvieron a pasar
+  en clon limpio de ese commit (69 tests OSINT). scope original conserva su
+  huella y no se modificaron ni borraron resultados reales. Sin push.
