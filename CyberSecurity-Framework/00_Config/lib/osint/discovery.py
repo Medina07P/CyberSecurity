@@ -2,7 +2,7 @@
 import html as html_module
 import re
 from html.parser import HTMLParser
-from urllib.parse import unquote, urlencode, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlsplit, urlunsplit
 
 from .model import Evidence, SourceResult
 from .runtime import SourceError
@@ -29,8 +29,18 @@ def profile_url(value):
         path = unquote(parsed.path).strip('/')
         parts = path.split('/')
         reserved = {'search', 'login', 'signup', 'home', 'explore', 'intent', 'share', 'sharer.php',
-                    'settings', 'about', 'privacy', 'terms', 'help', 'accounts', 'p', 'reel', 'watch', 'i'}
+                    'settings', 'about', 'privacy', 'terms', 'help', 'accounts', 'p', 'reel', 'watch', 'i',
+                    'topics', 'collections', 'orgs', 'organizations', 'marketplace', 'features',
+                    'events', 'sponsors', 'readme', 'l.php', 'share.php', 'sharer', 'dialog'}
         if not parts or parts[0].lower() in reserved:
+            return None
+        query = ''
+        if host == 'facebook.com' and path == 'profile.php':
+            ids = parse_qs(parsed.query).get('id', [])
+            if len(ids) != 1 or not re.fullmatch(r'[0-9]{1,30}', ids[0]):
+                return None
+            query = urlencode({'id': ids[0]})
+        elif any(part.lower().endswith('.php') for part in parts):
             return None
         if host == 'linkedin.com':
             valid = len(parts) == 2 and parts[0] in ('company', 'school', 'in')
@@ -41,7 +51,7 @@ def profile_url(value):
         if not valid or not re.fullmatch(r'@?[\w.-]+', parts[-1]) or parts[-1] in ('.', '..'):
             return None
         host = 'x.com' if host == 'twitter.com' else host
-        return urlunsplit(('https', host, '/' + path, '', ''))
+        return urlunsplit(('https', host, '/' + path, query, ''))
     except ValueError:
         return None
 

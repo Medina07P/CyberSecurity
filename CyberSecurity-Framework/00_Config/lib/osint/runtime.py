@@ -1,8 +1,12 @@
 """Red, procesos y artefactos: fallos explícitos y presupuestos por fuente."""
 import json
+from http.client import HTTPException
 import re
+import signal
 import subprocess
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -17,6 +21,29 @@ class SourceError(Exception):
     def __init__(self, status, message):
         super().__init__(message)
         self.status = status
+
+
+@contextmanager
+def absolute_deadline(seconds):
+    """Kali/POSIX: incluye DNS, apertura, redirecciones y lectura por goteo.
+
+    No degradar silenciosamente a timeout de inactividad en otros entornos.
+    El CLI llama desde el hilo principal; DNS workers no usan este transporte.
+    """
+    if not hasattr(signal, 'setitimer') or threading.current_thread() is not threading.main_thread():
+        raise SourceError('skipped', 'HTTP requiere plazos POSIX en el hilo principal; fuente no consultada')
+    if signal.getitimer(signal.ITIMER_REAL)[0] > 0:
+        raise SourceError('skipped', 'Temporizador POSIX ocupado; fuente HTTP no consultada')
+    previous = signal.getsignal(signal.SIGALRM)
+    def expired(signum, frame):
+        raise TimeoutError('Plazo HTTP absoluto agotado')
+    signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 class SafeRedirect(HTTPRedirectHandler):
@@ -80,23 +107,24 @@ class HttpClient:
             request = Request(url, headers={'User-Agent': 'CyberSecurity-OSINT/1', **(headers or {})})
             request.osint_private = bool(headers) or 'api_key=' in url
             try:
-                try:
-                    response = self.opener(request, timeout=min(remaining, self.limits.request_seconds))
-                except HTTPError as exc:
-                    response = exc
-                with response:
-                    code = response.status if hasattr(response, 'status') else response.code
-                    response_headers = {k.lower(): v for k, v in response.headers.items()}
-                    if code not in (429, 503):
-                        if code in (401, 403):
-                            raise SourceError('blocked', f'HTTP {code}: acceso bloqueado o credencial rechazada')
-                        if not 200 <= code < 300:
-                            raise SourceError('failed', f'HTTP {code}')
-                        body = response.read(2 * 1024 * 1024 + 1)
-                        if len(body) > 2 * 1024 * 1024:
-                            raise SourceError('failed', 'Respuesta supera 2 MiB')
-                        return HttpResponse(code, response_headers, body, response.geturl())
-            except (TimeoutError, OSError, URLError) as exc:
+                with absolute_deadline(min(remaining, self.limits.request_seconds)):
+                    try:
+                        response = self.opener(request, timeout=min(remaining, self.limits.request_seconds))
+                    except HTTPError as exc:
+                        response = exc
+                    with response:
+                        code = response.status if hasattr(response, 'status') else response.code
+                        response_headers = {k.lower(): v for k, v in response.headers.items()}
+                        if code not in (429, 503):
+                            if code in (401, 403):
+                                raise SourceError('blocked', f'HTTP {code}: acceso bloqueado o credencial rechazada')
+                            if not 200 <= code < 300:
+                                raise SourceError('failed', f'HTTP {code}')
+                            body = response.read(2 * 1024 * 1024 + 1)
+                            if len(body) > 2 * 1024 * 1024:
+                                raise SourceError('failed', 'Respuesta supera 2 MiB')
+                            return HttpResponse(code, response_headers, body, response.geturl())
+            except (TimeoutError, OSError, URLError, HTTPException) as exc:
                 state = 'timeout' if isinstance(exc, TimeoutError) else 'failed'
                 raise SourceError(state, 'Error de transporte HTTP (detalle omitido para proteger secretos)') from None
             if attempt:

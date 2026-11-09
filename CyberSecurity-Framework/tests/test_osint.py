@@ -1,8 +1,13 @@
 """OSINT: fixtures locales; nunca usar red externa ni credenciales reales."""
 import io
+import http.client
 import json
 import os
 import shutil
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.request import ProxyHandler, build_opener
 import socket
 import subprocess
 import sys
@@ -13,6 +18,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 LIB = Path(__file__).resolve().parents[1] / '00_Config/lib'
+REAL_CREATE_CONNECTION = socket.create_connection
 sys.path.insert(0, str(LIB))
 
 try:
@@ -155,6 +161,35 @@ class RuntimeTests(unittest.TestCase):
             data = json.loads((path/'resultados.json').read_text())
             self.assertNotIn('key"with\\escape', data['sources'][0]['error'])
 
+    def test_drip_response_obeys_absolute_deadline(self):
+        class Drip(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-Length', '20')
+                self.end_headers()
+                try:
+                    for _ in range(20):
+                        self.wfile.write(b'x'); self.wfile.flush()
+                        time.sleep(.02)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+            def log_message(self, *args):
+                pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Drip)
+        thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=.01), daemon=True)
+        thread.start()
+        try:
+            # Única excepción a la guarda de red: servidor propio en loopback.
+            with patch.object(socket, 'create_connection', REAL_CREATE_CONNECTION):
+                client = HttpClient(Limits(request_seconds=.05, tool_seconds=.12), opener=build_opener(ProxyHandler({})).open)
+                started = time.monotonic()
+                with self.assertRaises(SourceError) as cm:
+                    client.request('web', f'http://127.0.0.1:{server.server_port}/')
+                self.assertEqual(cm.exception.status, 'timeout')
+                self.assertLess(time.monotonic()-started, .20)
+        finally:
+            server.shutdown(); server.server_close(); thread.join(timeout=1)
+
 
 class SourcesTests(unittest.TestCase):
     def setUp(self):
@@ -224,6 +259,26 @@ class SourcesTests(unittest.TestCase):
         self.assertEqual(result.status, 'failed')
         self.assertNotIn('secret-fixture', result.error)
 
+    def test_protocol_error_redacted_and_recorded(self):
+        self.run.secrets.append('secret-fixture')
+        def opener(*args, **kwargs):
+            raise http.client.BadStatusLine('provider echoed secret-fixture')
+        result = self.sources.collect_site(self.run, HttpClient(opener=opener), 'https://example.test/')
+        self.assertEqual(result.status, 'failed')
+        self.assertEqual(result.evidence, [])
+        self.assertNotIn('secret-fixture', result.error)
+
+    def test_whatweb_exit_zero_stderr_failure(self):
+        self.run.secrets.append('secret-fixture')
+        output = subprocess.CompletedProcess([], 0, '', 'ERROR Opening: Connection refused secret-fixture')
+        with patch('osint.sources.run_tool', return_value=output):
+            result = self.sources.collect_tool(self.run, 'whatweb', 'example.test')
+        self.assertEqual(result.status, 'failed')
+        self.assertEqual(result.evidence, [])
+        self.assertIn('Connection refused', result.error)
+        self.assertNotIn('secret-fixture', result.error)
+        self.assertEqual(exit_code(self.run.results), 1)
+
 
 class DiscoveryTests(unittest.TestCase):
     def setUp(self):
@@ -254,6 +309,17 @@ class DiscoveryTests(unittest.TestCase):
         good = ['https://www.linkedin.com/company/acme', 'https://x.com/acme', 'https://github.com/acme',
                 'https://instagram.com/acme/', 'https://www.facebook.com/acme', 'https://www.tiktok.com/@acme']
         self.assertEqual(len(self.d.extract_profiles(''.join(f'<a href="{u}">x</a>' for u in good), 'https://example.test/', True)), 6)
+
+    def test_special_routes_are_not_profiles(self):
+        for url in ('https://facebook.com/l.php?u=https%3A%2F%2Felsewhere.test',
+                    'https://facebook.com/profile.php', 'https://github.com/topics',
+                    'https://github.com/collections', 'https://github.com/orgs'):
+            self.assertIsNone(self.d.profile_url(url), url)
+
+    def test_facebook_numeric_profile_preserves_identity(self):
+        self.assertEqual(self.d.profile_url('https://www.facebook.com/profile.php?id=1234&tracking=foo'),
+                         'https://facebook.com/profile.php?id=1234')
+        self.assertIsNone(self.d.profile_url('https://facebook.com/profile.php?id=1234&id=5678'))
 
     def test_mailto_normalized(self):
         rows = self.d.extract_emails('<a href="mailto:Info%40example.test?subject=Hi">Info</a> info@example.test', 'example.test', 'site')

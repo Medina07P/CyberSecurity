@@ -3,7 +3,7 @@ import re
 from urllib.parse import urlencode, urlsplit
 
 from .model import Evidence, SourceResult
-from .runtime import SourceError, run_tool
+from .runtime import SourceError, redact, run_tool
 
 
 def in_domain(name, domain):
@@ -80,7 +80,14 @@ def collect_tool(run, tool, domain):
             raise SourceError('skipped', 'Herramienta no integrada')
         result = run_tool(argv, run.limits.tool_seconds)
         text = result.stdout.strip()
+        diagnostic = redact(result.stderr.strip()[:2000], run.secrets)
+        if diagnostic and (not text or re.search(r'(\berror\b|connection refused|timed out|failed|unable to connect)', diagnostic, re.I)):
+            raise SourceError('failed', diagnostic)
+        if tool == 'whatweb' and re.search(r'(ERROR Opening|Connection refused|Unable to connect)', text, re.I):
+            raise SourceError('failed', redact(text[:2000], run.secrets))
         if re.search(r'(rate.?limit|quota exceeded|access denied|connection refused)', text, re.I):
             raise SourceError('blocked', 'Herramienta reporta bloqueo de la fuente')
-        return evidence_result(tool, [Evidence('raw', text, tool, 'observado', 'Salida de herramienta; no hallazgo de vulnerabilidad')] if text else [])
+        result = evidence_result(tool, [Evidence('raw', text, tool, 'observado', 'Salida de herramienta; no hallazgo de vulnerabilidad')] if text else [])
+        result.error = diagnostic
+        return result
     return collect(run, tool, operation)
