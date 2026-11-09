@@ -53,5 +53,12 @@ CLI resuelve evidencia aunque la unión sea parcial.
 - [x] Baseline 57 tests; nuevas regresiones observadas fallar antes del cambio.
 - [x] Implementación y 69 tests OSINT pasando, con guardas de configuración intactas.
 - [x] Compilación Python y git diff --check sin errores.
-- [ ] Task 1 completa.
+- [x] Siete suites completas: OSINT 69, gestor 385, e2e 11, smoke sin fallos,
+  wizard 58, informes Python + 28 shell, keys 141; todas con exit 0.
+- [x] Revisión independiente sin hallazgos Critical/Important/Minor; reproducciones
+  adicionales de 502, bloqueos y presupuestos correctas.
+- [x] Consulta pública autorizada en vivo: exacta y ampliada respondieron,
+  seis nombres únicos de certificados conservados. No son seis hosts activos;
+  no se resolvió ni escaneó el objetivo y no se guardó el dominio en git.
+- [x] Task 1 completa.
 - [ ] Revisión y merge verificados.
