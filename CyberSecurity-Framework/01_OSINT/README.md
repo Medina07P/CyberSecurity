@@ -41,6 +41,12 @@ completo y lo anuncia: no inventa el nombre quitando etiquetas del dominio.
 - Dominios: WHOIS, whatweb de bajo impacto, certificados públicos de crt.sh y
   resolución DNS de los nombres observados. Un certificado no prueba que el
   host resuelva hoy y DNS no prueba disponibilidad HTTP.
+  crt.sh consulta primero el dominio exacto y después la búsqueda ampliada
+  (`%.dominio`): el resumen separa `crtsh_exact` de `crtsh_wildcard`. Los nombres
+  únicos de ambas consultas pasan a DNS incluso si una falla; los datos ya
+  obtenidos se conservan y la ejecución queda **parcial, con código 1**.
+  No son dos presupuestos: ambas comparten el límite de la fuente. Un bloqueo
+  401/403 o 429/503 persistente detiene el proveedor, sin eludirlo con otra consulta.
 - Metadatos: únicamente archivo local proporcionado. `pdfinfo` para PDF,
   `exiftool` para imágenes/Office y hasta 50 líneas de `strings` para otros
   formatos, etiquetadas como texto observado, no metadatos estructurados.
