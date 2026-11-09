@@ -54,6 +54,7 @@ tests nuevos anteriores; actualizar `CyberSecurity-Framework/00_Config/README.md
 
 ## Progreso
 - [x] Diseño/elección guiada aprobados; aislamiento y ejecución nativa heredados.
-- [ ] Task 1 completa.
+- [x] Task 1 completa: 8 pruebas de navegación real RED→GREEN, incluidas
+  alta de clave sintética sin eco, K, cancelación/EOF y cwd externo.
 - [ ] Task 2 completa.
 - [ ] Revisión, merge y verificación integrada.

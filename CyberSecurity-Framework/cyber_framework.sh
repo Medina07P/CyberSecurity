@@ -197,6 +197,16 @@ execute_script() {
     local rel_path values rc rc_run
     local -a argv=()
 
+    # Es una CLI con subcomandos, no una herramienta que funcione vacía.
+    # Reutilizar K evita pedir comandos manuales o claves por argv. El subshell
+    # permite llamarlo también desde otro cwd sin alterar el del llamador.
+    case "$script_path" in
+        "00_Config/scripts/api_keys.py"|"$FRAMEWORK_DIR/00_Config/scripts/api_keys.py")
+            (cd "$FRAMEWORK_DIR" && keys_menu "módulo de configuración")
+            return $?
+            ;;
+    esac
+
     cd "$module_dir" || {
         echo -e "${RED}❌ Error: No se pudo acceder a $module_dir${NC}"
         return 1
@@ -240,7 +250,7 @@ execute_script() {
     if [[ ${#argv[@]} -gt 0 ]]; then
         echo -e "${DIM}Argumentos: ${argv[*]}${NC}"
     else
-        echo -e "${DIM}Sin argumentos${NC}"
+        echo -e "${DIM}Ejecución directa; sigue las indicaciones de la herramienta.${NC}"
     fi
     echo ""
 
@@ -799,6 +809,7 @@ keys_elegir_herramienta() {
 
 keys_menu() {
     local eleccion herramienta
+    local volver_a="${1:-menú principal}"
 
     clear_screen
     echo -e "${CYAN}${BOLD}━━━ CLAVES DE API ━━━${NC}"
@@ -810,7 +821,7 @@ keys_menu() {
     echo -e "  ${GREEN}3${NC}) Ver el estado detallado"
     echo -e "  ${GREEN}4${NC}) Sincronizar el registro con las herramientas"
     echo -e "  ${GREEN}5${NC}) Importar lo que ya tienen las herramientas"
-    echo -e "  ${GREEN}0${NC}) Volver al menú principal"
+    echo -e "  ${GREEN}0${NC}) Volver al ${volver_a}"
     echo ""
     echo -e "  ${DIM}Enter deja la clave como está; '-' la borra.${NC}"
     echo ""
