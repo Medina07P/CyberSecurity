@@ -146,6 +146,15 @@ class RuntimeTests(unittest.TestCase):
             run_tool([sys.executable, '-c', 'import time;time.sleep(2)'], .01)
         self.assertEqual(cm.exception.status, 'timeout')
 
+    def test_json_escaped_secret_is_redacted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Run('example.test', Path(tmp), Limits())
+            run.secrets.append('key"with\\escape')
+            run.results.append(SourceResult('web', 'failed', [], 'provider echoed key"with\\escape'))
+            path = write_run(run)
+            data = json.loads((path/'resultados.json').read_text())
+            self.assertNotIn('key"with\\escape', data['sources'][0]['error'])
+
 
 class SourcesTests(unittest.TestCase):
     def setUp(self):
@@ -505,6 +514,11 @@ class CliTests(unittest.TestCase):
         result = subprocess.run(['bash', '-c', code, 'test', str(fw)], input='example.test\n\nExample Corp\n', capture_output=True, text=True, env=self.env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, 'example.test\n\nExample Corp\n')
+
+    def test_wrappers_directly_executable(self):
+        module = LIB.parents[1]/'01_OSINT'
+        for script in [module/'run_all_osint.sh', *(module/'scripts').glob('*.sh')]:
+            self.assertTrue(os.access(script, os.X_OK), f'No ejecutable: {script.name}')
 
 
 if __name__ == '__main__':
