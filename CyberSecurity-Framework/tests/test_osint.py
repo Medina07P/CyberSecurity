@@ -8,6 +8,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import ProxyHandler, build_opener
+from urllib.parse import parse_qs, urlsplit
 import socket
 import subprocess
 import sys
@@ -280,6 +281,133 @@ class SourcesTests(unittest.TestCase):
         self.assertEqual(exit_code(self.run.results), 1)
 
 
+class CertificatesTests(unittest.TestCase):
+    def setUp(self):
+        SourcesTests.setUp(self)
+
+    def test_exact_then_wildcard_unique_and_cached(self):
+        calls = []
+        def opener(req, **kwargs):
+            q = parse_qs(urlsplit(req.full_url).query)['q'][0]
+            calls.append(q)
+            values = 'www.example.test\nmail.example.test' if q.startswith('%') else 'www.example.test'
+            return Response(body=json.dumps([{'name_value': values}]).encode())
+        client = HttpClient(opener=opener)
+        result = self.sources.collect_certificates(self.run, client, 'example.test')
+        again = self.sources.collect_certificates(self.run, client, 'example.test')
+        self.assertIs(result, again)
+        self.assertEqual(calls, ['example.test', '%.example.test'])
+        self.assertEqual([e.value for e in result.evidence], ['www.example.test', 'mail.example.test'])
+        self.assertEqual([(r.source, r.status) for r in self.run.results], [('crtsh_exact', 'ok'), ('crtsh_wildcard', 'ok')])
+        self.assertEqual(exit_code(self.run.results), 0)
+
+    def test_wildcard_502_retains_exact_names_and_partial(self):
+        def opener(req, **kwargs):
+            q = parse_qs(urlsplit(req.full_url).query)['q'][0]
+            return Response(502) if q.startswith('%') else Response(body=b'[{"name_value":"www.example.test"}]')
+        result = self.sources.collect_certificates(self.run, HttpClient(opener=opener), 'example.test')
+        self.assertEqual([e.value for e in result.evidence], ['www.example.test'])
+        self.assertEqual(result.status, 'failed')
+        self.assertEqual([(r.source, r.status) for r in self.run.results], [('crtsh_exact', 'ok'), ('crtsh_wildcard', 'failed')])
+        self.assertEqual(exit_code(self.run.results), 1)
+
+    def test_exact_timeout_does_not_block_independent_query(self):
+        calls = []
+        def opener(req, **kwargs):
+            q = parse_qs(urlsplit(req.full_url).query)['q'][0]
+            calls.append(q)
+            if not q.startswith('%'):
+                raise TimeoutError()
+            return Response(body=b'[{"name_value":"www.example.test"}]')
+        result = self.sources.collect_certificates(self.run, HttpClient(opener=opener), 'example.test')
+        self.assertEqual(calls, ['example.test', '%.example.test'])
+        self.assertEqual([e.value for e in result.evidence], ['www.example.test'])
+        self.assertEqual(result.status, 'timeout')
+        self.assertEqual(exit_code(self.run.results), 1)
+
+    def test_provider_block_stops_second_query(self):
+        for status, expected in ((403, 1), (429, 2), (503, 2)):
+            with self.subTest(status=status):
+                run = Run('example.test', self.root, Limits())
+                calls = []
+                def opener(*args, **kwargs):
+                    calls.append(1)
+                    return Response(status)
+                self.sources.collect_certificates(run, HttpClient(opener=opener, sleep=lambda _: None), 'example.test')
+                self.assertEqual(len(calls), expected)
+                self.assertEqual([(r.source, r.status) for r in run.results], [('crtsh_exact', 'blocked'), ('crtsh_wildcard', 'skipped')])
+                self.assertEqual(exit_code(run.results), 1)
+
+    def test_independent_queries_share_call_and_time_budget(self):
+        clock = Clock()
+        calls = []
+        def opener(*args, **kwargs):
+            calls.append(1)
+            if len(calls) == 1:
+                raise TimeoutError()
+            return Response(body=b'[]')
+        client = HttpClient(Limits(api_calls=2), opener=opener, clock=clock, sleep=clock.sleep)
+        with self.assertRaises(SourceError):
+            client.request('crtsh', 'https://crt.sh/?q=example.test', independent_query=True)
+        client.request('crtsh', 'https://crt.sh/?q=%.example.test', independent_query=True)
+        with self.assertRaises(SourceError):
+            client.request('crtsh', 'https://crt.sh/?q=third', independent_query=True)
+        self.assertEqual(len(calls), 2)
+        clock.now = 121
+        with self.assertRaises(SourceError):
+            client.request('crtsh', 'https://crt.sh/?q=fourth', independent_query=True)
+        self.assertEqual(len(calls), 2)
+
+    def test_default_transport_still_stops_after_failure(self):
+        calls = []
+        def opener(*args, **kwargs):
+            calls.append(1)
+            raise TimeoutError()
+        client = HttpClient(opener=opener)
+        for _ in range(2):
+            with self.assertRaises(SourceError):
+                client.request('web', 'https://example.test/')
+        self.assertEqual(len(calls), 1)
+
+    def test_unavailable_transport_is_not_empty_success(self):
+        with patch('osint.runtime.absolute_deadline', side_effect=SourceError('skipped', 'HTTP no disponible')):
+            result = self.sources.collect_certificates(self.run, HttpClient(), 'example.test')
+        self.assertEqual(result.status, 'skipped')
+        self.assertEqual(result.evidence, [])
+        self.assertEqual(exit_code(self.run.results), 1)
+
+    def test_independent_queries_share_source_deadline(self):
+        clock = Clock()
+        timeouts = []
+        def opener(req, **kwargs):
+            timeouts.append(kwargs['timeout'])
+            clock.now += 1
+            return Response(body=b'[]')
+        client = HttpClient(opener=opener, clock=clock, sleep=clock.sleep)
+        client.request('crtsh', 'https://crt.sh/?q=exact', independent_query=True)
+        clock.now = 119
+        client.request('crtsh', 'https://crt.sh/?q=wildcard', independent_query=True)
+        self.assertEqual(timeouts, [15, 1])
+        with self.assertRaises(SourceError):
+            client.request('crtsh', 'https://crt.sh/?q=third', independent_query=True)
+        self.assertEqual(len(timeouts), 2)
+
+    def test_empty_certificate_queries_are_success(self):
+        self.sources.collect_certificates(self.run, HttpClient(opener=lambda *a, **k: Response(body=b'[]')), 'example.test')
+        self.assertEqual([r.status for r in self.run.results], ['empty', 'empty'])
+        self.assertEqual(exit_code(self.run.results), 0)
+
+    def test_bad_json_keeps_other_query_and_filters_invalid_sans(self):
+        def opener(req, **kwargs):
+            q = parse_qs(urlsplit(req.full_url).query)['q'][0]
+            if not q.startswith('%'):
+                return Response(body=b'<html>error</html>')
+            return Response(body=json.dumps([{'name_value':'www.example.test\n*.example.test\nbad..example.test\n-bad.example.test\nexample.test.attacker.test'}]).encode())
+        result = self.sources.collect_certificates(self.run, HttpClient(opener=opener), 'example.test')
+        self.assertEqual([e.value for e in result.evidence], ['www.example.test'])
+        self.assertEqual(result.status, 'failed')
+
+
 class DiscoveryTests(unittest.TestCase):
     def setUp(self):
         RuntimeTests.setUp(self)
@@ -521,7 +649,7 @@ class CliTests(unittest.TestCase):
         self.assertTrue(any(r['source'] == 'metadata' and r['status'] == 'ok' for r in data['sources']))
         requests = (self.root/'http.log').read_text().splitlines()
         self.assertEqual(requests.count('https://example.test/'), 1)
-        self.assertEqual(sum('crt.sh' in row for row in requests), 1)
+        self.assertEqual([parse_qs(urlsplit(row).query)['q'][0] for row in requests if 'crt.sh' in row], ['example.test', '%.example.test'])
         self.assertFalse((self.cwd/'domains').exists())
 
     def test_all_partial_is_not_success(self):
@@ -531,6 +659,30 @@ class CliTests(unittest.TestCase):
         self.assertNotIn('✅ OSINT completado', result.stdout)
         self.assertIn('BLOQUEADA', result.stdout)
         self.assertIn('HTTP 403', next(self.root.rglob('errores.log')).read_text())
+
+    def test_partial_certificates_still_resolve_dns(self):
+        self.env['OSINT_FIXTURE_MODE'] = 'wildcard-fail'
+        result = self.launch('scripts/subdomain_finder.sh', 'example.test', self.root/'output')
+        self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
+        self.assertNotIn('✅ OSINT completado', result.stdout)
+        data = json.loads(self.artifacts()[0].read_text())
+        states = {r['source']: r['status'] for r in data['sources']}
+        self.assertEqual(states['crtsh_exact'], 'ok')
+        self.assertEqual(states['crtsh_wildcard'], 'failed')
+        self.assertIn('dns', states)
+        self.assertIn('www.example.test', (self.root/'tools.log').read_text())
+        self.assertTrue(any(e['value'] == 'www.example.test' for r in data['sources'] for e in r['evidence']))
+
+    def test_run_outputs_are_ignored_not_source_files(self):
+        repo = LIB.parents[2]
+        for category in ('domains', 'emails', 'social_media', 'metadata', 'subdomains'):
+            for filename in ('resultados.json', 'resumen.txt', 'errores.log'):
+                path = f'CyberSecurity-Framework/01_OSINT/{category}/osint_example.test_fixture/{filename}'
+                result = subprocess.run(['git', 'check-ignore', '-q', path], cwd=repo, capture_output=True)
+                self.assertEqual(result.returncode, 0, path)
+        for path in ('CyberSecurity-Framework/01_OSINT/README.md', 'CyberSecurity-Framework/01_OSINT/scripts/subdomain_finder.sh'):
+            result = subprocess.run(['git', 'check-ignore', '-q', path], cwd=repo, capture_output=True)
+            self.assertEqual(result.returncode, 1, path)
 
     def test_metadata_extractor_failure(self):
         self.env['OSINT_FIXTURE_MODE'] = 'metadata-fail'

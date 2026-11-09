@@ -86,14 +86,20 @@ class HttpClient:
         self.calls, self.started = {}, {}
         self.stopped = {}
 
-    def request(self, source, url, headers=None):
+    def request(self, source, url, headers=None, *, independent_query=False):
         if source in self.stopped:
             raise self.stopped[source]
         self.started.setdefault(source, self.clock())
         try:
             return self._request(source, url, headers)
         except SourceError as exc:
-            self.stopped[source] = exc
+            # Dos consultas independientes al MISMO proveedor pueden continuar
+            # tras fallo aislado. No reiniciar presupuesto ni eludir bloqueos.
+            can_continue = (independent_query and exc.status in ('failed', 'timeout')
+                            and self.calls.get(source, 0) < self.limits.api_calls
+                            and self.clock() - self.started[source] < self.limits.tool_seconds)
+            if not can_continue:
+                self.stopped[source] = exc
             raise
 
     def _request(self, source, url, headers):
