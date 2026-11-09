@@ -117,7 +117,7 @@ def main(argv=None):
                 enumerate_dns(run, domain, Path(args.wordlist), args.resolver, True)
             else:
                 certificates = collect_certificates(run, client, domain)
-                if certificates.status in ('ok', 'empty'):
+                if certificates.evidence or certificates.status in ('ok', 'empty'):
                     resolve_discovered(run, domain, [e.value for e in certificates.evidence], getattr(args, 'resolver', None))
         if file:
             collect_metadata(run, file)

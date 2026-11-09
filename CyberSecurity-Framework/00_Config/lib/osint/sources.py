@@ -48,21 +48,56 @@ def collect_site(run, client, url):
 
 
 def collect_certificates(run, client, domain):
-    def operation():
-        url = 'https://crt.sh/?' + urlencode({'q': '%.' + domain, 'output': 'json'})
-        data = client.request('crtsh', url).json()
-        if not isinstance(data, list):
-            raise SourceError('failed', 'crt.sh no devolvió una lista de certificados')
-        evidence = []
-        for row in data:
-            if not isinstance(row, dict) or not isinstance(row.get('name_value'), str):
-                raise SourceError('failed', 'Certificado sin name_value válido')
-            for name in row['name_value'].splitlines():
-                name = name.strip().rstrip('.').lower()
-                if '*' not in name and in_domain(name, domain) and re.fullmatch(r'[a-z0-9.-]+', name):
-                    evidence.append(Evidence('subdomain', name, 'crt.sh', 'descubierto', 'Nombre en certificado; no implica resolución actual'))
-        return evidence_result('crtsh', evidence)
-    return collect(run, 'crtsh', operation)
+    # Import local: dns usa los contratos de sources; aquí el módulo ya está
+    # inicializado. Compartir la validación evita aceptar SAN DNS malformados.
+    from .dns import normalize_domain
+    domain = normalize_domain(domain)
+    cache_key = ('certificate_union', domain)
+    if cache_key in run.cache:
+        return run.cache[cache_key]
+
+    def query(source, term):
+        def operation():
+            if 'crtsh' in client.stopped:
+                return SourceResult(source, 'skipped', [], 'No consultada: proveedor crt.sh detenido por bloqueo o presupuesto')
+            url = 'https://crt.sh/?' + urlencode({'q': term, 'output': 'json'})
+            data = client.request('crtsh', url, independent_query=True).json()
+            if not isinstance(data, list):
+                raise SourceError('failed', 'crt.sh no devolvió una lista de certificados')
+            evidence = []
+            for row in data:
+                if not isinstance(row, dict) or not isinstance(row.get('name_value'), str):
+                    raise SourceError('failed', 'Certificado sin name_value válido')
+                for raw in row['name_value'].splitlines():
+                    if '*' in raw:
+                        continue
+                    try:
+                        name = normalize_domain(raw)
+                    except ValueError:
+                        continue
+                    if in_domain(name, domain):
+                        evidence.append(Evidence('subdomain', name, source, 'descubierto',
+                                                 'Nombre en certificado; no implica resolución actual'))
+            return evidence_result(source, evidence)
+        return collect(run, source, operation)
+
+    exact = query('crtsh_exact', domain)
+    wildcard = query('crtsh_wildcard', '%.' + domain)
+    names = {}
+    for result in (exact, wildcard):
+        for entry in result.evidence:
+            names.setdefault(entry.value, entry)
+    union = evidence_result('crtsh', list(names.values()))
+    for state in ('blocked', 'timeout', 'failed'):
+        if any(result.status == state for result in (exact, wildcard)):
+            union.status = state
+            break
+    if all(result.status == 'skipped' for result in (exact, wildcard)):
+        union.status = 'skipped'
+    union.error = '; '.join(f'{r.source}: {r.error}' for r in (exact, wildcard) if r.error)
+    # La unión se devuelve a DNS pero NO añade otra fila duplicada al informe.
+    run.cache[cache_key] = union
+    return union
 
 
 def collect_tool(run, tool, domain):
