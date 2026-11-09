@@ -143,7 +143,7 @@ Modificar las seis entradas actuales de `01_OSINT` para delegar al paquete. Crea
 - [ ] Ejecutar `bash CyberSecurity-Framework/tests/run_osint.sh`; exigir todos los tests pasando y ninguna modificación real.
 - [ ] Ejecutar individualmente `bash CyberSecurity-Framework/tests/run_tests.sh`, `run_e2e.sh`, `run_smoke.sh`, `run_wizard.sh`, `run_reports.sh`, `run_keys.sh` con sus rutas completas. Investigar cualquier fallo sin rebajar assertions para ocultarlo.
 - [ ] Ejecutar `bash -n` sobre `.sh` y `.bash`, guardando stderr y rechazando warnings de heredoc; compilar `.py` con caché dirigida a temporal. Comprobar `git diff --check` y `git status --short`; scope original intacto y ningún dato real nuevo versionado.
-- [ ] Revisar contra el diseño y documentar evidencia y fuentes no probadas en vivo; no declarar OSINT de un objetivo que no se consultó. Hacer revisión de código antes de ofrecer integración; no commit/publicación automáticos.
+- [ ] Revisar contra el diseño y documentar evidencia y fuentes no probadas en vivo; no declarar OSINT de un objetivo que no se consultó. Revisión independiente antes de integración; commits locales y merge autorizados, sin publicación.
 
 ## Handoff
 
@@ -181,8 +181,16 @@ Modificar las seis entradas actuales de `01_OSINT` para delegar al paquete. Crea
 - Regresión de inventario: nuevos slots visibles incrementan de 40 a 44 scripts
   con varios argumentos. Se verificaron los cuatro contratos responsables y se
   actualizó la expectativa obsoleta, sin eliminar comprobaciones funcionales.
+- Verificación final premerge sobre `af9df7c`: siete suites pasan (OSINT 57 tests,
+  run_tests 385, e2e 11, smoke sin fallos, wizard 58, informes Python + 28 shell,
+  keys 141). Sintaxis: 132 Bash sin errores/avisos, 39 Python compilados.
+  Revisor independiente: sin críticos; cuatro importantes corregidos mediante
+  regresiones RED→GREEN, sin menores pendientes. scope original intacto.
 
 - [x] Diseño aprobado y contratos existentes inspeccionados.
 - [x] Plan contrastado con diseño: fuentes, compatibilidad, secretos, fuerza bruta DNS, estados, salidas y pruebas cubiertos por tareas 1–5.
 - [x] Usuario aprueba ejecución nativa, worktree aislado, commits de progreso y merge posterior a develop.
-- [ ] Implementar tareas 1–5 siguiendo pruebas primero y registrar resultados.
+- [x] Implementar tareas 1–5 siguiendo pruebas primero y registrar resultados.
+- [x] Revisión independiente y corrección de sus cuatro hallazgos importantes.
+- [x] Siete suites completas pasando sobre la revisión de código final.
+- [ ] Merge local a develop y verificación del resultado integrado.
