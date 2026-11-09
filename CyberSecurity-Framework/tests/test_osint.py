@@ -1,6 +1,8 @@
 """OSINT: fixtures locales; nunca usar red externa ni credenciales reales."""
 import io
 import json
+import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -394,6 +396,115 @@ class DnsTests(unittest.TestCase):
             result = self.dns.enumerate_dns(self.run, 'example.test', self.wordlist, None, True)
         self.assertEqual(result.status, 'failed')
         self.assertEqual(len(names), 6)  # tres controles + tres candidatos fallidos
+
+
+class CliTests(unittest.TestCase):
+    def setUp(self):
+        self.assertTrue((LIB/'osint/cli.py').exists(), 'Falta integrar OSINT con las entradas del gestor')
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.fw = self.root/'framework'
+        source = LIB.parents[1]
+        shutil.copytree(source/'01_OSINT/scripts', self.fw/'01_OSINT/scripts')
+        shutil.copy2(source/'01_OSINT/run_all_osint.sh', self.fw/'01_OSINT/run_all_osint.sh')
+        shutil.copytree(LIB/'osint', self.fw/'00_Config/lib/osint', ignore=shutil.ignore_patterns('__pycache__'))
+        bin_dir = self.root/'bin'; bin_dir.mkdir()
+        for tool in ('whois', 'whatweb', 'file', 'pdfinfo', 'exiftool', 'strings', 'dig'):
+            path = bin_dir/tool
+            text = '#!/bin/bash\nprintf "%s\\n" "'+tool+' $*" >> "$OSINT_TOOL_LOG"\n'
+            if tool == 'dig':
+                text += 'echo ";; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 1"\n'
+            elif tool == 'file':
+                text += 'echo application/pdf\n'
+            elif tool == 'pdfinfo':
+                text += '[[ "$OSINT_FIXTURE_MODE" == "metadata-fail" ]] && exit 7\necho "Author: fixture"\n'
+            else:
+                text += 'echo "fixture '+tool+' output"\n'
+            path.write_text(text); path.chmod(0o755)
+        fixture_path = Path(__file__).parent/'fixtures/osint'
+        (self.root/'sitecustomize.py').write_text('from osint_http_fixture import install\ninstall()\n')
+        self.env = dict(os.environ, HOME=str(self.root/'home'), KEYS_FILE=str(self.root/'keys.yaml'),
+                        KEYS_HARVESTER_DIRS=str(self.root/'keys'), PYTHONDONTWRITEBYTECODE='1',
+                        PYTHONPATH=os.pathsep.join([str(self.root), str(fixture_path)]),
+                        PATH=str(bin_dir)+os.pathsep+os.environ['PATH'], OSINT_FIXTURE_LOG=str(self.root/'http.log'),
+                        OSINT_TOOL_LOG=str(self.root/'tools.log'), OSINT_FIXTURE_MODE='normal')
+        self.cwd = self.root/'caller'; self.cwd.mkdir()
+
+    def launch(self, script, *args, stdin=''):
+        return subprocess.run(['bash', str(self.fw/'01_OSINT'/script), *map(str,args)], cwd=self.cwd,
+                              env=self.env, input=stdin, capture_output=True, text=True, timeout=15)
+
+    def artifacts(self):
+        return sorted(self.root.rglob('resultados.json'))
+
+    def test_all_relative_file_and_shared_sources(self):
+        (self.cwd/'document with spaces.pdf').write_bytes(b'%PDF-1.4 fixture')
+        result = self.launch('run_all_osint.sh', 'example.test', 'document with spaces.pdf', 'Example Corp')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        data = json.loads(self.artifacts()[0].read_text())
+        self.assertEqual(data['target'], 'example.test')
+        self.assertTrue(any(r['source'] == 'metadata' and r['status'] == 'ok' for r in data['sources']))
+        requests = (self.root/'http.log').read_text().splitlines()
+        self.assertEqual(requests.count('https://example.test/'), 1)
+        self.assertEqual(sum('crt.sh' in row for row in requests), 1)
+        self.assertFalse((self.cwd/'domains').exists())
+
+    def test_all_partial_is_not_success(self):
+        self.env['OSINT_FIXTURE_MODE'] = 'blocked'
+        result = self.launch('run_all_osint.sh', 'example.test')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertNotIn('✅ OSINT completado', result.stdout)
+        self.assertIn('BLOQUEADA', result.stdout)
+        self.assertIn('HTTP 403', next(self.root.rglob('errores.log')).read_text())
+
+    def test_metadata_extractor_failure(self):
+        self.env['OSINT_FIXTURE_MODE'] = 'metadata-fail'
+        file = self.cwd/'doc.pdf'; file.write_bytes(b'%PDF')
+        result = self.launch('scripts/metadata_extractor.sh', 'doc.pdf', self.root/'output')
+        self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
+        self.assertIn('FALLIDA', result.stdout)
+
+    def test_all_does_not_bruteforce(self):
+        result = self.launch('run_all_osint.sh', 'example.test')
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        data = json.loads(self.artifacts()[0].read_text())
+        self.assertFalse(any(r['source'] == 'dns_bruteforce' for r in data['sources']))
+        self.assertNotIn('AXFR', (self.root/'tools.log').read_text())
+
+    def test_menu_slots_and_confirm(self):
+        wordlist = self.cwd/'words'; wordlist.write_text('www\n')
+        result = self.launch('scripts/subdomain_finder.sh', 'example.test', self.root/'out', wordlist, stdin='NO\n')
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse((self.root/'http.log').exists())
+        self.assertFalse((self.root/'tools.log').exists())
+        result = self.launch('scripts/subdomain_finder.sh', 'example.test', self.root/'out', wordlist, stdin='DNS_SI\n')
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertIn('dns_bruteforce', self.artifacts()[0].read_text())
+
+    def test_company_spaces_external_output_no_overwrite(self):
+        output = self.root/'custom output'
+        for _ in range(2):
+            result = self.launch('scripts/social_media_search.sh', 'Example Corp', output)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            self.assertIn('puede no estar ignorada', result.stderr)
+        artifacts = sorted(output.rglob('resultados.json'))
+        self.assertEqual(len(artifacts), 2)
+        data = json.loads(artifacts[0].read_text())
+        self.assertEqual(data['target'], 'Example Corp')
+        self.assertIn('q=Example+Corp', (self.root/'http.log').read_text())
+
+    def test_invalid_arguments_exit_two_without_requests(self):
+        for args in ((), ('127.0.0.1',), ('example.test', 'missing.pdf')):
+            result = self.launch('run_all_osint.sh', *args)
+            self.assertEqual(result.returncode, 2, result.stdout+result.stderr)
+        self.assertFalse((self.root/'http.log').exists())
+
+    def test_menu_preserves_empty_middle_slot(self):
+        fw = LIB.parents[1]
+        code = 'source "$1/00_Config/lib/params.bash"; source "$1/00_Config/lib/prompt.bash"; session_target() { :; }; prompt_for_slots "$1/01_OSINT/run_all_osint.sh" 01_OSINT/run_all_osint.sh'
+        result = subprocess.run(['bash', '-c', code, 'test', str(fw)], input='example.test\n\nExample Corp\n', capture_output=True, text=True, env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'example.test\n\nExample Corp\n')
 
 
 if __name__ == '__main__':

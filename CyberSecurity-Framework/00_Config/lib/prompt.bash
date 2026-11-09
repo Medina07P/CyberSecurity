@@ -206,10 +206,15 @@ prompt_for_slots() {
             printf '➜ %s: ' "$prompt" >&2
         done
 
-        [[ -z "$value" ]] && continue
+        # Un opcional vacío entre dos valores conserva su posición (p. ej.
+        # dominio, archivo vacío, empresa). Omitirlo desplaza los argumentos.
         out+=("$value")
     done
 
+    # No añadir argumentos vacíos al final a scripts que no los necesitan.
+    while ((${#out[@]})) && [[ -z "${out[${#out[@]}-1]}" ]]; do
+        unset 'out[${#out[@]}-1]'
+    done
     ((${#out[@]})) || return 0
     printf '%s\n' "${out[@]}"
     return 0

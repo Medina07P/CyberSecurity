@@ -106,7 +106,7 @@ Si no defines un objetivo de sesión, el motor de informes:
 El orden recomendado es:
 
 1. **00_Config**: valida el alcance (`scope.yaml`) y los objetivos (`targets.txt`)
-2. **01_OSINT**: inteligencia de fuentes abiertas (solo dominios)
+2. **01_OSINT**: inteligencia de fuentes abiertas (dominios, empresas y archivos locales)
 3. **02_Recon**: descubrimiento de hosts vivos
 4. **03_Scanners**: escaneo de puertos y vulnerabilidades
 5. **04_Enumeration**: enumeración de servicios
@@ -209,6 +209,37 @@ Se crea la primera vez que usas `R` o puedes editarlo manualmente. Enter conserv
 
 ## Cómo leer los veredictos
 
+### Resultados OSINT
+
+`01_OSINT` no inventa perfiles a partir de un usuario: consulta enlaces del sitio
+de referencia, búsquedas de cuentas GitHub y APIs compatibles configuradas en
+`K` (Brave para redes, GitHub y Hunter para correos). Sin Brave no hay búsqueda
+web general de redes; las fuentes omitidas, bloqueadas o fallidas quedan visibles.
+Un candidato no prueba pertenencia y un enlace desde el sitio tampoco acredita
+propiedad. No se confunden cuentas GitHub con emails ni certificados con hosts activos.
+
+`run_all_osint.sh <dominio> [archivo] [empresa]` comparte las consultas en una
+sesión. Deja archivo vacío para dar empresa sin extraer metadatos. Las rutas de
+archivo relativas se resuelven desde el directorio del llamador. En redes puedes
+dar empresa, directorio de salida opcional y dominio de referencia opcional.
+
+La fuerza bruta **DNS de subdominios** solo se activa al dar un diccionario local
+en el tercer campo de `subdomain_finder.sh` y confirmar `DNS_SI`; el cuarto campo
+es la IP de resolver opcional. Nunca se activa en run_all. Máximo 1.000 nombres,
+5 consultas DNS/s agregadas y 120 s; controles wildcard previos y resultados
+ambiguos separados de los resueltos. No incluye AXFR ni ataques de contraseñas.
+
+Cada ejecución guarda `resultados.json`, `resumen.txt` y `errores.log` en una
+carpeta única bajo los directorios ignorados de `01_OSINT` (run_all usa
+`domains/`). No usa `scans/` para estos artefactos. Código 0 significa fuentes
+intentadas completadas, no cobertura exhaustiva; 1 es parcial/fallo, 2 es entrada
+o configuración inválida. El resumen muestra omisiones y límites.
+
+Consulta [el README de OSINT](../CyberSecurity-Framework/01_OSINT/README.md) para
+ejemplos, claves compatibles y las limitaciones de theHarvester (omitido en esta
+entrega por reintentos/errores opacos). Estos datos no son vulnerabilidades ni
+se integran automáticamente en los informes de vulnerabilidades.
+
 ### Estados de confianza
 
 - **`confirmado`**: la herramienta demostró explotación o un diferencial concluyente. Ejemplos: `sqlmap` inyectable, `http_inject` confirmado, `SIN FRENO`, CVE de nuclei.
@@ -243,7 +274,7 @@ El motor de informes **no parsea** `scope.yaml` en v1 (evita depender de PyYAML)
 
 ### Seguridad
 
-- Los resultados van siempre a `scans/<herramienta>/` en la raíz del repositorio, se lance el script desde donde se lance.
+- Los escaneos van a `scans/<herramienta>/` en la raíz del repositorio, se lance el script desde donde se lance. Los artefactos OSINT quedan en los directorios ignorados de `01_OSINT` descritos arriba.
 - `scans/` está en `.gitignore`: contiene IPs y hallazgos de cada sesión, no se sube al repositorio.
 - Los scripts intrusivos (`[intrusiva]`) piden confirmación aparte.
 - Nunca ejecutes `99` como prueba de humo: ejecuta fuerza bruta, explotación y limpieza contra todos los objetivos configurados.
