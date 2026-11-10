@@ -65,5 +65,7 @@ También aislar HOME/KEYS_FILE en la comprobación de integración existente de
   un importante (stat de input fuera del try ante padre inaccesible), corregido
   RED→GREEN con prueba real POSIX sin root. Suite config-menu: 19 tests pasando;
   sin menores ni comportamientos declinados. Pendiente repetición final tras fix.
-- [ ] Task 2 completa.
+- [x] Task 2 completa: repetición final tras el fix con las ocho suites pasando
+  (config-menu 19, OSINT 69, gestor 385, e2e 11, smoke sin fallos, wizard 59,
+  informes Python + 28 shell, keys 141). Sintaxis: 133 Bash sin avisos y 40 Python.
 - [ ] Revisión, merge y verificación integrada.
