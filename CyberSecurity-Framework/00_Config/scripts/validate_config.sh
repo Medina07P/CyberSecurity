@@ -3,6 +3,7 @@
 # ─── VALIDATE_CONFIG.SH ─────────────────────────────────────
 # Valida que todos los archivos de configuración existan
 # Ubicación: 00_Config/scripts/validate_config.sh
+# Uso: ./validate_config.sh
 
 # Obtener la ruta del directorio del módulo (subir un nivel desde scripts/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -90,3 +91,4 @@ else
     echo "❌ Validación completada - $ERROR_COUNT ERRORES encontrados"
 fi
 echo "════════════════════════════════════════════════════════"
+exit "$((ERROR_COUNT > 0))"
