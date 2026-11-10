@@ -21,6 +21,7 @@ source "$LIB_DIR/prompt.bash"
 source "$LIB_DIR/report_profile.bash"
 source "$LIB_DIR/scans.bash"
 source "$LIB_DIR/scanners_menu.bash"
+source "$LIB_DIR/exploitation_menu.bash"
 source "$LIB_DIR/enumeration_menu.bash"
 
 # Colores
@@ -425,7 +426,7 @@ module_enumeration() {
 }
 
 module_exploitation() {
-    run_module_scripts "05_Exploitation" "05_Exploitation"
+    exploitation_menu
 }
 
 module_postexploitation() {
