@@ -342,7 +342,10 @@ siguen arrancando y devuelven menos resultados. El framework centraliza las clav
 único registro (`00_Config/credentials/api-keys.yaml`, ignorado por git) y escribe desde
 ahí los ficheros de cada herramienta.
 
-Entra con `K` en el menú principal:
+Entra con `K` en el menú principal, o con **`00 → 5. scripts/api_keys.py`**.
+Ambas entradas abren el mismo menú guiado: no debes escribir subcomandos ni
+pegar claves en una línea de argumentos. Desde `00`, la opción `0` vuelve al
+módulo de configuración; desde `K`, vuelve al menú principal.
 
 ```
   K) 🔑 Claves de API  (6 herramientas · N con claves · M vacías)
@@ -373,6 +376,23 @@ Entra con `K` en el menú principal:
 Ninguna salida muestra el valor de una clave: solo presencia y longitud. El registro no
 sustituye a las herramientas: si borras `api-keys.yaml`, las claves que ya estaban en sus
 ficheros siguen ahí (`sincronizar`/`importar` las recuperan).
+
+### Las otras opciones de configuración
+
+- **`00 → 1`** ejecuta cuatro comprobaciones de solo lectura (validación,
+  verificación, resumen de objetivos y estado de claves). No abre asistentes ni
+  importa/sincroniza claves. Si un paso falla, continúa y termina con código 1,
+  sin anunciar éxito global; los errores de herramientas quedan visibles.
+- **`00 → 2`** abre el asistente de objetivos y pide confirmar antes de escribir.
+- **`00 → 3/4`** comprueban archivos y estructura; devuelven 1 si falta algo.
+- **`00 → 6`** muestra el resumen actual de objetivos, sin modificarlos. La CLI
+  permite exportar JSON/CSV; un archivo ausente, ilegible o una salida no
+  escribible produce error claro y código 1, no un traceback ni éxito silencioso.
+
+«Ejecución directa» significa que no hacen falta argumentos externos. El
+asistente muestra sus preguntas y las comprobaciones muestran sus resultados.
+La CLI directa de api_keys sigue requiriendo un subcomando; el gestor evita
+invocarla vacía al abrir el menú guiado.
 
 ---
 
