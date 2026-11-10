@@ -1,63 +1,18 @@
 #!/bin/bash
-# ============================================================
-#  MASSCAN SCAN - Escaneo ultrarrápido de puertos
-#  Uso: ./masscan_scan.sh <IP/RANGO> <PUERTOS>
-#  Ejemplo: ./masscan_scan.sh 192.168.1.0/24 80,443,8080
-# ============================================================
-
-TARGET="$1"
+# MASSCAN — requiere root, sin elevación automática.
+# Uso: ./masscan_scan.sh <red> [PUERTOS]
+# Ejemplo: ./masscan_scan.sh 192.0.2.1 80,443
+TARGET="${1:-}"
 PORTS="${2:-1-65535}"
-SCANS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)/scans"
-OUTPUT_DIR="$SCANS_DIR/masscan"
-
-if [[ -z "$TARGET" ]]; then
-    echo "Uso: ./masscan_scan.sh <IP/RANGO> [PUERTOS]"
-    echo "Ejemplo: ./masscan_scan.sh 192.168.1.0/24 80,443,8080"
-    exit 1
-fi
-
-mkdir -p "$OUTPUT_DIR"
-
-# El log es de este run: sin truncar, el error de hace un mes sigue ahí y
-# todas las ejecuciones posteriores avisan sin motivo real.
-: > "$OUTPUT_DIR/errores.log"
-
-if ! command -v masscan &>/dev/null; then
-    echo "❌ Masscan no instalado"
-    echo "  Instalar con: sudo apt install masscan"
-    exit 1
-fi
-
-# Masscan usa sockets raw: sin root falla y el mensaje de "sin puertos" engaña.
-if [[ "$(id -u)" -ne 0 ]]; then
-    echo "❌ Masscan necesita root (sockets raw)"
-    echo "   Ejecuta: sudo bash ${BASH_SOURCE[0]} $TARGET $PORTS"
-    exit 1
-fi
-
-echo "📡 Ejecutando masscan en: $TARGET"
-echo "   Puertos: $PORTS"
-
-masscan -p"$PORTS" --rate=10000 "$TARGET" \
-    -oJ "$OUTPUT_DIR/masscan_${TARGET//\//_}.json" \
-    -oG "$OUTPUT_DIR/masscan_${TARGET//\//_}.grep" \
-    -oL "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt" 2>>"$OUTPUT_DIR/errores.log"
-
-# Mostrar resultados
-if [[ -f "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt" ]]; then
-    echo ""
-    echo "✅ Escaneo completado"
-    echo "📁 Resultados: $OUTPUT_DIR"
-    echo ""
-    echo "📊 PUERTOS ABIERTOS:"
-    echo "────────────────────────────────────────"
-    cat "$OUTPUT_DIR/masscan_${TARGET//\//_}.txt"
-else
-    echo "❌ No se encontraron puertos abiertos o el escaneo falló"
-fi
-
-# El stderr de la herramienta no se descarta: un "0 hallazgos" no debe
-# poder ser en realidad un fallo de ejecucion.
-if [[ -s "$OUTPUT_DIR/errores.log" ]]; then
-    echo "⚠️  Errores registrados en: $OUTPUT_DIR/errores.log"
-fi
+SCANS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../../00_Config/lib" && pwd)"
+source "$SCANS_LIB/scanner_runtime.bash"
+[[ -n "$TARGET" ]] || { echo 'Uso: ./masscan_scan.sh <red> [PUERTOS]'; exit 1; }
+scanner_network "$TARGET" && scanner_ports "$PORTS" && scanner_require masscan || exit 1
+[[ "$(id -u)" == 0 ]] || { echo '❌ Masscan necesita root (sockets raw). No se ha ejecutado.' >&2; exit 1; }
+OUTPUT_DIR=$(scans_dir masscan) || exit 1
+SLUG=$(scans_slug "$TARGET")
+echo "📡 Masscan: $TARGET; puertos $PORTS; tasa 10000 paquetes/s"
+# Masscan solo admite un formato por ejecución; JSON conserva campos estructurados.
+scanner_run "$OUTPUT_DIR/errores.log" masscan -p"$PORTS" --rate=10000 "$TARGET" \
+    -oJ "$OUTPUT_DIR/masscan_${SLUG}.json" || exit 1
+echo "✅ Escaneo completado. Resultados: $OUTPUT_DIR/masscan_${SLUG}.json"

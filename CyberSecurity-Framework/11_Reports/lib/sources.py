@@ -11,6 +11,7 @@ Solo biblioteca estándar, como el resto del motor.
 
 import fnmatch
 import importlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -27,6 +28,7 @@ class Source:
     path: Path
     kind: str
     parser: Callable[[Path, Path], ParseResult] | None
+    host: str | None = None
 
 
 PARSERS: dict[str, Callable[[Path, Path], ParseResult]] = {}
@@ -43,6 +45,25 @@ _PARSER_MODULES = (
 )
 
 _loaded = False
+
+
+def evidence_metadata(path):
+    """None si no hay sidecar; diccionario inválido si el presente no es fiable."""
+    for suffix in ('.attempt.json', '.meta.json'):
+        sidecar = Path(str(path)+suffix)
+        if not sidecar.exists(): continue
+        try:
+            meta = json.loads(sidecar.read_text())
+            if (isinstance(meta, dict) and meta.get('version') == 1
+                    and isinstance(meta.get('host'), str) and meta['host']
+                    and isinstance(meta.get('puerto'), int) and not isinstance(meta['puerto'], bool)
+                    and 1 <= meta['puerto'] <= 65535
+                    and meta.get('estado') in ('EJECUTADO','CONFIRMADO','DENEGADO','CERRADO','FILTRADO','OMITIDO','NO_DETERMINADO')):
+                return meta
+        except (ValueError, OSError, TypeError):
+            pass
+        return {'estado': 'NO_DETERMINADO', 'invalid': True}
+    return None
 
 
 def _load_parsers() -> None:
@@ -78,8 +99,11 @@ _DIR_RULES: list[tuple[str, str, str]] = [
     ("web", "headers_*.txt", "headers"),
     ("web", "technologies_*.txt", "technologies"),
     ("api", "methods.txt", "api"),
+    ("api", "methods_*.tsv", "api"),
     ("ssh", "auth_methods.txt", "ssh"),
+    ("ssh", "auth_methods_*.txt", "ssh"),
     ("database", "anon.txt", "db"),
+    ("database", "anon_*.txt", "db"),
 ]
 
 
@@ -121,5 +145,17 @@ def discover(scans_dir: Path) -> list[Source]:
             continue
         kind = _classify(path, scans_path)
         parser = PARSERS.get(kind)
-        sources.append(Source(path=path, kind=kind, parser=parser))
+        host = None
+        # Nuevas evidencias de 04: el último intento manda, sin borrar el
+        # resultado histórico conservado. Los ficheros heredados no se atribuyen.
+        meta = evidence_metadata(path)
+        if meta is not None:
+            host = meta.get('host')
+            state = meta['estado']
+            if parser and state in ('NO_DETERMINADO', 'OMITIDO'):
+                def failed(source, root, state=state):
+                    from .model import relpath
+                    return ParseResult(evaluado=False, no_evaluable=[{'fuente': relpath(source, root), 'motivo': 'último intento: '+state}])
+                parser = failed
+        sources.append(Source(path=path, kind=kind, parser=parser, host=host))
     return sources

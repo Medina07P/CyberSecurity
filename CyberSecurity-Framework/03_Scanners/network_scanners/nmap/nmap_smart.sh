@@ -1,67 +1,43 @@
 #!/bin/bash
-# ============================================================
-#  NMAP SMART SCAN - Escaneo inteligente
-#  Uso: ./nmap_smart.sh <IP>
-#  Ejemplo: ./nmap_smart.sh 192.168.1.10
-# ============================================================
-
-TARGET="$1"
-
+# NMAP SMART — puertos, servicios y NSE (perfil completo).
+# Uso: ./nmap_smart.sh <IP> [perfil]
+# Ejemplo: ./nmap_smart.sh 192.0.2.1 completo
+# perfil: basico (100 puertos, sin NSE) o completo (por defecto).
+TARGET="${1:-}"
+PROFILE="${2:-completo}"
 SCANS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../../00_Config/lib" && pwd)"
-source "$SCANS_LIB/scans.bash"
-
+source "$SCANS_LIB/scanner_runtime.bash"
 if [[ -z "$TARGET" ]]; then
-    echo "Uso: ./nmap_smart.sh <IP>"
-    echo "Ejemplo: ./nmap_smart.sh 192.168.1.10"
+    echo 'Uso: ./nmap_smart.sh <IP> [perfil]'
     exit 1
 fi
-
-OUTPUT_DIR=$(scans_dir nmap)
-
-# El log es de este run: sin truncar, el error de hace un mes sigue ahí y
-# todas las ejecuciones posteriores avisan sin motivo real.
-: > "$OUTPUT_DIR/errores.log"
-
+case "$PROFILE" in basico|completo) ;; *) echo '❌ Perfil no válido: basico o completo.' >&2; exit 1 ;; esac
+scanner_host "$TARGET" && scanner_require nmap || exit 1
+OUTPUT_DIR=$(scans_dir nmap) || exit 1
 SLUG=$(scans_slug "$TARGET")
-
-echo "📡 Escaneo inteligente de: $TARGET"
-
-# Fase 1: Puertos abiertos (usando -Pn para evitar problemas de ping)
-echo "  Fase 1: Descubriendo puertos..."
-nmap -Pn -p- --min-rate 2000 -T4 "$TARGET" -oA "$OUTPUT_DIR/smart_ports_${SLUG}" 2>>"$OUTPUT_DIR/errores.log"
-
-# Extraer puertos
-if [[ -f "$OUTPUT_DIR/smart_ports_${SLUG}.nmap" ]]; then
-    OPEN_PORTS=$(grep open "$OUTPUT_DIR/smart_ports_${SLUG}.nmap" 2>/dev/null | cut -d'/' -f1 | tr '\n' ',' | sed 's/,$//')
-else
-    OPEN_PORTS=""
+LOG="$OUTPUT_DIR/errores.log"
+if [[ "$PROFILE" == basico ]]; then
+    echo "📡 Perfil básico: $TARGET; 100 puertos TCP, servicios ligeros; sin NSE."
+    scanner_run "$LOG" nmap -Pn -sV --version-light --top-ports 100 "$TARGET" \
+        -oA "$OUTPUT_DIR/basic_${SLUG}" || exit 1
+    echo "✅ Ejecución completada. Resultados: $OUTPUT_DIR/basic_${SLUG}.*"
+    exit 0
 fi
-
-if [[ -n "$OPEN_PORTS" ]]; then
-    echo "  ✅ Puertos encontrados: $OPEN_PORTS"
-    
-    # Fase 2: Servicios y versiones
-    echo "  Fase 2: Detectando servicios..."
-    nmap -Pn -sV -sC -O -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_services_${SLUG}" 2>>"$OUTPUT_DIR/errores.log"
-    
-    # Fase 3: Scripts de vulnerabilidad
-    echo "  Fase 3: Escaneando vulnerabilidades..."
-    nmap --script vuln -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_vuln_${SLUG}" 2>>"$OUTPUT_DIR/errores.log"
-    
-    echo ""
-    echo "✅ Escaneo completado"
-    echo "📁 Resultados: $OUTPUT_DIR/smart_*_${SLUG}"
-else
-    echo "  ⚠️ No se encontraron puertos abiertos"
-    echo ""
-    echo "  💡 Sugerencia: Si estás escaneando localhost,"
-    echo "     asegúrate de tener servicios corriendo:"
-    echo "     - sudo systemctl start ssh  (puerto 22)"
-    echo "     - sudo systemctl start apache2 (puerto 80)"
+echo "📡 Escaneo inteligente completo de: $TARGET (todos los puertos y NSE vuln)"
+# Extraer solo resultados recién generados, nunca el archivo del run anterior.
+WORK=$(mktemp -d "$OUTPUT_DIR/.smart.XXXXXX") || exit 1
+trap 'rm -f "$WORK/ports.nmap" "$WORK/ports.gnmap" "$WORK/ports.xml"; rmdir "$WORK" 2>/dev/null' EXIT
+scanner_run "$LOG" nmap -Pn -p- --min-rate 2000 -T4 "$TARGET" -oA "$WORK/ports" || exit 1
+[[ -f "$WORK/ports.nmap" ]] || { echo '❌ Nmap no produjo salida nueva. NO DETERMINADO.' >&2; exit 1; }
+OPEN_PORTS=$(awk '$1 ~ /^[0-9]+\/tcp$/ && $2 == "open" {split($1,p,"/"); printf "%s%s",sep,p[1]; sep=","}' "$WORK/ports.nmap")
+for ext in nmap gnmap xml; do
+    [[ ! -f "$WORK/ports.$ext" ]] || mv "$WORK/ports.$ext" "$OUTPUT_DIR/smart_ports_${SLUG}.$ext" || exit 1
+done
+if [[ -z "$OPEN_PORTS" ]]; then
+    echo 'No se encontraron puertos TCP abiertos en esta ejecución.'
+    exit 0
 fi
-
-# El stderr de la herramienta no se descarta: un "0 hallazgos" no debe
-# poder ser en realidad un fallo de ejecucion.
-if [[ -s "$OUTPUT_DIR/errores.log" ]]; then
-    echo "⚠️  Errores registrados en: $OUTPUT_DIR/errores.log"
-fi
+echo "Puertos abiertos: $OPEN_PORTS"
+scanner_run "$LOG" nmap -Pn -sV -sC -O -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_services_${SLUG}" || exit 1
+scanner_run "$LOG" nmap -Pn --script vuln -p "$OPEN_PORTS" "$TARGET" -oA "$OUTPUT_DIR/smart_vuln_${SLUG}" || exit 1
+echo "✅ Escaneo completado. Resultados: $OUTPUT_DIR/smart_*_${SLUG}"

@@ -22,12 +22,14 @@ Solo biblioteca estándar.
 """
 
 import re
+import json
+import csv
 from pathlib import Path
 
 from lib.attribution import guess_host, normalize_host
 from lib.catalog import build
 from lib.model import Evidence, ParseResult, relpath
-from lib.sources import register
+from lib.sources import register, evidence_metadata
 
 __all__ = ["parse_api", "parse_ssh", "parse_db", "parse_technologies"]
 
@@ -50,6 +52,10 @@ def _lineas(path: Path) -> list[str]:
         return [linea.rstrip("\r\n") for linea in fh]
 
 
+def _metadata(path):
+    return evidence_metadata(path)
+
+
 def parse_api(path: Path, repo_root: Path) -> ParseResult:
     """Traduce los métodos con efecto de escritura de ``methods.txt``.
 
@@ -61,6 +67,23 @@ def parse_api(path: Path, repo_root: Path) -> ParseResult:
     archivo = relpath(path, repo_root)
     findings = []
     vistos: set[str] = set()
+
+    if path.suffix == '.tsv':
+        meta = _metadata(path)
+        if not meta or meta.get('estado') != 'EJECUTADO': return ParseResult(evaluado=False)
+        host = normalize_host(meta.get('host', ''))
+        with path.open(newline='', encoding='utf-8') as stream:
+            for number, row in enumerate(csv.DictReader(stream, delimiter='\t'), 2):
+                method = row.get('metodo', '')
+                try: code = int(row.get('codigo', '0'))
+                except ValueError: continue
+                if method not in _METODOS_ESCRITURA or not 200 <= code < 300 or row.get('clasificacion') != 'RESPUESTA_2XX': continue
+                if normalize_host(row.get('url','')) != host or method in vistos: continue
+                vistos.add(method)
+                findings.append(build('api.method', key=f'api.method|{method}|{host}|{meta.get("puerto", "")}', activo=host,
+                                      evidencia=[Evidence(archivo=archivo, linea=number, extracto=f'{method} ({code}) {row.get("url", "")}')],
+                                      variables={'metodo': method, 'codigo': str(code)}))
+        return ParseResult(findings=findings)
 
     for numero, linea in enumerate(_lineas(path), 1):
         match = _METODO_RE.search(linea)
@@ -98,7 +121,8 @@ def parse_ssh(path: Path, repo_root: Path) -> ParseResult:
     """
     path = Path(path)
     archivo = relpath(path, repo_root)
-    host = guess_host(path.name) or ""
+    meta = _metadata(path)
+    host = normalize_host(meta.get('host', '')) if meta else (guess_host(path.name) or "")
     findings = []
     vistos: set[str] = set()
     en_bloque = False
@@ -143,6 +167,16 @@ def parse_db(path: Path, repo_root: Path) -> ParseResult:
     """
     path = Path(path)
     archivo = relpath(path, repo_root)
+
+    meta = _metadata(path)
+    if meta:
+        if meta.get('estado') != 'CONFIRMADO': return ParseResult()
+        host = normalize_host(meta.get('host', ''))
+        lines = _lineas(path)
+        if not any(re.fullmatch(r'\d+\.\d+(?:\.\d+)?[^\s]*', line.strip()) for line in lines):
+            return ParseResult(evaluado=False, no_evaluable=[{'fuente': archivo, 'motivo': 'consulta de versión no verificable'}])
+        return ParseResult(findings=[build('db.anonymous', key=f'db.anonymous|{host}|{meta.get("puerto", "")}', activo=host,
+                                          evidencia=[Evidence(archivo=archivo, linea=1, extracto='root sin contraseña: consulta de versión verificada')])])
 
     for numero, linea in enumerate(_lineas(path), 1):
         if not linea.strip():

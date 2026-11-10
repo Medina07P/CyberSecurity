@@ -51,7 +51,7 @@ limpiar() { : > "$REGISTRO/llamadas.txt"; }
 printf '\n── El script recibe el valor tecleado, no el prompt\n'
 
 limpiar
-printf '192.168.1.50\n8080\n' | execute_script \
+printf 's\n192.168.1.50\n8080\n' | execute_script \
     "03_Scanners/network_scanners/nmap/nmap_scripts.sh" "03_Scanners" >/dev/null 2>&1
 
 llamadas=$(cat "$REGISTRO/llamadas.txt" 2>/dev/null)
@@ -83,12 +83,12 @@ esac
 
 # El número de argumentos tampoco debe dispararse
 nargs=$(printf '%s\n' "$llamadas" | head -1 | wc -w | tr -d ' ')
-eq "argumentos razonables en la llamada" "$nargs" "7"
+eq "argumentos razonables en la llamada (incluido -Pn)" "$nargs" "8"
 
-printf '\n── El ejemplo se usa como defecto al pulsar Enter\n'
+printf '\n── Un perfil intensivo no toma puertos del ejemplo\n'
 
 limpiar
-printf '10.0.0.5\n\n' | execute_script \
+printf 's\n10.0.0.5\n\n' | execute_script \
     "03_Scanners/network_scanners/nmap/nmap_scripts.sh" "03_Scanners" >/dev/null 2>&1
 llamadas=$(cat "$REGISTRO/llamadas.txt" 2>/dev/null)
 if printf '%s' "$llamadas" | grep -qE '(^| )10\.0\.0\.5( |$)'; then
@@ -96,17 +96,17 @@ if printf '%s' "$llamadas" | grep -qE '(^| )10\.0\.0\.5( |$)'; then
 else
     bad "acepta el objetivo tecleado" "$llamadas"
 fi
-if printf '%s' "$llamadas" | grep -qF "80,443"; then
-    ok "el puerto vacío usa el valor del Ejemplo (80,443)"
+if printf '%s' "$llamadas" | grep -qF "80,443,445,3306,8080"; then
+    ok "el puerto opcional vacío usa el valor por defecto de la hoja, no del ejemplo"
 else
-    bad "el puerto vacío usa el valor del Ejemplo" "$llamadas"
+    bad "el puerto vacío respeta el valor por defecto de la hoja" "$llamadas"
 fi
 
 printf '\n── El objetivo de sesión se propone como defecto\n'
 
 session_set_target "10.9.9.9"
 limpiar
-printf '\n\n' | execute_script \
+printf 's\n\n\n' | execute_script \
     "03_Scanners/network_scanners/nmap/nmap_scripts.sh" "03_Scanners" >/dev/null 2>&1
 llamadas=$(cat "$REGISTRO/llamadas.txt" 2>/dev/null)
 if printf '%s' "$llamadas" | grep -qE '(^| )10\.9\.9\.9( |$)'; then

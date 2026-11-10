@@ -20,6 +20,8 @@ source "$LIB_DIR/phase_status.bash"
 source "$LIB_DIR/prompt.bash"
 source "$LIB_DIR/report_profile.bash"
 source "$LIB_DIR/scans.bash"
+source "$LIB_DIR/scanners_menu.bash"
+source "$LIB_DIR/enumeration_menu.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -196,6 +198,16 @@ execute_script() {
     local original_dir="$PWD"
     local rel_path values rc rc_run
     local -a argv=()
+    # Solo llamadas internas del menú guiado, con datos ya validados y confirmados.
+    local prepared=0 basic_scanner=0
+    if [[ "${3:-}" == --prepared ]]; then
+        prepared=1
+        argv=("${@:4}")
+        if [[ "$script_path" == '03_Scanners/network_scanners/nmap/nmap_smart.sh' &&
+              ${#argv[@]} -eq 2 && "${argv[1]}" == basico ]]; then
+            basic_scanner=1
+        fi
+    fi
 
     # Es una CLI con subcomandos, no una herramienta que funcione vacía.
     # Reutilizar K evita pedir comandos manuales o claves por argv. El subshell
@@ -223,8 +235,8 @@ execute_script() {
         echo -e "${YELLOW}ℹ️  Es un GENERADOR: escribe otro script, no escanea nada.${NC}"
     fi
 
-    if params_is_dangerous "$script_path"; then
-        echo -e "${RED}⚠️  Herramienta intrusiva (fuerza bruta / explotación / persistencia).${NC}"
+    if (( ! basic_scanner )) && params_is_dangerous "$script_path"; then
+        echo -e "${RED}⚠️  Herramienta intrusiva (escaneo intensivo / fuerza bruta / explotación / persistencia).${NC}"
         if ! ask_confirm "¿Confirmas que el objetivo está dentro de tu alcance autorizado?"; then
             echo -e "${YELLOW}Cancelado${NC}"
             cd "$original_dir" || exit 1
@@ -233,8 +245,11 @@ execute_script() {
     fi
 
     # Los datos que pide el script salen de su propia línea Uso:
-    values=$(prompt_for_slots "$rel_path" "$script_path")
-    rc=$?
+    rc=0
+    if (( ! prepared )); then
+        values=$(prompt_for_slots "$rel_path" "$script_path")
+        rc=$?
+    fi
 
     if [[ $rc -ne 0 ]]; then
         case "$rc" in
@@ -245,7 +260,9 @@ execute_script() {
         return 0
     fi
 
-    [[ -n "$values" ]] && mapfile -t argv <<< "$values"
+    if (( ! prepared )) && [[ -n "$values" ]]; then
+        mapfile -t argv <<< "$values"
+    fi
 
     if [[ ${#argv[@]} -gt 0 ]]; then
         echo -e "${DIM}Argumentos: ${argv[*]}${NC}"
@@ -400,11 +417,11 @@ module_recon() {
 }
 
 module_scanners() {
-    run_module_scripts "03_Scanners" "03_Scanners"
+    scanners_menu
 }
 
 module_enumeration() {
-    run_module_scripts "04_Enumeration" "04_Enumeration"
+    enumeration_menu
 }
 
 module_exploitation() {
