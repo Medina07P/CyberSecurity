@@ -51,7 +51,7 @@ Rutas relativas a `CyberSecurity-Framework/` salvo `docs/`.
 
 No modificar bibliotecas de 03/04 para reutilizar su timeout. No reestructurar las tres hojas extensas de petición capturada salvo corrección respaldada por evidencia; integrar sin cambiar sus permisos.
 
-### Tarea 1: Inventario privado y contrato de comprobación real
+### Task 1: Inventario privado y contrato de comprobación real
 
 **Files:** crear `tests/verify_exploitation_real.py`; registros privados bajo `.superpowers/sdd/2026-11-10-explotacion-guiada/`.
 
@@ -65,7 +65,7 @@ No modificar bibliotecas de 03/04 para reutilizar su timeout. No reestructurar l
 - [ ] Ejecutar el verificador contra la reproducción: esperar 1 si el defecto se reprodujo, 2 si faltan datos. Añadir hash del árbol de evidencias antes/después para demostrar que el verificador no escribe.
 - [ ] Commit explícito del verificador y del diseño/plan; nunca añadir manifest, objetivos o configuración real.
 
-### Tarea 2: Captura por ejecución y evidencia fiable
+### Task 2: Captura por ejecución y evidencia fiable
 
 **Files:** crear `00_Config/lib/exploitation_runtime.bash`, `exploitation_evidence.py`; ampliar casos privados de tarea 1.
 
@@ -78,7 +78,7 @@ No modificar bibliotecas de 03/04 para reutilizar su timeout. No reestructurar l
 - [ ] Seleccionar última ejecución por destino/herramienta usando metadata, incluyendo fallidas; cada ejecución guarda todos sus artefactos. Dos instancias generan directorios distintos; registrar comprobación sin lanzar ataques duplicados, invocando solo init/capture con comandos locales inocuos.
 - [ ] Ejecutar comprobaciones del verificador, bash -n con stderr vacío y compilación Python sin escribir pyc en fuentes. Commit explícito de ambos archivos.
 
-### Tarea 3: MySQL, PostgreSQL y Redis
+### Task 3: MySQL, PostgreSQL y Redis
 
 **Files:** modificar `05_Exploitation/database/{mysql_attack,postgres_attack,redis_attack}.sh`; clasificaciones en `exploitation_evidence.py`.
 
@@ -90,7 +90,7 @@ No modificar bibliotecas de 03/04 para reutilizar su timeout. No reestructurar l
 - [ ] Analizar respuestas RESP de Redis; NOAUTH/NOPERM/ERR nunca son acceso. Ejecutar y clasificar INFO/KEYS */CONFIG GET * conservando comportamiento funcional, sin añadir operaciones modificadoras.
 - [ ] Repetir validaciones reales aplicables y comprobar versión/denegación contra respuestas guardadas, rc, host y puerto correctos. Registrar lo no probado. Commit de archivos explícitos.
 
-### Tarea 4: Web y peticiones capturadas
+### Task 4: Web y peticiones capturadas
 
 **Files:** modificar `05_Exploitation/web/{web_attack,sql_injection,xss}.sh`; integrar `http_inject.sh`, `sqlmap_request.sh`, `rate_limit_probe.sh` solo donde sea necesario para conservación de evidencia; `exploitation_evidence.py`.
 
@@ -104,7 +104,7 @@ No modificar bibliotecas de 03/04 para reutilizar su timeout. No reestructurar l
 - [ ] Validar realmente con las peticiones disponibles: http_inject, rate_limit y fases sqlmap autorizadas mediante sus permisos existentes; la tabla debe estar identificada, no elegida al azar. 429/503 o retardo solo se dan por probados si se observaron realmente; no provocar una sobrecarga artificial para obtenerlos.
 - [ ] Registrar URL con query/puerto no estándar cuando exista en configuración y comprobar destino exacto. Verificador verde para casos presentes; cobertura pendiente explícita. Commit de fuentes concretas.
 
-### Tarea 5: Red, Kerberos, CVE, plantillas, shell y WiFi
+### Task 5: Red, Kerberos, CVE, plantillas, shell y WiFi
 
 **Files:** modificar hojas bajo `05_Exploitation/network/`, `active_directory/`, `exploits/`, `custom_exploits/`, `wireless/`, `web/reverse_shell_php.sh`; conservar `payloads/`.
 
@@ -118,7 +118,7 @@ No modificar bibliotecas de 03/04 para reutilizar su timeout. No reestructurar l
 - [ ] Ejecutar capacidades reales con los datos disponibles; shell solo con LHOST/LPORT y receptor propios concretos, WiFi solo con interfaz identificada. No desplegar payload ni instalar/reconfigurar hardware para cubrir un caso. Guías se validan como guías, no como exploits ejecutados.
 - [ ] Ejecutar verificador, sintaxis y commit de fuentes seleccionadas; no versionar payload generado ni credenciales.
 
-### Tarea 6: Menú guiado y visor
+### Task 6: Menú guiado y visor
 
 **Files:** crear `00_Config/lib/exploitation_menu.bash`, `05_Exploitation/show_results.sh`; modificar `cyber_framework.sh` source y module_exploitation.
 
@@ -131,7 +131,7 @@ No modificar bibliotecas de 03/04 para reutilizar su timeout. No reestructurar l
 - [ ] Implementar visor basado en show_results del módulo nuevo: filtrar host/puerto/URL, mostrar intento actual/historial/no atribuible y ocultar secretos por defecto sin borrar evidencia privada.
 - [ ] Comprobar navegación real del gestor con entrada manual: entrar/salir, EOF, archivos con espacios, 0/! y lista completa no producen tráfico. Ejecutar una elección real aplicable con configuración del usuario y verificar argumentos/destino en evidencia. Commit concreto.
 
-### Tarea 7: Flujos completos e integración de informes
+### Task 7: Flujos completos e integración de informes
 
 **Files:** modificar ambos `05_Exploitation/run_all_*.sh`; `11_Reports/lib/{sources,engine}.py`; crear `11_Reports/lib/parsers/exploitation.py`.
 
@@ -144,7 +144,7 @@ No modificar bibliotecas de 03/04 para reutilizar su timeout. No reestructurar l
 - [ ] Ejecutar ambos flujos reales solo cuando la matriz privada tenga sus datos y dependencias; no usar 99 ni convertirlo en smoke test. Recoger efectos y rc por hijo.
 - [ ] Generar informes con report_engine.py sobre evidencia real hacia salida nueva; comprobar atribución, no duplicados, no secretos y no positivos de errores. Verificador verde en casos efectivamente presentes; commit explícito.
 
-### Tarea 8: Revisión final, documentación y cobertura demostrada
+### Task 8: Revisión final, documentación y cobertura demostrada
 
 **Files:** `05_Exploitation/README.md`, `docs/MANUAL-GESTOR.md`, nuevo `docs/EXPLOTACION-2026-11-10.md`; manifest local de validación.
 
