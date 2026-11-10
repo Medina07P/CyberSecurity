@@ -30,17 +30,15 @@ Cerrar las brechas de cobertura y las integraciones diferidas del módulo 05 sin
 - **Opciones:** recuperación ext4 solo con autorización explícita del usuario; o, si el operador dispone de la petición original, reimportarla bajo el árbol de evidencia privada y añadir casos al manifiesto.
 - **Prohibido:** reconstruir la petición por conjetura o inventar parámetros.
 
-### P3. Integración de 05 con el motor de informes (11_Reports)
+### P3. Integración de 05 con el motor de informes (11_Reports) — COMPLETADO
 
-- **Situación:** `run_all_attacks.sh` y `run_all_exploits.sh` se autolocalizan y cuentan resultados, pero el motor de informes no descubre ni parsea la evidencia de explotación.
-- **Necesario:** crear `11_Reports/lib/parsers/exploitation.py` (ParseResult para runs de 05), registrarlo en `sources.py` (`_PARSER_MODULES`), añadir reglas de clasificación para `run.json` de explotación y priorizar el último run por host/herramienta. El parser debe ocultar secretos y filas volcadas, y distinguir hallazgo, diferencial, reflexión, guía y no evaluado.
-- **Aceptación:** `report_engine.py` genera informes sobre evidencia real con atribución correcta, sin duplicados ni secretos; pruebas del motor en verde.
+- **Implementado:** `11_Reports/lib/parsers/exploitation.py` (ParseResult para runs de 05), registrado en `sources.py` (`_PARSER_MODULES`), reglas de clasificación para `run.json` de explotación y priorización del último run por host/herramienta. El parser oculta secretos y filas volcadas, y distingue hallazgo, diferencial, reflexión, guía y no evaluado.
+- **Reglas añadidas al catálogo:** `exploitation.hallazgo`, `exploitation.diferencial`, `exploitation.reflexion`, `exploitation.guia`.
+- **Aceptación:** `tests/run_reports.sh` en verde (28/28); parser probado con fixture de dos runs (prioriza el último).
 
-### P4. Documentación final (Task 8)
+### P4. Documentación final (Task 8) — COMPLETADO
 
-- **Situación:** solo se actualizó mínimamente `05_Exploitation/README.md`.
-- **Necesario:** crear `docs/EXPLOTACION-2026-11-10.md` con la matriz inventario → entrada CLI → operación → ejecución real → evidencia → resultado, marcando como no validado lo que falte por dato/servicio/hardware. Actualizar `docs/MANUAL-GESTOR.md` con el menú de 05.
-- **Aceptación:** verificador verde en cada caso documentado; hashes de configuración y evidencia previa sin cambios inesperados.
+- **Implementado:** creado `docs/EXPLOTACION-2026-11-10.md` con la matriz inventario → entrada CLI → operación → ejecución real → evidencia → resultado, marcando como no validado lo que falte por dato/servicio/hardware. Actualizado `docs/MANUAL-GESTOR.md` con el menú de 05.
 
 ### P5. Validación real de las familias no cubiertas por datos
 

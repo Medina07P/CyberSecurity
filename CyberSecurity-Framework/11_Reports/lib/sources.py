@@ -42,6 +42,7 @@ def register(kind: str, fn: Callable[[Path, Path], ParseResult]) -> None:
 _PARSER_MODULES = (
     "nmap", "nuclei", "nikto", "ffuf", "http_inject",
     "sqlmap", "sqli_findings", "rate_limit", "headers", "host_sources",
+    "exploitation",
 )
 
 _loaded = False
@@ -125,6 +126,10 @@ def _classify(path: Path, scans_dir: Path) -> str:
     if name == "errores.log":
         return "errores"
 
+    # Runs de explotación: scans/<tool>/exploitation_*/run.json
+    if name == "run.json" and len(parts) >= 3 and parts[-2].startswith("exploitation_"):
+        return "exploitation"
+
     for dir_pat, file_pat, kind in _DIR_RULES:
         if directory == dir_pat and fnmatch.fnmatch(name, file_pat):
             return kind
@@ -158,4 +163,37 @@ def discover(scans_dir: Path) -> list[Source]:
                     return ParseResult(evaluado=False, no_evaluable=[{'fuente': relpath(source, root), 'motivo': 'último intento: '+state}])
                 parser = failed
         sources.append(Source(path=path, kind=kind, parser=parser, host=host))
+
+    # Priorizar el último run por host/herramienta en explotación: los runs
+    # anteriores del mismo destino se omiten (no se borra evidencia).
+    exploitation = [s for s in sources if s.kind == "exploitation"]
+    if len(exploitation) > 1:
+        grupos: dict[tuple, list[Source]] = {}
+        for s in exploitation:
+            try:
+                data = json.loads(s.path.read_text(encoding="utf-8"))
+                clave = (data.get("host", ""), data.get("herramienta", ""))
+            except (OSError, ValueError, TypeError):
+                clave = (None, None)
+            grupos.setdefault(clave, []).append(s)
+
+        conservar: set[Path] = set()
+        for grp in grupos.values():
+            if len(grp) <= 1:
+                conservar.update(s.path for s in grp)
+                continue
+            def _clave_run(s: Source) -> tuple[str, str]:
+                try:
+                    d = json.loads(s.path.read_text(encoding="utf-8"))
+                    return (d.get("fecha") or d.get("started") or "", d.get("run_id", ""))
+                except (OSError, ValueError, TypeError):
+                    return ("", "")
+            ultimo = max(grp, key=_clave_run)
+            conservar.add(ultimo.path)
+
+        sources = [
+            s for s in sources
+            if s.kind != "exploitation" or s.path in conservar
+        ]
+
     return sources
