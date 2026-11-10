@@ -130,11 +130,63 @@ El flujo completo comprueba el alcance de `scope.yaml` y pide confirmación ante
 
 ---
 
+## Módulo 03: escáneres guiados
+
+Al entrar en **03** aparece un menú específico:
+
+1. **Comprobar herramientas**: consulta disponibilidad local; no escanea,
+   instala ni actualiza nada.
+2. **Puertos y servicios básicos**: 100 puertos TCP con Nmap y detección ligera
+   de servicios, sin NSE ni detección de SO. Propone el objetivo de sesión;
+   sin sesión no usa una IP de ejemplo.
+3. **Analizar una URL**: elige Nikto o Nuclei e introduce una URL HTTP(S)
+   completa con esquema, puerto y ruta. No se adivina el esquema desde la sesión.
+4. **Burp manual**: abre el lanzador y explica la captura; Community no escanea
+   ni guarda proyectos.
+5. **Avanzado**: conserva los diez scripts. Smart completo, NSE, Nmap agresivo,
+   Masscan, RustScan y run_all son intensivos y piden confirmación adicional.
+
+Antes del análisis básico o web se muestra herramienta, objetivo e intensidad.
+Solo una confirmación afirmativa ejecuta. `0` o `!` cancela la pregunta de
+objetivo; EOF no inicia herramientas. El menú nunca eleva privilegios.
+
+Los fallos de herramientas son **NO DETERMINADO**, no «sin vulnerabilidades».
+El orquestador resume ejecutadas, fallidas y omitidas; los logs conservan el
+historial fechado. Una omisión no equivale a una evaluación limpia.
+
+Nuclei se limita a plantillas HTTP con tasa 10/s y concurrencia 2, sin
+Interactsh ni comprobaciones de actualización. El flujo web no reemplaza una
+prueba autenticada con petición capturada en Burp.
+
+Detalles y verificación aislada en `CyberSecurity-Framework/03_Scanners/README.md`.
+
+## Módulo 04: enumeración guiada sin perder capacidades
+
+`04` permite comprobar herramientas, elegir SSH/FTP/SMB/LDAP/bases de datos/web/API,
+ejecutar el flujo completo original, ver resultados del objetivo y acceder a
+las **16 entradas**, incluidos auxiliares y ambos generadores.
+
+El menú muestra las operaciones y pide confirmación. Se conservan accesos
+anónimos, credenciales por defecto, usuarios, todos los métodos HTTP y fuzzing:
+**no son comprobaciones pasivas**. En particular POST/PUT/DELETE/PATCH pueden
+modificar datos, NSE `ftp-*` puede ser intrusivo y Redis `KEYS *` puede ser costoso.
+
+Web/API pide URL completa; conserva esquema, puerto, ruta y query. El visor no
+atribuye archivos antiguos a la sesión por suposición. Los nuevos resultados
+llevan host/puerto y metadata; un fallo no se presenta como «sin hallazgos» ni
+reutiliza un resultado previo como actual. Los diagnósticos se conservan fechados.
+
+`0`/`!` cancela la pregunta de objetivo/puerto; EOF o confirmación negativa no
+ejecuta herramientas. La CLI histórica sigue disponible y no añade prompts
+interactivos nuevos. No se instala nada ni se eleva privilegios automáticamente.
+
+Detalles, riesgos y ejemplos: `CyberSecurity-Framework/04_Enumeration/README.md`.
+
 ## Marcas en la lista de scripts
 
 Las marcas avisan antes de ejecutar:
 
-- **`[intrusiva]`** — fuerza bruta, explotación, persistencia o limpieza: pide confirmación aparte. Ejemplos: `hydra_brute.sh`, `reverse_shell_php.sh`, `rate_limit_probe.sh`.
+- **`[intrusiva]`** — escaneo intensivo, fuerza bruta, explotación, persistencia o limpieza: pide confirmación aparte. Ejemplos: `nmap_aggressive.sh`, `hydra_brute.sh`, `rate_limit_probe.sh`.
 - **`[manual]`** — usa banderas o subcomandos: escribes la línea de argumentos completa. Ejemplos: `nmap_smart.sh` (si tiene `--flags`), `interface_manager.sh`.
 - **`[generador]`** — escribe otro script, no escanea nada. Ejemplos: `enum_smb.sh`, `deepseeenum_web.sh` (escriben el script real en su primera ejecución; `ps_exec.sh` y `linpeas.sh` hacen lo propio).
 

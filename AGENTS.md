@@ -1,5 +1,12 @@
 # AGENTS.md
 
+**Pausa 2026-11-10:** 03/04 terminados y diez suites pasando en clon limpio.
+Commits locales autorizados después de la pausa, sin push; scope.yaml permanece
+como configuración local fuera de los commits. El permiso api_keys.py se incluye.
+Próximo trabajo: revisión del **módulo 05**, sin retirar capacidades.
+Leer `docs/RETOMAR-2026-11-10.md` al retomar; no ejecutar suites antiguas sobre
+evidencias reales ni comenzar explotación como smoke test.
+
 Red-team / pentest framework: 118 Bash scripts (plus 4 more under `tests/`) plus a few Python helpers, targeted at Kali Linux. `README.md` is the pitch; this file is the working knowledge.
 
 ## Current state (2026-11-06)
@@ -25,6 +32,35 @@ Y el objetivo de sesión dejó de ser cosa de dos ficheros: `session_set_target`
 Las claves de API dejan de ser un fichero por herramienta que nadie recuerda rellenar. `00_Config/scripts/api_keys.py` mantiene un registro único (`00_Config/credentials/api-keys.yaml`, `600` en directorio `700`, ignorado por git) y escribe desde ahí los seis destinos: `~/.theHarvester/api-keys.yaml`, `~/.shodan/api_key`, `~/.h8mail_config.ini`, `~/.config/amass/datasources.yaml` (amass v5.1.1 no lee `config.ini`), `~/.recon-ng/keys.db` y `~/.spiderfoot/spiderfoot.db`. Órdenes: `estado [--json|--faltan H]`, `poner H CAMPO VALOR|-`, `pedir H [--campo C]`, `sincronizar [H]` e `importar H`; el gestor las reúne en la opción `K`. Reglas asumidas: el registro manda campo a campo pero un valor no vacío que solo esté en el fichero de la herramienta se conserva y se reporta (nunca se borra por sorpresa; `diverge` lo delata); `-` sí borra en ambos sitios; ninguna salida imprime el valor, solo presencia y longitud; `sincronizar` no crea ficheros vacíos; y una base de datos ausente es `sin inicializar`, nunca un fichero inventado. La suite nueva es `tests/run_keys.sh` (141 asserts, con `HOME`/`KEYS_FILE`/`KEYS_HARVESTER_*` aislados). `docs/API-KEYS-2026-11-06.md` lo documenta.
 
 ## Where it runs
+
+Actualización Enumeración 2026-11-10: `04` tiene menú específico por servicio,
+URL explícita, comprobación local, visor por objetivo y lista completa con las
+16 entradas originales; no se retiraron métodos HTTP, accesos, usuarios,
+fuzzing, consultas Redis ni generadores. Bibliotecas `enumeration_*` bajo
+`00_Config/lib/` centralizan validación, clasificación y evidencia. Nuevos
+resultados por host/puerto y hash web con `.meta.json` y `.attempt.json`;
+el último intento fallido no se presenta como evidencia actual exitosa.
+Los informes admiten nuevas fuentes SSH/MySQL/API y rechazan sidecars
+inválidos sin revivir resultados históricos. HTTP HEAD usa `--head`; ffuf
+se limpia al recibir SIGTERM. Postgres ignora PGHOSTADDR heredado. Nueva
+suite segura `tests/run_enumeration.sh` (39 métodos); pruebas antiguas solo
+en clon limpio. Guía y límites: `04_Enumeration/README.md` y
+`docs/ENUMERACION-2026-11-09.md`. No lanzar el flujo completo como smoke test.
+
+Actualización Escáneres 2026-11-09: `03` abre un menú específico (comprobación
+local sin red, básico de 100 puertos TCP sin NSE, URL explícita Nikto/Nuclei,
+Burp manual y acceso avanzado a las diez entradas). La biblioteca
+`00_Config/lib/scanner_runtime.bash` valida entradas y conserva el historial
+de `errores.log`; las hojas propagan fallos y `run_all_scanners.sh` cuenta
+ejecutadas/fallidas/omitidas. Nmap de red acepta IPv4/dominio, no IPv6 literal.
+Smart completo sigue siendo el perfil CLI por defecto; `basico` es el segundo
+argumento opcional. Nikto rechaza comas literales y exige evidencia fresca de
+evaluación completa, no solo rc=0. RustScan publica stdout solo tras éxito;
+Masscan guarda JSON; Nuclei usa HTTP a 10 peticiones/s, sin Interactsh ni
+comprobación de actualización, y conserva texto `.txt` legible por informes.
+Nueva suite segura: `tests/run_scanners_menu.sh` (27 métodos unittest, fuentes
+copiadas a temporal y PATH cerrado). Detalles: `docs/SCANNERS-2026-11-09.md` y
+`03_Scanners/README.md`. Las suites antiguas siguen requiriendo clon limpio.
 
 Actualización OSINT 2026-11-09: el contrato anterior de run_all descrito arriba
 queda sustituido por `<dominio> [archivo] [empresa]`. Las seis entradas delegan
