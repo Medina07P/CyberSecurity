@@ -2,9 +2,11 @@
 # ============================================================
 #  PARSE_TARGETS.py
 #  Parsea targets.txt y genera archivos JSON/CSV
+#  Uso: ./parse_targets.py
+#  Sin argumentos muestra el resumen; conserva flags --input, --json y --csv.
 # ============================================================
 
-import os
+import sys
 import json
 import csv
 import argparse
@@ -18,7 +20,7 @@ class TargetParser:
     
     def parse(self):
         """Parsea el archivo targets.txt"""
-        with open(self.targets_file) as f:
+        with open(self.targets_file, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 # Saltar comentarios y líneas vacías
@@ -39,13 +41,13 @@ class TargetParser:
     
     def to_json(self, output_file):
         """Exporta a JSON"""
-        with open(output_file, 'w') as f:
+        with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(self.targets, f, indent=2)
         print(f"✅ JSON guardado en: {output_file}")
     
     def to_csv(self, output_file):
         """Exporta a CSV"""
-        with open(output_file, 'w', newline='') as f:
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
             if self.targets:
                 writer = csv.DictWriter(f, fieldnames=self.targets[0].keys())
                 writer.writeheader()
@@ -74,7 +76,7 @@ class TargetParser:
         for service, count in self.get_services().items():
             print(f"    • {service}: {count}")
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Parsea targets.txt")
     parser.add_argument("--input", default="../targets.txt", help="Archivo targets.txt")
     parser.add_argument("--json", help="Exportar a JSON")
@@ -88,19 +90,21 @@ def main():
     input_file = script_dir / args.input
     
     if not input_file.exists():
-        print(f"❌ Archivo no encontrado: {input_file}")
-        return
+        print(f"❌ Archivo no encontrado: {input_file}", file=sys.stderr)
+        return 1
     
-    tp = TargetParser(input_file)
-    
-    if args.json:
-        tp.to_json(args.json)
-    
-    if args.csv:
-        tp.to_csv(args.csv)
-    
-    if args.summary or (not args.json and not args.csv):
-        tp.print_summary()
+    try:
+        tp = TargetParser(input_file)
+        if args.json:
+            tp.to_json(args.json)
+        if args.csv:
+            tp.to_csv(args.csv)
+        if args.summary or (not args.json and not args.csv):
+            tp.print_summary()
+    except (OSError, UnicodeError, csv.Error) as exc:
+        print(f"❌ No se pudieron leer o exportar los objetivos: {exc}", file=sys.stderr)
+        return 1
+    return 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

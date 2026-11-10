@@ -37,6 +37,8 @@ entrada API keys a `keys_menu [return_label]` desde FRAMEWORK_DIR, conserva cwd;
 **Files:** modificar `CyberSecurity-Framework/00_Config/run_all_config.sh`,
 `CyberSecurity-Framework/00_Config/scripts/{validate_config.sh,verify_00_config.sh,parse_targets.py}`,
 tests nuevos anteriores; actualizar `CyberSecurity-Framework/00_Config/README.md`, `docs/MANUAL-GESTOR.md`, `AGENTS.md`.
+También aislar HOME/KEYS_FILE en la comprobación de integración existente de
+`tests/run_wizard.sh`, ahora que run_all consulta el estado de claves.
 **Interfaces:** validadores devuelven 0/1; `parse_targets.main() -> int` y
 `sys.exit(main())`; run_all invoca `validate`, `verify`, `parse --summary`,
 `api_keys estado`, informa por paso y sale 1 ante cualquier fallo.
@@ -56,5 +58,8 @@ tests nuevos anteriores; actualizar `CyberSecurity-Framework/00_Config/README.md
 - [x] Diseño/elección guiada aprobados; aislamiento y ejecución nativa heredados.
 - [x] Task 1 completa: 8 pruebas de navegación real RED→GREEN, incluidas
   alta de clave sintética sin eco, K, cancelación/EOF y cwd externo.
+- [x] Task 2 implementada: nuevas regresiones RED→GREEN; 18 tests config-menu,
+  smoke sin fallos, wizard 59/59 y keys 141/141 pasando. Sintaxis verificada:
+  133 Bash sin avisos y 40 Python compilados. Pendiente regresión completa/revisión.
 - [ ] Task 2 completa.
 - [ ] Revisión, merge y verificación integrada.
