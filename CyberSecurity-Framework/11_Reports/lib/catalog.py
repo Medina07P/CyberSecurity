@@ -400,6 +400,60 @@ _RULES: dict[str, tuple[str, str, str, str, str, str, str, tuple[str, ...]]] = {
             "https://owasp.org/www-project-top-ten/",
         ),
     ),
+    "exploitation.hallazgo": (
+        "alta",
+        "confirmado",
+        "Hallazgo confirmado en explotación",
+        "Una capacidad de explotación se ejecutó con éxito sobre el activo y "
+        "quedó registrada como confirmada. El detalle de la ejecución y sus "
+        "artefactos se conservan en la evidencia privada del run.",
+        "Un acceso o una ejecución confirmada sobre un servicio expuesto permite "
+        "a un tercero operar sobre los datos o el sistema afectado.",
+        "Corregir la causa raíz del hallazgo, rotar las credenciales que pudieron "
+        "quedar expuestas y repetir la prueba autorizada para confirmar el cierre.",
+        "alto",
+        ("https://owasp.org/www-project-top-ten/",),
+    ),
+    "exploitation.diferencial": (
+        "media",
+        "candidato",
+        "Diferencial observado en explotación",
+        "La ejecución mostró un comportamiento distinto del esperado, pero no "
+        "llegó a confirmarse como explotación. Se publica como candidato para "
+        "revisión manual.",
+        "Un diferencial no probado puede esconder una vulnerabilidad real o un "
+        "falso positivo; conviene revisarlo antes de descartarlo.",
+        "Repetir la prueba con una confirmación adicional autorizada y, entretanto, "
+        "revisar la validación y la configuración del punto afectado.",
+        "medio",
+        ("https://owasp.org/www-project-top-ten/",),
+    ),
+    "exploitation.reflexion": (
+        "alta",
+        "candidato",
+        "Reflexión observada en explotación",
+        "La ejecución mostró que un valor inyectado se refleja en la respuesta "
+        "del activo. Es una señal de reflexión que exige revisión del contexto de "
+        "ejecución.",
+        "Un valor reflejado puede ejecutarse en el navegador o en el servidor si "
+        "no se escapa correctamente, lo que expone a los usuarios o al sistema.",
+        "Escapar la salida según el contexto, validar la entrada y revisar el "
+        "resto de puntos de reflejo del activo.",
+        "medio",
+        ("https://cwe.mitre.org/data/definitions/79.html",),
+    ),
+    "exploitation.guia": (
+        "info",
+        "observacion",
+        "Ejecución de explotación registrada",
+        "La capacidad de explotación se ejecutó sobre el activo y quedó registrada "
+        "como evidencia operativa. No constituye por sí sola un hallazgo.",
+        "Conviene saber qué capacidades se ejecutaron sobre el sistema para "
+        "valorar el alcance real del trabajo.",
+        "Revisar la evidencia operativa y conservarla como traza de la prueba.",
+        "bajo",
+        ("https://owasp.org/www-project-top-ten/",),
+    ),
 }
 
 KNOWN_RULES: tuple[str, ...] = tuple(_RULES)
@@ -419,6 +473,7 @@ _FAMILIA: dict[str, tuple[str, str]] = {
     "api": ("web", "enum_api.sh"),
     "ssh": ("red", "enum_ssh.sh (ssh-auth-methods)"),
     "db": ("datos", "enum_mysql.sh (consulta anónima)"),
+    "exploitation": ("explotacion", "05_Exploitation"),
 }
 
 # Valor por defecto de cada hueco. Los textos se leen bien sin variables: la

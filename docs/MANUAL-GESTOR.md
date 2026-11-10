@@ -182,6 +182,29 @@ interactivos nuevos. No se instala nada ni se eleva privilegios automáticamente
 
 Detalles, riesgos y ejemplos: `CyberSecurity-Framework/04_Enumeration/README.md`.
 
+## Módulo 05: explotación guiada
+
+`05` ofrece un menú guiado con las capacidades de explotación ya disponibles:
+
+1. **Herramientas**: fuerza bruta SSH/FTP, Kerberos, CVE, WiFi, payloads y shells.
+2. **Web capturada**: `http_inject.sh`, `sqlmap_request.sh`, `rate_limit_probe.sh` sobre una petición capturada en Burp.
+3. **Web por URL/host**: `xss.sh`, `sql_injection.sh`, `web_attack.sh` (fuzzing).
+4. **SSH/FTP**: fuerza bruta con hydra.
+5. **Bases de datos**: MySQL, PostgreSQL, Redis.
+6. **Kerberos**: ataque con kinit aislado.
+7. **CVE**: sonda de versión (sin payload).
+8. **Payload/shell**: generación de reverse shells.
+9. **WiFi**: escaneo con iwlist (requiere interfaz).
+10. **Plantillas**: plantillas de explotación.
+11. **Flujos completos**: `run_all_attacks.sh`, `run_all_exploits.sh`.
+12. **Resultados**: visor de evidencia (`show_results.sh`).
+13. **Lista completa**: todas las entradas (reutiliza `run_module_scripts`).
+14. **Volver**.
+
+Todas las opciones piden confirmación antes de ejecutar y no elevan privilegios automáticamente. Las hojas capturadas mantienen sus contratos y permisos independientes (`SQLMAP_SI`, `SQLMAP_ENUMERAR`, `SQLMAP_TABLA`).
+
+Detalles, riesgos y ejemplos: `CyberSecurity-Framework/05_Exploitation/README.md` y `docs/EXPLOTACION-2026-11-10.md`.
+
 ## Marcas en la lista de scripts
 
 Las marcas avisan antes de ejecutar:
@@ -536,4 +559,4 @@ cat scans/<herramienta>/errores.log  # Ver errores de una herramienta
 
 ---
 
-**Última actualización:** 2026-11-06
+**Última actualización:** 2026-11-10
