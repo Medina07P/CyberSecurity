@@ -140,7 +140,7 @@ def collect(
     incidencias: list[dict] = []
 
     for source in sources:
-        source_host = guess_host(source.path.name)
+        source_host = source.host or guess_host(source.path.name)
 
         if source.kind == "errores":
             selected = _selected_source(

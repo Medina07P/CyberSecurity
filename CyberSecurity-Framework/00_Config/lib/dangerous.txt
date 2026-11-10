@@ -2,6 +2,27 @@
 # Una ruta relativa al directorio del framework por línea, sin comentarios al final.
 # Estas además NO aceptan el valor del ejemplo como valor por defecto:
 # hay que teclear el objetivo a mano.
+03_Scanners/run_all_scanners.sh
+03_Scanners/network_scanners/nmap/nmap_smart.sh
+03_Scanners/network_scanners/nmap/nmap_aggressive.sh
+03_Scanners/network_scanners/nmap/nmap_scripts.sh
+03_Scanners/network_scanners/masscan/masscan_scan.sh
+03_Scanners/network_scanners/rustscan/rustscan_scan.sh
+04_Enumeration/run_all_enum.sh
+04_Enumeration/ssh/enum_ssh.sh
+04_Enumeration/ftp/enum_ftp.sh
+04_Enumeration/ftp/ftp_anonymous.sh
+04_Enumeration/smb/enum_smb_advanced.sh
+04_Enumeration/smb/enum_smb.sh
+04_Enumeration/ldap/enum_ldap.sh
+04_Enumeration/ldap/ldap_anonymous.sh
+04_Enumeration/database/enum_mysql.sh
+04_Enumeration/database/enum_postgres.sh
+04_Enumeration/database/enum_redis.sh
+04_Enumeration/web/enum_web.sh
+04_Enumeration/web/enum_web_advanced.sh
+04_Enumeration/web/deepseeenum_web.sh
+04_Enumeration/api/enum_api.sh
 05_Exploitation/active_directory/kerberos_attack.sh
 05_Exploitation/database/mysql_attack.sh
 05_Exploitation/database/postgres_attack.sh

@@ -1,120 +1,70 @@
 #!/bin/bash
-# ============================================================
-#  RUN ALL SCANNERS - Ejecuta todos los escáneres
-#  Uso: ./run_all_scanners.sh <TARGET>
-#  Ejemplo: ./run_all_scanners.sh 192.168.1.10
-# ============================================================
+# Orquestador AVANZADO: Nmap completo, Masscan opcional y análisis web activo.
+# Uso: ./run_all_scanners.sh <TARGET>
+# Ejemplo: ./run_all_scanners.sh 192.0.2.1
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$MODULE_DIR/../00_Config/lib/scanner_runtime.bash"
+TARGET="${1:-}"
+[[ -n "$TARGET" ]] || { echo 'Uso: ./run_all_scanners.sh <TARGET>'; exit 1; }
+scanner_host "$TARGET" && scanner_require nmap || exit 1
+cd "$MODULE_DIR" || exit 1
+OUTPUT_DIR=$(scans_dir nmap) || exit 1
+EJECUTADAS=0
+FALLIDAS=0
+OMITIDAS=0
+run_child() {
+    local script="$1"
+    shift
+    if [[ ! -f "$script" ]]; then
+        echo "❌ Script no encontrado: $script"
+        FALLIDAS=$((FALLIDAS + 1))
+        return
+    fi
+    EJECUTADAS=$((EJECUTADAS + 1))
+    if ! bash "$script" "$@"; then
+        FALLIDAS=$((FALLIDAS + 1))
+    fi
+}
+echo "⚠️ Modo avanzado: todos los puertos y análisis activo sobre $TARGET"
+run_child network_scanners/nmap/nmap_smart.sh "$TARGET"
+if [[ "$TARGET" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    if command -v masscan >/dev/null 2>&1 && [[ "$(id -u)" == 0 ]]; then
+        run_child network_scanners/masscan/masscan_scan.sh "$TARGET" 1-65535
+    else
+        echo 'OMITIDO Masscan: requiere herramienta instalada y root; sin sudo automático.'
+        OMITIDAS=$((OMITIDAS + 1))
+    fi
+else
+    echo 'OMITIDO Masscan: solo se usa con una IPv4 explícita, sin resolver dominios.'
+    OMITIDAS=$((OMITIDAS + 1))
+fi
 
-TARGET="$1"
-
-# Los hijos se invocan con rutas relativas: ejecutar desde este directorio.
-# Los resultados van siempre a <repo>/scans/, se lance desde donde se lance.
-SCANS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scans"
-cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
-
-if [[ -z "$TARGET" ]]; then
-    echo "Uso: ./run_all_scanners.sh <TARGET>"
-    echo "Ejemplo: ./run_all_scanners.sh 192.168.1.10"
+echo 'Descubriendo puertos web 80,443,8080,8443 (no cubre otros puertos).'
+EJECUTADAS=$((EJECUTADAS + 1))
+if WEB_DISCOVERY=$(scanner_run "$OUTPUT_DIR/errores.log" nmap -Pn -p 80,443,8080,8443 "$TARGET"); then
+    WEB_PORTS=$(printf '%s\n' "$WEB_DISCOVERY" | awk '$1 ~ /^[0-9]+\/tcp$/ && $2 == "open" {split($1,p,"/"); print p[1]}')
+    if [[ -z "$WEB_PORTS" ]]; then
+        echo 'No se encontraron puertos web abiertos entre los cuatro comprobados.'
+    else
+        echo 'El esquema por puerto es una heurística (443/8443 → HTTPS), no detección de TLS.'
+        URL_HOST="$TARGET"
+        [[ "$TARGET" != *:* ]] || URL_HOST="[$TARGET]"
+        for port in $WEB_PORTS; do
+            scheme=http
+            [[ "$port" != 443 && "$port" != 8443 ]] || scheme=https
+            url="$scheme://$URL_HOST:$port"
+            run_child web_scanners/nikto/nikto_scan.sh "$url"
+            run_child web_scanners/nuclei/nuclei_scan.sh "$url"
+        done
+    fi
+else
+    echo '❌ Descubrimiento web fallido: NO DETERMINADO; no se ejecutan sondas web.'
+    FALLIDAS=$((FALLIDAS + 1))
+fi
+printf '\nRESUMEN — Ejecutadas: %s | Fallidas: %s | Omitidas: %s\n' "$EJECUTADAS" "$FALLIDAS" "$OMITIDAS"
+if (( FALLIDAS )); then
+    echo '❌ Ejecución incompleta. Revisa los diagnósticos de esta ejecución.'
     exit 1
 fi
-
-echo "════════════════════════════════════════════════════════"
-echo "  EJECUTANDO TODOS LOS ESCÁNERES PARA: $TARGET"
-echo "════════════════════════════════════════════════════════"
-
-# ─── Network Scanners ────────────────────────────────────
-echo ""
-echo "📡 NETWORK SCANNERS"
-echo "────────────────────────────────────────"
-
-# Nmap (usando ruta relativa correcta)
-echo "  → Nmap Smart..."
-if [[ -f "network_scanners/nmap/nmap_smart.sh" ]]; then
-    ./network_scanners/nmap/nmap_smart.sh "$TARGET"
-else
-    echo "  ⚠️ nmap_smart.sh no encontrado, usando nmap básico..."
-    mkdir -p "$SCANS_DIR/nmap"
-    : > "$SCANS_DIR/nmap/errores.log"
-    nmap -sV -sC -p- --min-rate 1000 "$TARGET" -oN "$SCANS_DIR/nmap/basic_$(basename "$TARGET").txt" 2>>"$SCANS_DIR/nmap/errores.log"
-fi
-
-# Masscan (solo si es IP)
-if [[ "$TARGET" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "  → Masscan..."
-    if [[ -f "network_scanners/masscan/masscan_scan.sh" ]]; then
-        ./network_scanners/masscan/masscan_scan.sh "$TARGET" 1-65535
-    else
-        echo "  ⚠️ masscan_scan.sh no encontrado"
-    fi
-fi
-
-# ─── Web Scanners ────────────────────────────────────────
-echo ""
-echo "🌐 WEB SCANNERS"
-echo "────────────────────────────────────────"
-
-# Verificar si hay puertos web abiertos. El código de salida importa: un nmap
-# que falla deja WEB_PORTS vacío y "no hay puertos web" cerraría el run en verde
-# sin haber mirado nada.
-WEB_DISCOVERY=$(nmap -p 80,443,8080,8443 "$TARGET" 2>>"$SCANS_DIR/nmap/errores.log")
-WEB_RC=$?
-WEB_PORTS=$(printf '%s\n' "$WEB_DISCOVERY" | grep -E "^[0-9]+/tcp.*open" | cut -d'/' -f1 | tr '\n' ',' | sed 's/,$//')
-
-if [[ $WEB_RC -ne 0 ]]; then
-    echo "  ⚠️ No se pudo descubrir puertos web (nmap salió con $WEB_RC)"
-    echo "     Errores en: $SCANS_DIR/nmap/errores.log"
-elif [[ -n "$WEB_PORTS" ]]; then
-    echo "  → Puertos web abiertos: $WEB_PORTS"
-
-    # Un escaneo por puerto detectado, con el esquema correcto: nunca asumir el 80.
-    for WEB_PORT in ${WEB_PORTS//,/ }; do
-        WEB_SCHEME="http"
-        [[ "$WEB_PORT" == "443" || "$WEB_PORT" == "8443" ]] && WEB_SCHEME="https"
-        WEB_URL="${WEB_SCHEME}://${TARGET}:${WEB_PORT}"
-
-        # Nikto
-        echo "  → Nikto ($WEB_URL)..."
-        if [[ -f "web_scanners/nikto/nikto_scan.sh" ]]; then
-            ./web_scanners/nikto/nikto_scan.sh "$WEB_URL"
-        else
-            echo "  ⚠️ nikto_scan.sh no encontrado"
-        fi
-
-        # Nuclei
-        echo "  → Nuclei ($WEB_URL)..."
-        if [[ -f "web_scanners/nuclei/nuclei_scan.sh" ]]; then
-            ./web_scanners/nuclei/nuclei_scan.sh "$WEB_URL"
-        else
-            echo "  ⚠️ nuclei_scan.sh no encontrado"
-        fi
-    done
-else
-    echo "  ⚠️ No se encontraron puertos web abiertos"
-fi
-
-echo ""
-echo "════════════════════════════════════════════════════════"
-echo "  ✅ ESCANEOS COMPLETADOS"
-echo "════════════════════════════════════════════════════════"
-
-# ─── Resumen de errores ──────────────────────────────────
-# Un "0 hallazgos" puede ser en realidad un fallo de ejecución: cada escáner
-# escribe su stderr en <scans>/<herramienta>/errores.log. Se listan aquí los
-# que quedaron con contenido para no cerrar el run dando por buenos los vacíos.
-LOGS_ERRORES=()
-for log in "$SCANS_DIR"/*/errores.log "$SCANS_DIR"/*/*/errores.log; do
-    [[ -s "$log" ]] || continue
-    LOGS_ERRORES+=("$log")
-done
-
-if (( ${#LOGS_ERRORES[@]} )); then
-    echo ""
-    echo "📋 LOGS CON ERRORES"
-    echo "────────────────────────────────────────"
-    for log in "${LOGS_ERRORES[@]}"; do
-        N=$(wc -l < "$log" 2>/dev/null | tr -d ' ')
-        [[ "$N" == "1" ]] && UNIDAD="línea" || UNIDAD="líneas"
-        echo "  ⚠️  $log ($N $UNIDAD)"
-    done
-    echo "  Revisa esos logs antes de dar por buenos los resultados vacíos."
-fi
+echo '✅ Ejecución terminada; las omisiones no se han evaluado.'
+exit 0
