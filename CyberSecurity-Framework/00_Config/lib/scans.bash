@@ -13,8 +13,10 @@ SCANS_REPO_DIR="$(cd "$SCANS_FW_DIR/.." && pwd)"
 # ─── Rutas ─────────────────────────────────────────────────
 
 # scans_root → <repo>/scans
+# SCANS_ROOT_DIR sustituye la raíz solo para pruebas y comprobaciones
+# privadas; por defecto es el árbol real, igual que EXPLOIT_SCANS_ROOT.
 scans_root() {
-    printf '%s\n' "$SCANS_REPO_DIR/scans"
+    printf '%s\n' "${SCANS_ROOT_DIR:-$SCANS_REPO_DIR/scans}"
 }
 
 # scans_dir <tool> → <repo>/scans/<tool>, creado

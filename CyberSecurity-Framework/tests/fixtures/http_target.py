@@ -93,6 +93,10 @@ class Manejador(BaseHTTPRequestHandler):
             self._responder(200, "<html><body>reflejo: %s</body></html>" % html.escape(valor))
         elif ruta == "/safe":
             self._responder(200, "<html><body>pagina fija</body></html>")
+        elif ruta == "/alerta":
+            # Página que ya trae un alert(1) sin reflejar nada: la palabra
+            # «alert» por sí sola no puede contar como hallazgo de XSS.
+            self._responder(200, "<html><body><script>alert(1)</script> pagina fija</body></html>")
         elif ruta == "/sqli":
             if "AND '1'='2" in valor:
                 self._responder(200, "<html><body>no hay resultados</body></html>")
