@@ -89,11 +89,10 @@ def main() -> int:
     script_dir = Path(__file__).parent
     input_file = script_dir / args.input
     
-    if not input_file.exists():
-        print(f"❌ Archivo no encontrado: {input_file}", file=sys.stderr)
-        return 1
-    
     try:
+        if not input_file.exists():
+            print(f"❌ Archivo no encontrado: {input_file}", file=sys.stderr)
+            return 1
         tp = TargetParser(input_file)
         if args.json:
             tp.to_json(args.json)

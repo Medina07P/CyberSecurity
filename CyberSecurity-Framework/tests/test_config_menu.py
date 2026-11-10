@@ -177,6 +177,22 @@ class ConfigChecksTests(ConfigFixture):
                 self.assertIn('❌', result.stderr)
                 self.assertNotIn('Traceback', result.stdout+result.stderr)
 
+    @unittest.skipIf(os.name != 'posix' or getattr(os, 'geteuid', lambda: 0)() == 0,
+                     'La prueba de permisos requiere POSIX y usuario sin root')
+    def test_parser_inaccessible_parent_is_a_friendly_error(self):
+        parent = self.root/'private'
+        parent.mkdir()
+        file = parent/'targets.txt'
+        file.write_text('192.0.2.10|443|HTTPS|Fixture|M\n')
+        parent.chmod(0o000)
+        try:
+            result = self.command('scripts/parse_targets.py', '--input', file)
+        finally:
+            parent.chmod(0o700)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('❌', result.stderr)
+        self.assertNotIn('Traceback', result.stdout+result.stderr)
+
     def test_parser_preserves_export_contract_and_cwd(self):
         result = self.command('scripts/parse_targets.py', '--input', '../targets.txt', '--json', 'targets out.json', '--csv', 'targets out.csv', '--summary')
         self.assertEqual(result.returncode, 0, result.stdout+result.stderr)

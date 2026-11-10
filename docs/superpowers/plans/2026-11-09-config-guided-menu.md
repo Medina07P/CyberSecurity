@@ -61,5 +61,9 @@ También aislar HOME/KEYS_FILE en la comprobación de integración existente de
 - [x] Task 2 implementada: nuevas regresiones RED→GREEN; 18 tests config-menu,
   smoke sin fallos, wizard 59/59 y keys 141/141 pasando. Sintaxis verificada:
   133 Bash sin avisos y 40 Python compilados. Pendiente regresión completa/revisión.
+- [x] Primera regresión completa: ocho suites pasando. Revisión independiente:
+  un importante (stat de input fuera del try ante padre inaccesible), corregido
+  RED→GREEN con prueba real POSIX sin root. Suite config-menu: 19 tests pasando;
+  sin menores ni comportamientos declinados. Pendiente repetición final tras fix.
 - [ ] Task 2 completa.
 - [ ] Revisión, merge y verificación integrada.
