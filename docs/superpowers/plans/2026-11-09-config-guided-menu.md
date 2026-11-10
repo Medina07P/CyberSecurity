@@ -68,4 +68,7 @@ También aislar HOME/KEYS_FILE en la comprobación de integración existente de
 - [x] Task 2 completa: repetición final tras el fix con las ocho suites pasando
   (config-menu 19, OSINT 69, gestor 385, e2e 11, smoke sin fallos, wizard 59,
   informes Python + 28 shell, keys 141). Sintaxis: 133 Bash sin avisos y 40 Python.
-- [ ] Revisión, merge y verificación integrada.
+- [x] Revisión, merge y verificación integrada: commit
+  `b019e14a0b6fd81330861dae58ba359c3667f468` en develop; ocho suites pasando
+  de nuevo en clon limpio (19 tests config-menu). Hashes de scope/targets y
+  contenido + modo ejecutable local de api_keys.py conservados. Sin push.

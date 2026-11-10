@@ -1,7 +1,7 @@
 # Configuración usable desde el gestor
 
-Estado: propuesta aprobada por el usuario; menú guiado, ejecución nativa aislada
-y commits locales como en los cambios anteriores.
+Estado: aprobado, implementado e integrado con verificación local; menú guiado,
+ejecución nativa aislada y commits locales como en los cambios anteriores.
 
 ## Problema y solución elegida
 El menú descubre api_keys.py pero lo ejecuta sin subcomando. Alternativas:
