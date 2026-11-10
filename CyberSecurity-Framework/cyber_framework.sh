@@ -23,6 +23,7 @@ source "$LIB_DIR/scans.bash"
 source "$LIB_DIR/scanners_menu.bash"
 source "$LIB_DIR/exploitation_menu.bash"
 source "$LIB_DIR/enumeration_menu.bash"
+source "$LIB_DIR/postexploitation_menu.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -430,7 +431,7 @@ module_exploitation() {
 }
 
 module_postexploitation() {
-    run_module_scripts "06_PostExploitation" "06_PostExploitation"
+    postexploitation_menu
 }
 
 module_wireless() {
