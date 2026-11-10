@@ -10,6 +10,7 @@
 SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 CONFIG_DIR="$(dirname "$SCRIPT_DIR")"
+ERROR_COUNT=0
 
 echo "════════════════════════════════════════════════════════"
 echo "  VERIFICANDO 00_CONFIG"
@@ -24,6 +25,7 @@ check_file() {
         return 0
     else
         echo "  ❌ FALTA: $1"
+        ERROR_COUNT=$((ERROR_COUNT + 1))
         return 1
     fi
 }
@@ -34,6 +36,7 @@ check_file_in() {
         return 0
     else
         echo "  ❌ FALTA: $1/$2"
+        ERROR_COUNT=$((ERROR_COUNT + 1))
         return 1
     fi
 }
@@ -83,8 +86,13 @@ for f in custom.lst users.txt passwords.txt directories.txt; do
 done
 
 echo ""
-echo "✅ Verificación completada"
+if [[ $ERROR_COUNT -eq 0 ]]; then
+    echo "✅ Verificación completada"
+else
+    echo "❌ Verificación completada con $ERROR_COUNT errores"
+fi
 
 # ─── MOSTRAR RUTA COMPLETA ─────────────────────────────────
 echo ""
 echo "📂 Ruta completa: $CONFIG_DIR"
+exit "$((ERROR_COUNT > 0))"

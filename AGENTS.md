@@ -37,6 +37,15 @@ DNS acotado con `DNS_SI`, nunca implícito desde run_all; sin AXFR ni credencial
 Salidas por ejecución en árboles ignorados del módulo; códigos 0/1/2 y detalles
 en `01_OSINT/README.md`. Nueva suite aislada: `tests/run_osint.sh`.
 
+Actualización Configuración 2026-11-09: `00 → api_keys.py` abre `keys_menu`, el
+mismo menú guiado de K, retornando al módulo; no invoca la CLI vacía ni cambia
+su contrato. `run_all_config.sh` se autolocaliza y usa cuatro pasos explícitos de
+solo lectura (validar, verificar, parse_targets --summary, api_keys estado), sin
+asistente ni sincronización de claves. Propaga fallos con exit 1 y stderr visible.
+Los validadores de estructura devuelven 1 al faltar archivos; parse_targets
+devuelve 1 ante errores de lectura/escritura, sin traceback. Nueva suite aislada
+`tests/run_config_menu.sh`: navegación real y claves/objetivos sintéticos.
+
 **Precaución con las suites antiguas:** `tests/run_tests.sh` elimina carpetas y
 logs compartidos (`scans/burp`, `scans/sqlmap`, logs de nmap/nikto/masscan y
 fixtures de http_inject). Ejecuta la regresión completa en worktree limpio o

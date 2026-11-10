@@ -145,11 +145,17 @@ echo "=== integración ==="
 # run_all_config no debe lanzar el asistente (se colgaría esperando entrada).
 # Se lanza desde su propio directorio: es como lo ejecuta el gestor
 # (cyber_framework.sh hace cd al módulo antes de llamar a run_all_*).
-out=$(cd "$FW_DIR/00_Config" && printf '' | timeout 60 bash ./run_all_config.sh 2>&1)
+out=$(cd "$FW_DIR/00_Config" && printf '' | \
+      HOME="$FIXTURE/home" KEYS_FILE="$FIXTURE/keys.yaml" \
+      KEYS_HARVESTER_DIRS="$FIXTURE/harvester" \
+      KEYS_HARVESTER_TEMPLATE="$FW_DIR/tests/fixtures/theharvester-api-keys.yaml" \
+      timeout 60 bash ./run_all_config.sh 2>&1)
 printf '%s' "$out" | grep -q 'Ejecutando: scripts/validate_config' \
     && ok "run_all_config sí ejecuta el resto" || ko "run_all_config sí ejecuta el resto"
 printf '%s' "$out" | grep -q 'Ejecutando: scripts/config_wizard' \
     && ko "run_all_config salta el asistente" || ok "run_all_config salta el asistente"
+[[ ! -e "$FIXTURE/keys.yaml" ]] \
+    && ok "run_all_config no crea el registro de claves" || ko "run_all_config no crea el registro de claves"
 
 echo ""
 echo "=== escritura: errores que no deben pasar en silencio ==="
