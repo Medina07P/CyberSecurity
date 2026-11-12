@@ -374,6 +374,14 @@ def _validate_step(step, run, verify):
     else:
         _require(not coverage['complete'])
     _require(type(step['artifacts']) is list)
+    if coverage['code'] in (CAPTURE_PENDING, CAPTURE_READY):
+        _require(step['state'] == 'PARCIAL' and step['signal'] is None and
+                 not coverage['complete'] and coverage['requested'])
+        if coverage['code'] == CAPTURE_PENDING:
+            _require(step['rc'] == 0 and not step['artifacts'])
+        else:
+            _require([a.get('path') for a in step['artifacts'] if type(a) is dict] ==
+                     [step['name'] + '.stdout', step['name'] + '.stderr'])
     seen = set()
     for artifact in step['artifacts']:
         _keys(artifact, 'root path sha256 size')
@@ -522,6 +530,94 @@ def finish_run(run_dir) -> dict:
     return data
 
 
+# Runtime receipts deliberately reuse v1 steps: pending/captured are incomplete
+# PARCIAL steps with reserved coverage codes, never provisional successes.
+CAPTURE_PENDING = 'runtime_pending'
+CAPTURE_READY = 'runtime_captured'
+
+
+def block_run(run_dir):
+    run = _path(run_dir)
+    data = read_run(run, verify_artifacts=False)
+    _require(data['finished'] is None)
+    data['dependents_blocked'] = True
+    _status(data)
+    _atomic(run / 'run.json', data)
+    return data
+
+
+def _capture_paths(run, name):
+    _identifier(name)
+    return [run / 'analysis' / (name + suffix) for suffix in ('.stdout', '.stderr')]
+
+
+def prepare_capture(run_dir, name, tool):
+    run = _path(run_dir)
+    data = read_run(run)
+    _identifier(name)
+    _identifier(tool)
+    _require(data['finished'] is None and not data['dependents_blocked'])
+    _require(name not in [step['name'] for step in data['steps']])
+    paths = _capture_paths(run, name)
+    for path in paths:
+        fd = os.open(_path(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        os.close(fd)
+    record_step(run, name, 0, 'PARCIAL',
+                dict(code=CAPTURE_PENDING, complete=False, requested=True), [], tool=tool)
+    return dict(stdout=str(paths[0]), stderr=str(paths[1]))
+
+
+def _pending_capture(run_dir, name, code):
+    run = _path(run_dir)
+    data = read_run(run)
+    _require(data['finished'] is None and not data['dependents_blocked'])
+    matches = [(i, s) for i, s in enumerate(data['steps']) if s['name'] == name]
+    _require(len(matches) == 1)
+    index, step = matches[0]
+    _require(step['state'] == 'PARCIAL' and step['coverage'] ==
+             dict(code=code, complete=False, requested=True) and step['signal'] is None)
+    return run, data, index, dict(step)
+
+
+def _publish_capture(run, data, index, step):
+    _validate_step(step, run, True)
+    _atomic(run / 'steps' / f'{index:04d}-{step["name"]}.json', step)
+    data['steps'][index] = step
+    _atomic(run / 'run.json', data)
+    return step
+
+
+def capture_result(run_dir, name, rc, *, signal=None, cancelled=False):
+    """Seal streams once after the writer is reaped; rc belongs to this name."""
+    run, data, index, step = _pending_capture(run_dir, name, CAPTURE_PENDING)
+    _integer(rc, 0, 255)
+    _require(type(cancelled) is bool)
+    _require(step['rc'] == 0 and not step['artifacts'])
+    references = []
+    for path in _capture_paths(run, name):
+        _private(path)
+        digest, size = _digest_file(path)
+        references.append(dict(root='analysis', path=path.name, sha256=digest, size=size))
+    interrupted = cancelled or signal is not None
+    step.update(rc=rc, signal=signal, artifacts=references,
+                state='CANCELADO' if interrupted else 'PARCIAL',
+                coverage=dict(code='runtime_cancelled' if interrupted else CAPTURE_READY,
+                              complete=False, requested=True))
+    return _publish_capture(run, data, index, step)
+
+
+def complete_capture(run_dir, name, state, coverage_code):
+    run, data, index, step = _pending_capture(run_dir, name, CAPTURE_READY)
+    _identifier(coverage_code)
+    _require(coverage_code not in (CAPTURE_PENDING, CAPTURE_READY))
+    # Contrasts name, sealed stream references and their hashes before publishing.
+    expected = [p.name for p in _capture_paths(run, name)]
+    _require([a['path'] for a in step['artifacts']] == expected)
+    step.update(state=state, coverage=dict(code=coverage_code,
+                complete=state == 'COMPLETADO', requested=True))
+    return _publish_capture(run, data, index, step)
+
+
 def select_runs(root, filters) -> list[dict]:
     """Newest-first summaries. Any unreadable run blocks current attribution.
 
@@ -603,6 +699,22 @@ def main(argv=None):
     step.add_argument('--artifact', action='append', default=[], type=Path)
     for name in ('finish', 'validate', 'integrity'):
         subs.add_parser(name).add_argument('--run', required=True, type=Path)
+    subs.add_parser('block').add_argument('--run', required=True, type=Path)
+    prepare = subs.add_parser('prepare-capture')
+    prepare.add_argument('--run', required=True, type=Path)
+    prepare.add_argument('--name', required=True)
+    prepare.add_argument('--tool', required=True)
+    capture = subs.add_parser('capture-result')
+    capture.add_argument('--run', required=True, type=Path)
+    capture.add_argument('--name', required=True)
+    capture.add_argument('--rc', required=True, type=int)
+    capture.add_argument('--signal', type=int)
+    capture.add_argument('--cancelled', action='store_true')
+    complete = subs.add_parser('complete-capture')
+    complete.add_argument('--run', required=True, type=Path)
+    complete.add_argument('--name', required=True)
+    complete.add_argument('--state', required=True, choices=STATES)
+    complete.add_argument('--coverage-code', required=True)
     listing = subs.add_parser('list')
     listing.add_argument('--root', required=True, type=Path)
     for flag in ('run-id', 'operation', 'identity'):
@@ -626,6 +738,15 @@ def main(argv=None):
         elif command == 'finish':
             result = finish_run(args.run)
             rc = result['rc']
+        elif command == 'block':
+            result = block_run(args.run)
+        elif command == 'prepare-capture':
+            result = prepare_capture(args.run, args.name, args.tool)
+        elif command == 'capture-result':
+            result = capture_result(args.run, args.name, args.rc, signal=args.signal,
+                                    cancelled=args.cancelled)
+        elif command == 'complete-capture':
+            result = complete_capture(args.run, args.name, args.state, args.coverage_code)
         elif command == 'validate':
             result = read_run(args.run)
         elif command == 'integrity':

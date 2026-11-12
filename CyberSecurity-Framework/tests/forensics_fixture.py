@@ -47,3 +47,21 @@ def inventory(root):
     return {str(p.relative_to(root)): (p.stat().st_mode,
             hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else None)
             for p in root.rglob('*')}
+
+
+def runtime_environment(root):
+    """Closed PATH: only harmless interpreters/session utility and deny stubs.
+
+    A mistakenly dispatched backend cannot fall back to the installed system.
+    Stubs have no side effects and do not call any real backend.
+    """
+    import sys
+    denied = ('sudo mount umount losetup journalctl dd ddrescue avml insmod '
+              'strings tshark tcpdump volatility vol.py fls mactime photorec '
+              'foremost scalpel ewfacquire dmesg').split()
+    env = closed_environment(root, {name: '#!/bin/bash\nexit 99\n' for name in denied})
+    for name, target in [('python3', sys.executable), ('bash', '/bin/bash'),
+                         ('setsid', '/usr/bin/setsid')]:
+        (root / 'bin' / name).symlink_to(target)
+    env['ROOT'] = str(root)
+    return env
