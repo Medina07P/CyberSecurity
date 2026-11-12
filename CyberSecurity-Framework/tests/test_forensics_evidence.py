@@ -74,6 +74,53 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(self.e.read_run(run)['inputs'][0]['size'], 0)
         self.assertTrue(self.e.check_integrity(run))
 
+    def test_tree_original_time_and_time_only_mutation(self):
+        tree = self.root / 'sources' / 'dated tree'
+        tree.mkdir()
+        leaf = tree / 'old file'
+        leaf.write_text('synthetic')
+        stamp = 946684800123456789
+        os.utime(leaf, ns=(stamp, stamp))
+        run = self.run_new()
+        item = self.e.stage_input(run, tree, 'tree')
+        temporal = item['original'].get('temporal')
+        self.assertIsNotNone(temporal, 'original timestamps lost during staging')
+        self.assertEqual(temporal['entries'][1], {'path': 'old file', 'mtime_ns': stamp})
+        self.assertNotEqual((Path(item['work_path']) / 'old file').stat().st_mtime_ns, stamp)
+        self.assertTrue(self.e.check_integrity(run))
+        os.utime(leaf, ns=(stamp + 1, stamp + 1))
+        self.assertFalse(self.e.check_integrity(run))
+        self.assertEqual(self.e.finish_run(run)['state'], 'FALLIDO')
+
+    def test_tree_temporal_types_digest_paths_and_legacy(self):
+        tree = self.root / 'sources' / 'dated tree'
+        tree.mkdir()
+        (tree / 'file').write_text('synthetic')
+        run = self.run_new()
+        self.e.stage_input(run, tree, 'tree')
+        original = (run / 'run.json').read_text()
+        self.assertIn('temporal', json.loads(original)['inputs'][0]['original'])
+        for invalid in (True, '123', 2**63, -2**63 - 1):
+            data = json.loads(original)
+            temporal = data['inputs'][0]['original']['temporal']
+            temporal['entries'][0]['mtime_ns'] = invalid
+            temporal['sha256'] = hashlib.sha256(self.e._encoded(temporal['entries'])).hexdigest()
+            (run / 'run.json').write_text(json.dumps(data))
+            with self.assertRaises(ValueError):
+                self.e.read_run(run, verify_artifacts=False)
+        data = json.loads(original)
+        data['inputs'][0]['original']['temporal']['entries'][0]['path'] = 'wrong'
+        (run / 'run.json').write_text(json.dumps(data))
+        with self.assertRaises(ValueError):
+            self.e.read_run(run, verify_artifacts=False)
+        data = json.loads(original)
+        for snapshot in ('original', 'work'):
+            data['inputs'][0][snapshot].pop('temporal')
+        (run / 'run.json').write_text(json.dumps(data))
+        self.assertTrue(self.e.check_integrity(run))
+        self.step(run)
+        self.assertEqual(self.e.finish_run(run)['rc'], 0)
+
     def test_tree_inventory_and_mode_integrity(self):
         tree = self.root / 'sources' / 'tree'
         tree.mkdir()
