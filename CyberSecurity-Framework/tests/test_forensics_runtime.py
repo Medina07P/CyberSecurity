@@ -152,6 +152,30 @@ forensics_finish
                 self.assertEqual(data['steps'][0]['state'], 'PARCIAL')
                 self.assertEqual(data['steps'][0]['coverage']['code'], 'runtime_pending')
 
+    def test_sigpipe_matches_direct_popen_and_does_not_become_wrapper_cancel(self):
+        with sandbox() as root:
+            env = self.environment(root)
+            direct = subprocess.run(['bash', '-c', 'kill -s PIPE "$$"; printf survived'],
+                                    env=env, capture_output=True, text=True)
+            self.assertEqual((direct.returncode, direct.stdout, direct.stderr), (-13, '', ''))
+            result = self.run_shell(root, r'''
+forensics_begin strings offline "$ROOT/outputs" || exit
+forensics_capture broken bash -c 'kill -s PIPE "$$"; printf survived'
+[[ $FORENSICS_STEP_RC = 141 ]] || exit 80
+forensics_complete_step broken FALLIDO analyzed || exit
+forensics_finish
+''', env)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(result.stdout, '')
+            data = self.manifest(root)
+            self.assertEqual(data['state'], 'FALLIDO')
+            step = data['steps'][0]
+            self.assertEqual(step['rc'], 141)
+            self.assertIsNone(step['signal'], 'backend SIGPIPE must not become wrapper cancellation')
+            run = next((root / 'outputs').iterdir())
+            self.assertEqual((run / 'analysis/broken.stdout').read_text(), '')
+            self.assertEqual((run / 'analysis/broken.stderr').read_text(), '')
+
     def test_streams_and_delayed_publication_preserve_each_rc(self):
         with sandbox() as root:
             result = self.run_shell(root, '''
@@ -535,6 +559,66 @@ class CaptureApiTests(unittest.TestCase):
             group.close()
             self.assertEqual(events, before)
         self.assertEqual(events[-1], ('reap', anchor))
+
+    def test_exec_gate_restores_popen_signal_set_but_preserves_unrelated_ignore(self):
+        with sandbox() as root:
+            api = load_evidence()
+            env = runtime_environment(root)
+            names = [name for name in ('SIGPIPE', 'SIGXFZ', 'SIGXFSZ') if hasattr(signal, name)]
+            script = ('import signal; '
+                      f'names={names!r}; '
+                      '[signal.signal(getattr(signal,name),signal.SIG_IGN) for name in names]; '
+                      'signal.signal(signal.SIGUSR1,signal.SIG_IGN); '
+                      f'exec(compile({api._EXEC_GATE!r}, "<exec-gate>", "exec"))')
+            gate_read, gate_write = os.pipe()
+            try:
+                os.write(gate_write, b'G')
+                os.close(gate_write)
+                # Bash's inherited ignored signals remain visible via trap -p.
+                # This actually crosses exec; it does not inspect source text.
+                probe = subprocess.run(
+                    [sys.executable, '-B', '-c', script, str(gate_read), 'bash', '-c',
+                     'trap -p ' + ' '.join(name.removeprefix('SIG') for name in names) + ' USR1'],
+                    pass_fds=(gate_read,), env=env, capture_output=True, text=True, timeout=5)
+                self.assertEqual((probe.returncode, probe.stdout, probe.stderr),
+                                 (0, "trap -- '' SIGUSR1\n", ''))
+            finally:
+                os.close(gate_read)
+
+    def test_supervisor_reports_backend_sigpipe_separately_from_cancellation(self):
+        with sandbox() as root:
+            api = load_evidence()
+            run = self.start(api, root)
+            streams = api.prepare_capture(run, 'broken', 'bash')
+            worker = subprocess.Popen(
+                [sys.executable, '-B', str(RUNTIME.with_name('forensics_evidence.py')),
+                 'supervise', '--run', str(run), '--name', 'broken', '--tool', 'bash',
+                 '--', '-c', 'kill -s PIPE "$$"; printf survived'],
+                env=runtime_environment(root), stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                self.assertEqual(worker.stdout.readline(), 'READY\n')
+                worker.stdin.write('GO\n')
+                worker.stdin.flush()
+                import select
+                self.assertTrue(select.select([worker.stdout], [], [], 5)[0])
+                line = worker.stdout.readline()
+                self.assertTrue(line.startswith('RESULT '), line)
+                receipt = json.loads(line.removeprefix('RESULT '))
+                self.assertEqual(receipt, dict(rc=141, terminating_signal=13,
+                                              cancellation_wrapper_signal=None,
+                                              started=True, worker_created=True))
+                worker.stdin.write('RELEASE\n')
+                worker.stdin.flush()
+                stdout, stderr = worker.communicate(timeout=5)
+                self.assertEqual((worker.returncode, stdout, stderr), (0, '', ''))
+                self.assertEqual(Path(streams['stdout']).read_text(), '')
+                self.assertEqual(Path(streams['stderr']).read_text(), '')
+            finally:
+                if worker.poll() is None:
+                    worker.stdin.close()
+                    worker.stdin = None
+                worker.communicate(timeout=5)
 
     def test_supervisor_private_protocol_is_not_backend_stdin_and_repeated_cancel(self):
         with sandbox() as root:
