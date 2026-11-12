@@ -143,11 +143,13 @@ def _snapshot(path, kind):
     _require(kind == 'tree' and stat.S_ISDIR(info.st_mode) and bool(mode & 0o444)
              and bool(mode & 0o111))
     entries = []
+    times = []
 
     def visit(current):
         current = _path(current)
         entry_info = current.lstat()
         relative = current.relative_to(path).as_posix()
+        times.append({'path': relative, 'mtime_ns': entry_info.st_mtime_ns})
         entry = {'path': relative, 'mode': stat.S_IMODE(entry_info.st_mode)}
         if stat.S_ISDIR(entry_info.st_mode):
             _require(bool(entry_info.st_mode & 0o444) and bool(entry_info.st_mode & 0o111))
@@ -163,7 +165,17 @@ def _snapshot(path, kind):
     visit(path)
     return {'sha256': hashlib.sha256(_encoded(entries)).hexdigest(),
             'size': sum(entry['size'] for entry in entries), 'mode': mode,
-            'inventory': entries}
+            'inventory': entries,
+            'temporal': {'clock': 'unix_ns', 'entries': times,
+                         'sha256': hashlib.sha256(_encoded(times)).hexdigest()}}
+
+
+def _matches_snapshot(observed, recorded):
+    # Historical v1 trees did not observe timestamps. Only that optional field
+    # is normalized; content, size, inventory and modes remain authoritative.
+    if 'inventory' in recorded and 'temporal' not in recorded:
+        observed = {k: v for k, v in observed.items() if k != 'temporal'}
+    return observed == recorded
 
 
 def _copy_file(source, destination):
@@ -331,7 +343,9 @@ def stage_input(run_dir: Path, source: Path, kind: str = 'file') -> dict:
 
 
 def _validate_snapshot(value, kind):
-    _keys(value, 'sha256 size mode' + (' inventory' if kind == 'tree' else ''))
+    temporal = kind == 'tree' and type(value) is dict and 'temporal' in value
+    _keys(value, 'sha256 size mode' + (' inventory' if kind == 'tree' else '') +
+          (' temporal' if temporal else ''))
     _hash(value['sha256'])
     _integer(value['size'], 0, 2**63 - 1)
     _integer(value['mode'], 0, 0o7777)
@@ -357,6 +371,17 @@ def _validate_snapshot(value, kind):
             total += entry['size']
         _require(value['inventory'][0]['path'] == '.' and total == value['size'])
         _require(hashlib.sha256(_encoded(value['inventory'])).hexdigest() == value['sha256'])
+        if temporal:
+            times = value['temporal']
+            _keys(times, 'clock entries sha256')
+            _require(times['clock'] == 'unix_ns' and type(times['entries']) is list)
+            _require(len(times['entries']) == len(value['inventory']))
+            for time, entry in zip(times['entries'], value['inventory']):
+                _keys(time, 'path mtime_ns')
+                _require(time['path'] == entry['path'])
+                _integer(time['mtime_ns'], -2**63, 2**63 - 1)
+            _hash(times['sha256'])
+            _require(hashlib.sha256(_encoded(times['entries'])).hexdigest() == times['sha256'])
 
 
 def _validate_step(step, run, verify):
@@ -444,7 +469,7 @@ def read_run(path: Path, *, verify_artifacts: bool = True) -> dict:
                          for k in ('sha256', 'size', 'mode')))
             if verify_artifacts:
                 work_path = _private(Path(item['work_path']), item['kind'] == 'tree')
-                _require(_snapshot(work_path, item['kind']) == item['work'])
+                _require(_matches_snapshot(_snapshot(work_path, item['kind']), item['work']))
                 if item['kind'] == 'tree':
                     for entry in item['work']['inventory']:
                         _private(work_path / entry['path'], entry['kind'] == 'tree')
@@ -480,8 +505,8 @@ def check_integrity(run_dir: Path) -> bool:
         for item in data['inputs']:
             source = _path(sources[item['input_id']])
             _require(not _overlaps(run.parent, source))
-            okay = (_snapshot(source, item['kind']) == item['original'] and
-                    _snapshot(Path(item['work_path']), item['kind']) == item['work']) and okay
+            okay = (_matches_snapshot(_snapshot(source, item['kind']), item['original']) and
+                    _matches_snapshot(_snapshot(Path(item['work_path']), item['kind']), item['work'])) and okay
     except (OSError, ValueError, TypeError):
         okay = False
     if not okay:
