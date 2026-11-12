@@ -25,7 +25,6 @@ forensics_begin() {
     _FORENSICS_FAILED=1
     umask 077
     forensics_require python3 || return 2
-    forensics_require setsid || return 2
     forensics_require bash || return 2
     FORENSICS_ANALYSIS_ROOT="${FORENSICS_ANALYSIS_ROOT:-$_FORENSICS_MODULE/analysis}"
     FORENSICS_RECOVERED_ROOT="${FORENSICS_RECOVERED_ROOT:-$_FORENSICS_MODULE/recovered}"
@@ -37,6 +36,7 @@ forensics_begin() {
     _FORENSICS_FAILED=0
     _FORENSICS_CANCELLED=0
     _FORENSICS_ACTIVE_PID=
+    _FORENSICS_CONTROL_FD=
 }
 
 _forensics_block() {
@@ -64,19 +64,48 @@ _forensics_trap_body() {
 _forensics_restore_traps() {
     if [[ $_FORENSICS_HAS_INT = 1 ]]; then trap -- "$_FORENSICS_OLD_INT" INT; else trap - INT; fi
     if [[ $_FORENSICS_HAS_TERM = 1 ]]; then trap -- "$_FORENSICS_OLD_TERM" TERM; else trap - TERM; fi
+    if [[ $_FORENSICS_HAS_PIPE = 1 ]]; then trap -- "$_FORENSICS_OLD_PIPE" PIPE; else trap - PIPE; fi
 }
 
 _forensics_signal() {
-    _FORENSICS_CANCELLED=$1
-    # Only the session/process group we just created; never kill 0 or a caller group.
-    if [[ -n $_FORENSICS_ACTIVE_PID ]]; then
-        kill -TERM -- "-$_FORENSICS_ACTIVE_PID" 2>/dev/null || kill -TERM -- "$_FORENSICS_ACTIVE_PID" 2>/dev/null || :
-        kill -KILL -- "-$_FORENSICS_ACTIVE_PID" 2>/dev/null || :
+    if [[ ${_FORENSICS_WAITING:-0} = 1 ]]; then _FORENSICS_WAIT_INTERRUPTED=1; fi
+    if (( _FORENSICS_CANCELLED == 0 )); then _FORENSICS_CANCELLED=$1; fi
+    # Channel identity, never a recyclable PID. Before registration the sticky
+    # cancellation flag prevents GO; after registration CANCEL precedes any GO.
+    if [[ -n $_FORENSICS_CONTROL_FD ]]; then
+        _forensics_send "CANCEL $_FORENSICS_CANCELLED" || _FORENSICS_FAILED=1
     fi
 }
 
+_forensics_send() {
+    # One synchronous builtin writer: GO must not race a forked writer with a
+    # CANCEL trap in the owner. PIPE is temporarily ignored/restored by capture;
+    # a failed write remains visible and becomes runtime failure.
+    printf '%s\n' "$1" >&"$_FORENSICS_CONTROL_FD"
+}
+
+_forensics_start_supervisor() {
+    local name=$1 tool=$2
+    shift 2
+    coproc FORENSICS_WORKER {
+        _forensics_helper supervise --run "$FORENSICS_RUN_DIR" --name "$name" --tool "$tool" -- "$@"
+    }
+}
+
+_forensics_read_protocol() {
+    local status
+    while :; do
+        IFS= read -r -u "$result_fd" protocol_line
+        status=$?
+        (( status != 0 )) || return 0
+        # Bash read, like wait, is interrupted by a handled signal. The channel
+        # remains owned; repeated signals must not discard the eventual result.
+        (( status > 128 )) || return 1
+    done
+}
+
 forensics_capture() {
-    local name=$1 tool=$2 metadata status function_name monitor=0
+    local name=$1 tool=$2 metadata status function_name result_fd protocol_line worker_status
     shift 2
     [[ ${_FORENSICS_FAILED:-1} = 0 && ${_FORENSICS_CANCELLED:-0} = 0 ]] || return 1
     _forensics_helper integrity --run "$FORENSICS_RUN_DIR" >/dev/null || { _FORENSICS_FAILED=1; return 1; }
@@ -89,35 +118,60 @@ forensics_capture() {
     FORENSICS_STEP_ERR=$(printf '%s' "$metadata" | _forensics_field stderr) || { _FORENSICS_FAILED=1; return 1; }
     _FORENSICS_OLD_INT=$(trap -p INT)
     _FORENSICS_OLD_TERM=$(trap -p TERM)
+    _FORENSICS_OLD_PIPE=$(trap -p PIPE)
     _FORENSICS_HAS_INT=0
     _FORENSICS_HAS_TERM=0
+    _FORENSICS_HAS_PIPE=0
     [[ -z $_FORENSICS_OLD_INT ]] || _FORENSICS_HAS_INT=1
     [[ -z $_FORENSICS_OLD_TERM ]] || _FORENSICS_HAS_TERM=1
+    [[ -z $_FORENSICS_OLD_PIPE ]] || _FORENSICS_HAS_PIPE=1
     _FORENSICS_OLD_INT=$(printf '%s' "$_FORENSICS_OLD_INT" | _forensics_trap_body) || return 1
     _FORENSICS_OLD_TERM=$(printf '%s' "$_FORENSICS_OLD_TERM" | _forensics_trap_body) || return 1
+    _FORENSICS_OLD_PIPE=$(printf '%s' "$_FORENSICS_OLD_PIPE" | _forensics_trap_body) || return 1
     trap '_forensics_signal 2' INT
     trap '_forensics_signal 15' TERM
+    trap '' PIPE
     # Export defined functions (including their pipeline dependencies), not an
     # interpolated command string. Arguments remain separate positional values.
     while read -r _ _ function_name; do export -f "$function_name"; done < <(declare -F)
-    # With monitor enabled a background job is already a group leader; setsid
-    # would fork, breaking the $! -> owned session mapping. Preserve caller mode.
-    [[ $- != *m* ]] || monitor=1
-    set +m
-    setsid bash -c 'set -o pipefail; "$@"' forensics "$tool" "$@" \
-        >"$FORENSICS_STEP_OUT" 2>"$FORENSICS_STEP_ERR" &
+    _forensics_start_supervisor "$name" "$tool" "$@"
     _FORENSICS_ACTIVE_PID=$!
-    (( monitor == 0 )) || set -m
-    wait "$_FORENSICS_ACTIVE_PID"
-    FORENSICS_STEP_RC=$?
-    if (( _FORENSICS_CANCELLED != 0 )); then
-        # wait can be interrupted by a trap; reap the owned leader afterwards.
-        # Keep its actual wait status, NOT 128 + the signal sent to this wrapper.
-        wait "$_FORENSICS_ACTIVE_PID" 2>/dev/null
-        FORENSICS_STEP_RC=$?
+    exec {_FORENSICS_CONTROL_FD}>&"${FORENSICS_WORKER[1]}"
+    exec {result_fd}<&"${FORENSICS_WORKER[0]}"
+    status=0
+    if ! _forensics_read_protocol || [[ $protocol_line != READY ]]; then
+        status=1
+    elif (( _FORENSICS_CANCELLED != 0 )); then
+        _forensics_send "CANCEL $_FORENSICS_CANCELLED" || status=1
+    else
+        # This authorization is the launch linearization point. A trap between
+        # this check and the write sends CANCEL first on the same ordered pipe.
+        _forensics_send GO || status=1
     fi
-    # Reap leader then remove any remaining descendants in our own group only.
-    kill -KILL -- "-$_FORENSICS_ACTIVE_PID" 2>/dev/null || :
+    if (( status == 0 )); then
+        if ! _forensics_read_protocol || [[ $protocol_line != 'RESULT '* ]]; then
+            status=1
+        else
+            metadata=${protocol_line#RESULT }
+            FORENSICS_STEP_RC=$(printf '%s' "$metadata" | _forensics_field rc) || status=1
+        fi
+    fi
+    # RELEASE closes only the private protocol, never signals a numeric PID.
+    _forensics_send RELEASE || status=1
+    exec {_FORENSICS_CONTROL_FD}>&-
+    _FORENSICS_CONTROL_FD=
+    exec {result_fd}<&-
+    while :; do
+        _FORENSICS_WAIT_INTERRUPTED=0
+        _FORENSICS_WAITING=1
+        wait "$_FORENSICS_ACTIVE_PID"
+        worker_status=$?
+        _FORENSICS_WAITING=0
+        # A terminal rc>=128 is not evidence of interruption. Only our trap can
+        # request another wait; a dead worker's cached status cannot loop here.
+        (( _FORENSICS_WAIT_INTERRUPTED != 0 )) || break
+    done
+    (( worker_status == 0 )) || status=1
     _FORENSICS_ACTIVE_PID=
     local -a signal_flag=()
     # signal is the explicit cancellation received by the wrapper. The owned
@@ -128,9 +182,11 @@ forensics_capture() {
         # a nonzero rc or claim the command was interrupted by a signal.
         if (( FORENSICS_STEP_RC != 0 )); then signal_flag+=(--signal "$_FORENSICS_CANCELLED"); fi
     fi
-    _forensics_helper capture-result --run "$FORENSICS_RUN_DIR" --name "$name" \
-        --rc "$FORENSICS_STEP_RC" "${signal_flag[@]}" >/dev/null
-    status=$?
+    if (( status == 0 )); then
+        _forensics_helper capture-result --run "$FORENSICS_RUN_DIR" --name "$name" \
+            --rc "$FORENSICS_STEP_RC" "${signal_flag[@]}" >/dev/null
+        status=$?
+    fi
     if (( status != 0 )); then _forensics_block; fi
     _forensics_restore_traps
     if (( _FORENSICS_CANCELLED != 0 )); then

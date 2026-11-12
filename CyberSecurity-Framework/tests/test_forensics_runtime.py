@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import unittest
+from unittest.mock import patch
 
 from forensics_fixture import sandbox, runtime_environment, load_evidence, inventory
 
@@ -31,6 +32,59 @@ class RuntimeTests(unittest.TestCase):
         files = list((root / 'outputs').glob('run-*/run.json'))
         self.assertEqual(len(files), 1)
         return json.loads(files[0].read_text())
+
+    def test_cancel_before_launch_and_before_registration_never_starts_backend(self):
+        for boundary in ('launch', 'registration', 'authorization'):
+            with self.subTest(boundary=boundary), sandbox() as root:
+                env = self.environment(root)
+                env['BOUNDARY'] = boundary
+                result = self.run_shell(root, r'''
+trap 'printf prior >> "$ROOT/prior"' TERM
+forensics_begin strings offline "$ROOT/outputs" || exit
+backend() { printf forbidden > "$ROOT/backend-started"; }
+injected=0
+inject_cancel() {
+    [[ $BASHPID = $$ && $injected = 0 ]] || return 0
+    case "$BOUNDARY:$BASH_COMMAND" in
+        launch:setsid\ bash*|launch:_forensics_start_supervisor*) ;;
+        registration:'_FORENSICS_ACTIVE_PID=$!') ;;
+        authorization:'_forensics_send GO') ;;
+        *) return 0 ;;
+    esac
+    injected=1
+    kill -TERM "$$"
+    kill -TERM "$$"
+}
+set -T
+trap inject_cancel DEBUG
+forensics_capture interrupted backend
+trap - DEBUG
+[[ $injected = 1 ]] || exit 80
+[[ $(trap -p TERM) = *'printf prior'* ]] || exit 81
+forensics_finish
+''', env)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertFalse((root / 'backend-started').exists(), 'backend ran after cancellation')
+                self.assertEqual((root / 'prior').read_text(), 'prior')
+                data = self.manifest(root)
+                self.assertEqual(data['state'], 'CANCELADO')
+                self.assertEqual(data['steps'][0]['rc'], 0)
+                self.assertIsNone(data['steps'][0]['signal'])
+
+    def test_bash_never_signals_a_numeric_group_after_wait(self):
+        with sandbox() as root:
+            result = self.run_shell(root, r'''
+forensics_begin strings offline "$ROOT/outputs" || exit
+kill() {
+    printf '%s\n' "$*" >> "$ROOT/signal-calls"
+    builtin kill "$@"
+}
+forensics_capture done printf okay || exit
+forensics_complete_step done COMPLETADO checked || exit
+forensics_finish
+''')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((root / 'signal-calls').exists(), 'Bash still signals a reusable numeric PGID')
 
     def test_streams_and_delayed_publication_preserve_each_rc(self):
         with sandbox() as root:
@@ -209,14 +263,14 @@ forensics_finish
             self.assertEqual(self.manifest(root)['state'], 'FALLIDO')
 
     def test_explicitly_ignored_and_existing_traps_are_restored(self):
-        for setup in ["trap '' INT TERM", "trap 'printf previous >&2' INT TERM"]:
+        for setup in ["trap '' INT TERM PIPE", "trap 'printf previous >&2' INT TERM PIPE"]:
             with self.subTest(setup=setup), sandbox() as root:
                 result = self.run_shell(root, f'''
 {setup}
-before=$(trap -p INT TERM)
+before=$(trap -p INT TERM PIPE)
 forensics_begin strings offline "$ROOT/outputs" || exit
 forensics_capture good printf okay || exit
-after=$(trap -p INT TERM)
+after=$(trap -p INT TERM PIPE)
 test "$before" = "$after" || exit 81
 forensics_complete_step good COMPLETADO checked || exit
 forensics_finish
@@ -380,6 +434,89 @@ class CaptureApiTests(unittest.TestCase):
             self.assertEqual(step['rc'], 0)
             self.assertIsNone(step['signal'])
             self.assertEqual(api.finish_run(run)['state'], 'CANCELADO')
+
+    def test_group_teardown_precedes_anchor_reap_no_signal_after_release(self):
+        api = load_evidence()
+        self.assertTrue(hasattr(api, '_OwnedProcessGroup'), 'owned anchor protocol missing')
+        events = []
+        anchor, unrelated = 43210, 54321
+        released = False
+
+        def kill_group(pid, sig):
+            self.assertFalse(released, 'signalling after ownership release')
+            self.assertEqual(pid, anchor)
+            self.assertNotEqual(pid, unrelated)
+            events.append(('signal', pid, sig))
+
+        def reap(pid, flags):
+            nonlocal released
+            self.assertTrue(events and events[-1][0] == 'signal')
+            self.assertEqual((pid, flags), (anchor, 0))
+            events.append(('reap', pid))
+            released = True
+            return pid, 9
+
+        with patch.object(api.os, 'fork', return_value=anchor), \
+             patch.object(api.os, 'setpgid') as grouping, \
+             patch.object(api.os, 'killpg', side_effect=kill_group), \
+             patch.object(api.os, 'waitpid', side_effect=reap):
+            group = api._OwnedProcessGroup()
+            grouping.assert_called_once_with(anchor, anchor)
+            group.stop()
+            group.close()
+            before = list(events)
+            group.stop()
+            group.close()
+            self.assertEqual(events, before)
+        self.assertEqual(events[-1], ('reap', anchor))
+
+    def test_supervisor_private_protocol_is_not_backend_stdin_and_repeated_cancel(self):
+        with sandbox() as root:
+            api = load_evidence()
+            run = self.start(api, root)
+            streams = api.prepare_capture(run, 'job', 'python3')
+            env = runtime_environment(root)
+            script = ('import os,signal,sys,time; from pathlib import Path; '
+                      'assert sys.stdin.read()==""; '
+                      'signal.signal(signal.SIGTERM,signal.SIG_IGN); '
+                      'print("partial",flush=True); print("error",file=sys.stderr,flush=True); '
+                      'Path(os.environ["ROOT"]+"/ready").write_text("ready"); time.sleep(30)')
+            worker = subprocess.Popen(
+                [sys.executable, '-B', str(RUNTIME.with_name('forensics_evidence.py')),
+                 'supervise', '--run', str(run), '--name', 'job', '--tool', 'python3',
+                 '--', '-B', '-c', script], env=env,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                self.assertEqual(worker.stdout.readline(), 'READY\n')
+                worker.stdin.write('GO\n')
+                worker.stdin.flush()
+                deadline = time.monotonic() + 3
+                while not (root / 'ready').exists() and worker.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.02)
+                self.assertTrue((root / 'ready').exists(), 'backend stdin is not isolated from control pipe')
+                worker.stdin.write('CANCEL 2\nCANCEL 15\n')
+                worker.stdin.flush()
+                import select
+                self.assertTrue(select.select([worker.stdout], [], [], 5)[0], 'cancel did not complete')
+                line = worker.stdout.readline()
+                self.assertTrue(line.startswith('RESULT '), line)
+                result = json.loads(line.removeprefix('RESULT '))
+                self.assertEqual(result, dict(rc=137, terminating_signal=9,
+                                             cancellation_wrapper_signal=2, started=True))
+                worker.stdin.write('RELEASE\n')
+                worker.stdin.flush()
+                stdout, stderr = worker.communicate(timeout=5)
+                self.assertEqual((worker.returncode, stdout, stderr), (0, '', ''))
+                step = api.capture_result(run, 'job', result['rc'], signal=2, cancelled=True)
+                self.assertEqual(step['rc'], 137)
+                self.assertEqual(api.finish_run(run)['state'], 'CANCELADO')
+                self.assertEqual(Path(streams['stdout']).read_text(), 'partial\n')
+                self.assertEqual(Path(streams['stderr']).read_text(), 'error\n')
+            finally:
+                if worker.poll() is None:
+                    worker.stdin.close()  # EOF forces owned group teardown
+                    worker.stdin = None
+                worker.communicate(timeout=5)
 
 
 if __name__ == '__main__':
