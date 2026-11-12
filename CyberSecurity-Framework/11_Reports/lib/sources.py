@@ -12,6 +12,7 @@ Solo biblioteca estándar, como el resto del motor.
 import fnmatch
 import importlib
 import json
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -39,10 +40,21 @@ def register(kind: str, fn: Callable[[Path, Path], ParseResult]) -> None:
     PARSERS[kind] = fn
 
 
+@lru_cache(maxsize=1)
+def postexploitation_engine():
+    """Un único validador de 06 para runtime, visor y parser."""
+    path = Path(__file__).resolve().parents[2] / '00_Config/lib/postexploitation_evidence.py'
+    spec = importlib.util.spec_from_file_location('_report_postexploitation', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 _PARSER_MODULES = (
     "nmap", "nuclei", "nikto", "ffuf", "http_inject",
     "sqlmap", "sqli_findings", "rate_limit", "headers", "host_sources",
     "exploitation",
+    "postexploitation",
 )
 
 _loaded = False
@@ -129,6 +141,9 @@ def _classify(path: Path, scans_dir: Path) -> str:
     # Runs de explotación: scans/<tool>/exploitation_*/run.json
     if name == "run.json" and len(parts) >= 3 and parts[-2].startswith("exploitation_"):
         return "exploitation"
+    # Runs de post-explotación: scans/<tool>/postexploitation_*/run.json
+    if name == "run.json" and len(parts) >= 3 and parts[-2].startswith("postexploitation_"):
+        return "postexploitation"
 
     for dir_pat, file_pat, kind in _DIR_RULES:
         if directory == dir_pat and fnmatch.fnmatch(name, file_pat):
@@ -163,6 +178,53 @@ def discover(scans_dir: Path) -> list[Source]:
                     return ParseResult(evaluado=False, no_evaluable=[{'fuente': relpath(source, root), 'motivo': 'último intento: '+state}])
                 parser = failed
         sources.append(Source(path=path, kind=kind, parser=parser, host=host))
+
+    # Selección por identidad completa; un manifiesto sin identidad fiable no
+    # permite presentar éxitos anteriores de esa carpeta como evidencia actual.
+    postexploitation = [s for s in sources if s.kind == "postexploitation"]
+    if postexploitation:
+        grupos: dict[tuple, list[Source]] = {}
+        invalid_directories = set()
+        for s in postexploitation:
+            try:
+                data = json.loads(s.path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError('manifiesto no es un objeto')
+                host, port = postexploitation_engine().validate_target(
+                    data.get('host'), data.get('puerto'))
+                postexploitation_engine().validate_order(data)
+                if not isinstance(data.get('herramienta'), str) or not data['herramienta']:
+                    raise ValueError('sin herramienta')
+                clave = (host, port, data['herramienta'])
+                s.host = host
+            except (OSError, ValueError, TypeError):
+                invalid_directories.add(s.path.parent.parent)
+                clave = (None, s.path)
+            grupos.setdefault(clave, []).append(s)
+
+        conservar: set[Path] = set()
+        for grp in grupos.values():
+            if len(grp) <= 1:
+                conservar.update(s.path for s in grp)
+                continue
+            def _clave_run(s: Source):
+                d = json.loads(s.path.read_text(encoding="utf-8"))
+                return postexploitation_engine()._clave(d)
+            ultimo = max(grp, key=_clave_run)
+            conservar.add(ultimo.path)
+
+        sources = [
+            s for s in sources
+            if s.kind != "postexploitation" or s.path in conservar
+        ]
+        for s in sources:
+            if s.kind == 'postexploitation' and s.path.parent.parent in invalid_directories:
+                def unattributed(source, root):
+                    from .model import relpath
+                    return ParseResult(evaluado=False, no_evaluable=[{
+                        'fuente': relpath(source, root),
+                        'motivo': 'manifiesto sin identidad fiable en esta carpeta; revisar último intento'}])
+                s.parser = unattributed
 
     # Priorizar el último run por host/herramienta en explotación: los runs
     # anteriores del mismo destino se omiten (no se borra evidencia).

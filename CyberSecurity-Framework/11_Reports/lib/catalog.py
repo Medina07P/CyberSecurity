@@ -454,6 +454,48 @@ _RULES: dict[str, tuple[str, str, str, str, str, str, str, tuple[str, ...]]] = {
         "bajo",
         ("https://owasp.org/www-project-top-ten/",),
     ),
+    "postexploitation.hallazgo": (
+        "alta",
+        "confirmado",
+        "Hallazgo confirmado en post-explotación",
+        "Una capacidad de post-explotación se ejecutó con éxito sobre el activo y "
+        "quedó registrada como confirmada. El detalle de la ejecución y sus "
+        "artefactos se conservan en la evidencia privada del run.",
+        "Un acceso o una ejecución confirmada sobre un sistema expuesto permite "
+        "a un tercero operar sobre los datos o el sistema afectado.",
+        "Corregir la causa raíz del hallazgo, rotar las credenciales que pudieron "
+        "quedar expuestas y repetir la prueba autorizada para confirmar el cierre.",
+        "alto",
+        ("https://owasp.org/www-project-top-ten/",),
+    ),
+    "postexploitation.ejecutado": (
+        "info",
+        "observacion",
+        "Ejecución de post-explotación registrada",
+        "La capacidad de post-explotación se ejecutó sobre el activo y quedó "
+        "registrada como evidencia operativa. No constituye por sí sola un "
+        "hallazgo.",
+        "Conviene saber qué capacidades se ejecutaron sobre el sistema para "
+        "valorar el alcance real del trabajo.",
+        "Revisar la evidencia operativa y conservarla como traza de la prueba.",
+        "bajo",
+        ("https://owasp.org/www-project-top-ten/",),
+    ),
+    "postexploitation.denegado": (
+        "media",
+        "observacion",
+        "Acceso denegado en post-explotación",
+        "La capacidad de post-explotación fue rechazada por el sistema y quedó "
+        "registrada como denegación. El detalle se conserva en la evidencia "
+        "privada del run.",
+        "Un rechazo bien configurado limita el alcance de un atacante, pero "
+        "conviene confirmar que no hubo vía alternativa.",
+        "Revisar la configuración de acceso y las credenciales del servicio "
+        "afectado.",
+        "bajo",
+        ("https://owasp.org/www-project-top-ten/",),
+    ),
+
 }
 
 KNOWN_RULES: tuple[str, ...] = tuple(_RULES)
@@ -474,6 +516,7 @@ _FAMILIA: dict[str, tuple[str, str]] = {
     "ssh": ("red", "enum_ssh.sh (ssh-auth-methods)"),
     "db": ("datos", "enum_mysql.sh (consulta anónima)"),
     "exploitation": ("explotacion", "05_Exploitation"),
+    "postexploitation": ("postexplotacion", "06_PostExploitation"),
 }
 
 # Valor por defecto de cada hueco. Los textos se leen bien sin variables: la

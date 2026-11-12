@@ -267,7 +267,12 @@ execute_script() {
     fi
 
     if [[ ${#argv[@]} -gt 0 ]]; then
-        echo -e "${DIM}Argumentos: ${argv[*]}${NC}"
+        case "$script_path" in
+            06_PostExploitation/lateral_movement/ps_exec.sh)
+                echo -e "${DIM}Argumentos: [ocultos: contienen credenciales]${NC}"
+                ;;
+            *) echo -e "${DIM}Argumentos: ${argv[*]}${NC}" ;;
+        esac
     else
         echo -e "${DIM}Ejecución directa; sigue las indicaciones de la herramienta.${NC}"
     fi
