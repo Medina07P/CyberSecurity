@@ -111,7 +111,7 @@ El orden recomendado es:
 4. **03_Scanners**: escaneo de puertos y vulnerabilidades
 5. **04_Enumeration**: enumeración de servicios
 6. **05_Exploitation** y **06_PostExploitation**: solo si tienes autorización explícita
-7. **07_Wireless**: auditoría inalámbrica (requiere adaptador)
+7. **07_Wireless**: menú de mantenimiento local; no acredita auditoría inalámbrica
 8. **08_Forensics**: análisis forense
 9. **09_Automation**: automatización y workflows
 10. **10_Evidence**: gestión de evidencias
@@ -204,6 +204,33 @@ Detalles, riesgos y ejemplos: `CyberSecurity-Framework/04_Enumeration/README.md`
 Todas las opciones piden confirmación antes de ejecutar y no elevan privilegios automáticamente. Las hojas capturadas mantienen sus contratos y permisos independientes (`SQLMAP_SI`, `SQLMAP_ENUMERAR`, `SQLMAP_TABLA`).
 
 Detalles, riesgos y ejemplos: `CyberSecurity-Framework/05_Exploitation/README.md` y `docs/EXPLOTACION-2026-11-10.md`.
+
+## Módulo 07: mantenimiento inalámbrico
+
+Al entrar en **07** aparece un menú específico:
+
+- **1 — Comprobar herramientas**: consulta `command -v` sin ejecutar binarios.
+  Informa presencia o ausencia de sudo, ip, iw, airodump-ng, aireplay-ng,
+  aircrack-ng, hcitool, bluetoothctl, sdptool y gatttool. No instala nada.
+- **2 — Guía y límites**: texto local, sin leer capturas ni validar evidencia.
+- **11 — Lista original**: conserva las diez entradas y las confirmaciones del
+  listado genérico; abrirlo no ejecuta automáticamente hojas o flujos.
+- **0 — Volver**: regresa al menú principal. EOF vuelve sin despachar acciones;
+  una opción inválida muestra aviso. Las opciones 1 y 2 pausan al terminar.
+
+La comprobación no eleva privilegios, cambia interfaces/servicios ni transmite
+por radio. Presencia en PATH no acredita adaptador compatible, permisos,
+funcionamiento operacional o auditoría realizada. El acceso a las operaciones
+originales no las convierte en pasivas ni sustituye autorización y revisión
+específica; no ejecutar el flujo completo como smoke test.
+
+`wifi_handshake.sh` imprime una guía: **no captura ni verifica automáticamente
+un handshake**. El mantenimiento no modifica ni valida operacionalmente las
+diez hojas/flujo, y no implementa el plan operacional integral de 07.
+
+Detalles e inventario: `CyberSecurity-Framework/07_Wireless/README.md` y
+`USE.md` en ese módulo. Regresión aislada y límites:
+`docs/WIRELESS-MANTENIMIENTO-2026-11-11.md`.
 
 ## Marcas en la lista de scripts
 

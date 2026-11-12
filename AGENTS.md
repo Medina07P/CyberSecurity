@@ -1,5 +1,19 @@
 # AGENTS.md
 
+**Actualización mantenimiento 07, 2026-11-11:** Task 1 está en `045d2c8`.
+`07` abre un menú de mantenimiento: 1 disponibilidad mediante `command -v`
+(no ejecuta binarios), 2 guía local, 11 listado original de diez entradas y
+0 volver; EOF retorna sin acciones. La presencia en PATH no acredita hardware,
+permisos ni auditoría. `wifi_handshake.sh` imprime guía, no captura ni verifica
+automáticamente. Las diez fuentes originales y los cuatro pendientes ajenos
+se conservan por hash/modo; no se ejecutan hojas, radio, sudo o instalaciones.
+Documentación y regresión en `docs/WIRELESS-MANTENIMIENTO-2026-11-11.md`;
+la revisión de Task 2 y la aprobación final corresponden al controlador.
+No declarar implementado el plan operacional integral de 07 ni toda la rama
+verde: `run_tests` sigue heredada en rojo (último cierre de 06: 374 pasan,
+11 fallan, incluido SSTI intermitente sin causa determinada). Suites antiguas
+solo en copia limpia con configuración sintética; sin push.
+
 **Actualización 2026-11-11:** la nota de pausa siguiente es histórica. El bloque
 de infraestructura de 06 está en el commit local `37bdd16`; el cierre de
 **mantenimiento** (menú, informes, validación y pruebas aisladas) se documenta
