@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Private module-08 file evidence store, not an executor or custody guarantee.
 
-Only analysis/ is an artifact root in v1. Roots are derived from the selected
-run, never followed from JSON. Future acquisition roots need an explicit API,
-not a caller-supplied manifest path. Writers are single-owner/sequential.
+Additional roots require exclusive creation and a signed private registration;
+manifest paths alone never authorize reads. Writers are single-owner/sequential.
 """
 import argparse
 from datetime import datetime, timezone
+import fcntl
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ import re
 import selectors
 import signal as process_signal
 import stat
+import struct
 import subprocess
 import sys
 import uuid
@@ -245,6 +247,150 @@ def _identity(inputs):
     return hashlib.sha256(_encoded(identities)).hexdigest() if inputs else None
 
 
+def _run_identity(data):
+    if data.get('observed_devices'):
+        # Observation timestamp and random receipt id are not source identity.
+        identities = [{k: item[k] for k in ('dev', 'ino', 'rdev', 'size')}
+                      for item in data['observed_devices']]
+        return hashlib.sha256(_encoded(['physical_observation', identities])).hexdigest()
+    return _identity(data['inputs'])
+
+
+def _root_records(run):
+    """Authenticate registrations, not user-controlled artifact_roots strings.
+
+    Private per-run key is a local integrity anchor, not protection from a
+    malicious writer running as the same uid. Supports cross-filesystem roots.
+    """
+    registry = run / 'roots.json'
+    if not registry.exists():
+        _require(not (run / '.roots-key').exists())
+        return {}
+    key_path = _private(run / '.roots-key')
+    _require(key_path.stat().st_uid == os.geteuid())
+    with _open_read(key_path) as stream:
+        key = stream.read(33)
+    _require(len(key) == 32)
+    envelope = _load(registry)
+    _keys(envelope, 'records signature')
+    records = envelope['records']
+    _require(type(records) is dict and set(records) <= {'recovered', 'captures'})
+    _require(hmac.compare_digest(envelope['signature'], hmac.new(
+        key, _encoded([str(run), records]), hashlib.sha256).hexdigest()))
+    for name, record in records.items():
+        _keys(record, 'path dev ino uid')
+        path = _private(record['path'], True)
+        _require(path.name == run.name and not _overlaps(run, path))
+        info = path.lstat()
+        _require(all(type(record[k]) is int and record[k] == v for k, v in
+                     (('dev', info.st_dev), ('ino', info.st_ino), ('uid', info.st_uid))))
+        _require(info.st_uid == os.geteuid())
+        marker = _load(path / '.forensics-owner.json')
+        _require(marker == {'run': str(run), 'root': name})
+    return records
+
+
+def _artifact_roots(run, data):
+    roots = {'analysis': str(run / 'analysis')}
+    roots.update({name: item['path'] for name, item in _root_records(run).items()})
+    _require(data['artifact_roots'] == roots)
+    return {name: Path(path) for name, path in roots.items()}
+
+
+def register_artifact_root(run_dir, name, parent):
+    """Create PARENT/RUN_ID exclusively; return its authenticated private path."""
+    run = _path(run_dir)
+    data = read_run(run)
+    _choice(name, ('recovered', 'captures'))
+    _require(data['finished'] is None and not data['dependents_blocked'] and not data['steps'])
+    _require(name not in data['artifact_roots'])
+    parent = _path(parent)
+    _require(not _overlaps(parent, run))
+    sources = _load(run / 'sources.json')
+    for value in sources.values():
+        _require(not _overlaps(parent, _path(value)))
+    _mkdir(parent)  # existing parent's mode/content is not changed
+    target = parent / run.name
+    target.mkdir(mode=0o700)
+    _require(target.lstat().st_uid == os.geteuid())
+    _atomic(target / '.forensics-owner.json', {'run': str(run), 'root': name})
+    records = _root_records(run)
+    info = target.lstat()
+    records[name] = dict(path=str(target), dev=info.st_dev, ino=info.st_ino, uid=info.st_uid)
+    key_path = run / '.roots-key'
+    if not key_path.exists():
+        fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(os.urandom(32))
+            stream.flush()
+            os.fsync(stream.fileno())
+    with _open_read(_private(key_path)) as stream:
+        key = stream.read()
+    signature = hmac.new(key, _encoded([str(run), records]), hashlib.sha256).hexdigest()
+    _atomic(run / 'roots.json', dict(records=records, signature=signature))
+    data['artifact_roots'][name] = str(target)
+    _atomic(run / 'run.json', data)
+    return target
+
+
+def _device_identity(source):
+    info = _path(source).lstat()  # deliberately no open/hash/ioctl on device
+    _require(stat.S_ISBLK(info.st_mode))
+    return dict(dev=info.st_dev, ino=info.st_ino, rdev=info.st_rdev,
+                mode=stat.S_IMODE(info.st_mode))
+
+
+def probe_source(source, kind):
+    """Preflight before run creation; no content digest or device payload read."""
+    source = _path(source)
+    _choice(kind, ('file', 'device'))
+    if kind == 'device':
+        _device_identity(source)
+    else:
+        with _open_read(source):
+            pass
+    return {'source': str(source)}
+
+
+def _device_observation(source):
+    observed = _device_identity(source)
+    observed['size'] = None
+    # Metadata only; never read a payload byte and never request write access.
+    # Size failure is explicit unknown, not zero and not an acquisition failure.
+    try:
+        fd = os.open(_path(source), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            actual = os.fstat(fd)
+            _require(stat.S_ISBLK(actual.st_mode) and all(
+                getattr(actual, 'st_' + k) == observed[k] for k in ('dev', 'ino', 'rdev')))
+            observed['size'] = struct.unpack('=Q', fcntl.ioctl(fd, 0x80081272, bytes(8)))[0]
+        finally:
+            os.close(fd)
+    except (OSError, ValueError, struct.error):
+        pass
+    return observed
+
+
+def observe_device(run_dir, source):
+    run = _path(run_dir)
+    data = read_run(run)
+    _require(data['mode'] == 'physical' and not data['inputs'] and not data['steps'] and
+             not data.get('observed_devices') and data['finished'] is None and
+             not data['dependents_blocked'])
+    source = _path(source)
+    for root in _artifact_roots(run, data).values():
+        _require(not _overlaps(root, source))
+    observed = _device_observation(source)
+    observed.update(input_id='in-' + uuid.uuid4().hex, observed=_now())
+    sources = _load(run / 'sources.json')
+    sources[observed['input_id']] = str(source)
+    _atomic(run / 'sources.json', sources)
+    data['observed_devices'] = [observed]
+    data['identity'] = _run_identity(data)
+    _atomic(run / 'run.json', data)
+    return observed
+
+
 def _aggregate(data):
     if data['dependents_blocked']:
         return 'FALLIDO'
@@ -311,9 +457,13 @@ def stage_input(run_dir: Path, source: Path, kind: str = 'file') -> dict:
     run = _path(run_dir)
     data = read_run(run)
     _require(data['finished'] is None and not data['dependents_blocked'] and not data['steps'])
+    _require(not data.get('observed_devices'))
     _choice(kind, ('file', 'tree'))
     source = _path(source)
     _require(not _overlaps(run.parent, source))
+    for name, root in _artifact_roots(run, data).items():
+        if name != 'analysis':
+            _require(not _overlaps(root.parent, source))
     try:
         snapshot = _snapshot(source, kind)
     except (OSError, ValueError):
@@ -384,7 +534,8 @@ def _validate_snapshot(value, kind):
             _require(hashlib.sha256(_encoded(times['entries'])).hexdigest() == times['sha256'])
 
 
-def _validate_step(step, run, verify):
+def _validate_step(step, run, verify, roots=None):
+    roots = roots or {'analysis': run / 'analysis'}
     _keys(step, 'name tool rc signal state coverage artifacts')
     _identifier(step['name'])
     _identifier(step['tool'])
@@ -413,18 +564,23 @@ def _validate_step(step, run, verify):
     seen = set()
     for artifact in step['artifacts']:
         _keys(artifact, 'root path sha256 size')
-        _require(artifact['root'] == 'analysis')
+        _require(artifact['root'] in roots)
+        if coverage['code'] in (CAPTURE_PENDING, CAPTURE_READY, 'runtime_cancelled'):
+            _require(artifact['root'] == 'analysis')
         relative = artifact['path']
         _require(isinstance(relative, str) and relative not in seen and bool(relative) and
                  not Path(relative).is_absolute() and '..' not in Path(relative).parts and
-                 Path(relative).as_posix() == relative)
-        seen.add(relative)
+                  Path(relative).as_posix() == relative and
+                  not any(ord(c) < 32 or ord(c) == 127 for c in relative))
+        _require((artifact['root'], relative) not in seen)
+        seen.add((artifact['root'], relative))
         _hash(artifact['sha256'])
         _integer(artifact['size'], 0, 2**63 - 1)
         if verify:
-            path = _private(run / 'analysis' / relative)
+            root = roots[artifact['root']]
+            path = _private(root / relative)
             for parent in path.parents:
-                if parent == run:
+                if parent == root.parent:
                     break
                 _private(parent, True)
             _require(_digest_file(path) == (artifact['sha256'], artifact['size']))
@@ -439,7 +595,8 @@ def read_run(path: Path, *, verify_artifacts: bool = True) -> dict:
         _private(run, True)
         _require(RUN_ID.fullmatch(run.name) is not None)
         data = _load(run / 'run.json')
-        _keys(data, 'version module run_id operation mode identity inputs started finished state complete rc steps artifact_roots dependents_blocked')
+        _keys(data, 'version module run_id operation mode identity inputs started finished state complete rc steps artifact_roots dependents_blocked' +
+              (' observed_devices' if 'observed_devices' in data else ''))
         _require(type(data['version']) is int and data['version'] == 1 and data['module'] == '08')
         _require(data['run_id'] == run.name)
         _choice(data['operation'], OPERATIONS)
@@ -450,7 +607,7 @@ def read_run(path: Path, *, verify_artifacts: bool = True) -> dict:
         started = _time(data['started'])
         if data['finished'] is not None:
             _require(_time(data['finished']) >= started)
-        _require(data['artifact_roots'] == {'analysis': str(run / 'analysis')})
+        roots = _artifact_roots(run, data)
         for name in ('work', 'analysis', 'steps'):
             _private(run / name, True)
         _require(type(data['inputs']) is list)
@@ -473,18 +630,30 @@ def read_run(path: Path, *, verify_artifacts: bool = True) -> dict:
                 if item['kind'] == 'tree':
                     for entry in item['work']['inventory']:
                         _private(work_path / entry['path'], entry['kind'] == 'tree')
-        _require(data['identity'] == _identity(data['inputs']))
+        if 'observed_devices' in data:
+            _require(data['mode'] == 'physical' and not data['inputs'] and
+                     type(data['observed_devices']) is list and len(data['observed_devices']) == 1)
+            observed = data['observed_devices'][0]
+            _keys(observed, 'dev ino rdev mode size input_id observed')
+            _require(INPUT_ID.fullmatch(observed['input_id']) is not None)
+            for name in ('dev', 'ino', 'rdev'):
+                _integer(observed[name], 0, 2**64 - 1)
+            _integer(observed['mode'], 0, 0o7777)
+            if observed['size'] is not None:
+                _integer(observed['size'], 0, 2**63 - 1)
+            _time(observed['observed'])
+        _require(data['identity'] == _run_identity(data))
         _require(type(data['steps']) is list)
         names = set()
         sidecars = set()
         for index, step in enumerate(data['steps']):
-            _validate_step(step, run, verify_artifacts)
+            _validate_step(step, run, verify_artifacts, roots)
             _require(step['name'] not in names)
             names.add(step['name'])
             filename = f'{index:04d}-{step["name"]}.json'
             sidecars.add(filename)
             sidecar = _load(run / 'steps' / filename)
-            _validate_step(sidecar, run, verify_artifacts)
+            _validate_step(sidecar, run, verify_artifacts, roots)
             _require(_encoded(sidecar) == _encoded(step))
         _require({p.name for p in (run / 'steps').iterdir()} == sidecars)
         expected = dict(data)
@@ -501,7 +670,12 @@ def check_integrity(run_dir: Path) -> bool:
     okay = not data['dependents_blocked']
     try:
         sources = _load(run / 'sources.json')
-        _require(type(sources) is dict and set(sources) == {i['input_id'] for i in data['inputs']})
+        observations = data.get('observed_devices', [])
+        _require(type(sources) is dict and set(sources) ==
+                 {i['input_id'] for i in data['inputs'] + observations})
+        for item in observations:
+            observed = _device_identity(sources[item['input_id']])
+            okay = all(observed[k] == item[k] for k in observed) and okay
         for item in data['inputs']:
             source = _path(sources[item['input_id']])
             _require(not _overlaps(run.parent, source))
@@ -522,15 +696,18 @@ def record_step(run_dir, name, rc, state, coverage, artifacts, *, tool='internal
     _require(data['finished'] is None and not data['dependents_blocked'])
     _require(type(artifacts) is list)
     references = []
+    roots = _artifact_roots(run, data)
     for value in artifacts:
         path = _private(_path(value))
-        _require(run / 'analysis' in path.parents)
+        matches = [(name, root) for name, root in roots.items() if root in path.parents]
+        _require(len(matches) == 1)
+        name_root, root = matches[0]
         digest, size = _digest_file(path)
-        references.append(dict(root='analysis', path=path.relative_to(run / 'analysis').as_posix(),
+        references.append(dict(root=name_root, path=path.relative_to(root).as_posix(),
                                sha256=digest, size=size))
     step = dict(name=name, tool=tool, rc=rc, signal=signal, state=state,
                 coverage=coverage, artifacts=references)
-    _validate_step(step, run, True)
+    _validate_step(step, run, True, roots)
     _require(name not in [s['name'] for s in data['steps']])
     sidecar = run / 'steps' / f'{len(data["steps"]):04d}-{name}.json'
     _require(not sidecar.exists())
@@ -608,7 +785,7 @@ def _pending_capture(run_dir, name, code):
 
 
 def _publish_capture(run, data, index, step):
-    _validate_step(step, run, True)
+    _validate_step(step, run, True, _artifact_roots(run, data))
     _atomic(run / 'steps' / f'{index:04d}-{step["name"]}.json', step)
     data['steps'][index] = step
     _atomic(run / 'run.json', data)
@@ -874,6 +1051,9 @@ def select_runs(root, filters) -> list[dict]:
                                        'finished', 'state', 'complete', 'rc')}
             row['steps'] = data['steps']
             row['inputs'] = [{k: i[k] for k in ('kind', 'sha256', 'size', 'mode')} for i in data['inputs']]
+            if data.get('observed_devices'):
+                row['identity_kind'] = 'device_observation'
+                row['observed_devices'] = data['observed_devices']
             row.update(invalid=False, current=False)
             rows.append(row)
         except ValueError:
@@ -910,6 +1090,16 @@ def main(argv=None):
     stage.add_argument('--run', required=True, type=Path)
     stage.add_argument('--source', required=True, type=Path)
     stage.add_argument('--kind', default='file', choices=('file', 'tree'))
+    register = subs.add_parser('register-root')
+    register.add_argument('--run', required=True, type=Path)
+    register.add_argument('--name', required=True, choices=('recovered', 'captures'))
+    register.add_argument('--parent', required=True, type=Path)
+    observe = subs.add_parser('observe-device')
+    observe.add_argument('--run', required=True, type=Path)
+    observe.add_argument('--source', required=True, type=Path)
+    probe = subs.add_parser('probe-source')
+    probe.add_argument('--source', required=True, type=Path)
+    probe.add_argument('--kind', required=True, choices=('file', 'device'))
     step = subs.add_parser('step')
     step.add_argument('--run', required=True, type=Path)
     step.add_argument('--name', required=True)
@@ -957,6 +1147,12 @@ def main(argv=None):
             result = {'run_dir': str(run), 'run_id': run.name}
         elif command == 'stage':
             result = stage_input(args.run, args.source, args.kind)
+        elif command == 'register-root':
+            result = {'path': str(register_artifact_root(args.run, args.name, args.parent))}
+        elif command == 'observe-device':
+            result = observe_device(args.run, args.source)
+        elif command == 'probe-source':
+            result = probe_source(args.source, args.kind)
         elif command == 'step':
             result = record_step(args.run, args.name, args.rc, args.state,
                                  dict(code=args.coverage_code, complete=args.complete,
