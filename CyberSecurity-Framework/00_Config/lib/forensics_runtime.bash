@@ -37,6 +37,28 @@ forensics_begin() {
     _FORENSICS_CANCELLED=0
     _FORENSICS_ACTIVE_PID=
     _FORENSICS_CONTROL_FD=
+    _FORENSICS_CLEANUP_CALLBACK=
+    _FORENSICS_CLEANUP_DONE=0
+    _FORENSICS_CLEANUP_ACTIVE=0
+}
+
+# Explicit per-run opt-in, before the first step. A cleanup callback is a named
+# shell function, never argv/eval text. It must publish its own receipts and may
+# not start a nested capture or close the run. No opt-in: historical behavior.
+forensics_register_cleanup() {
+    local metadata
+    [[ $# = 1 && $1 =~ ^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$ &&
+       ${_FORENSICS_FAILED:-1} = 0 && ${_FORENSICS_CLEANUP_DONE:-0} = 0 &&
+       ${_FORENSICS_CLEANUP_ACTIVE:-0} = 0 && -z ${_FORENSICS_CLEANUP_CALLBACK:-} ]] || return 2
+    declare -F -- "$1" >/dev/null || return 2
+    metadata=$(_forensics_helper validate --run "$FORENSICS_RUN_DIR") || return 2
+    [[ $(printf '%s' "$metadata" | _forensics_field finished) = None &&
+       $(printf '%s' "$metadata" | _forensics_field steps) = '[]' ]] || return 2
+    _FORENSICS_CLEANUP_CALLBACK=$1
+}
+
+_forensics_cleanup_signal() {
+    if (( _FORENSICS_CANCELLED == 0 )); then _FORENSICS_CANCELLED=$1; fi
 }
 
 _forensics_block() {
@@ -131,7 +153,8 @@ _forensics_read_protocol() {
 forensics_capture() {
     local name=$1 tool=$2 metadata status function_name result_fd protocol_line worker_status
     shift 2
-    [[ ${_FORENSICS_FAILED:-1} = 0 && ${_FORENSICS_CANCELLED:-0} = 0 ]] || return 1
+    [[ ${_FORENSICS_FAILED:-1} = 0 && ${_FORENSICS_CANCELLED:-0} = 0 &&
+       ${_FORENSICS_CLEANUP_ACTIVE:-0} = 0 ]] || return 1
     _forensics_helper integrity --run "$FORENSICS_RUN_DIR" >/dev/null || { _FORENSICS_FAILED=1; return 1; }
     # tool is an identifier only; no argv is persisted. Absolute paths may be
     # invoked through an explicitly defined Bash function instead.
@@ -246,8 +269,66 @@ forensics_skip() {
 }
 
 forensics_finish() {
-    local status
+    local status cleanup_rc metadata event_status event_state initial_cancel=${_FORENSICS_CANCELLED:-0} did_cleanup=0
+    local old_int old_term has_int=0 has_term=0
+    local captured_rc=${FORENSICS_STEP_RC:-} captured_out=${FORENSICS_STEP_OUT:-} captured_err=${FORENSICS_STEP_ERR:-}
+    [[ ${_FORENSICS_CLEANUP_ACTIVE:-0} = 0 ]] || return 1
+    if [[ -n ${_FORENSICS_CLEANUP_CALLBACK:-} && ${_FORENSICS_CLEANUP_DONE:-0} = 0 ]]; then
+        # capture reaches here only after stream sealing, group teardown and
+        # wait. Ordinary finish cannot close while an active writer is owned.
+        [[ -z ${_FORENSICS_ACTIVE_PID:-} && -z ${_FORENSICS_CONTROL_FD:-} ]] || return 1
+        # Protect the validation/trap-snapshot boundary too, not just the body
+        # of the callback: a prior handler can itself request finish here.
+        _FORENSICS_CLEANUP_ACTIVE=1
+        metadata=$(_forensics_helper validate --run "$FORENSICS_RUN_DIR") || {
+            _FORENSICS_FAILED=1; _FORENSICS_CLEANUP_ACTIVE=0; return 1;
+        }
+        [[ $(printf '%s' "$metadata" | _forensics_field finished) = None ]] || {
+            _FORENSICS_FAILED=1; _FORENSICS_CLEANUP_ACTIVE=0; return 1;
+        }
+        old_int=$(trap -p INT); old_term=$(trap -p TERM)
+        [[ -z $old_int ]] || has_int=1
+        [[ -z $old_term ]] || has_term=1
+        old_int=$(printf '%s' "$old_int" | _forensics_trap_body) || { _FORENSICS_CLEANUP_ACTIVE=0; return 1; }
+        old_term=$(printf '%s' "$old_term" | _forensics_trap_body) || { _FORENSICS_CLEANUP_ACTIVE=0; return 1; }
+        _FORENSICS_CLEANUP_DONE=1
+        did_cleanup=1
+        # Sticky signals defer prior handlers until receipts are published and
+        # the run closes. In particular, no recursive handler can close early.
+        trap '_forensics_cleanup_signal 2' INT
+        trap '_forensics_cleanup_signal 15' TERM
+        "$_FORENSICS_CLEANUP_CALLBACK"
+        cleanup_rc=$?
+        FORENSICS_STEP_RC=$captured_rc
+        FORENSICS_STEP_OUT=$captured_out
+        FORENSICS_STEP_ERR=$captured_err
+        if (( _FORENSICS_CANCELLED != 0 )) && [[ ${_FORENSICS_FAILED:-1} = 0 ]]; then
+            metadata=$(_forensics_helper step --run "$FORENSICS_RUN_DIR" --name runtime_cleanup_cancelled \
+                --tool internal --rc 0 --state CANCELADO --coverage-code cancellation_wrapper)
+            event_status=$?
+            # A requested cancellation has semantic rc1, not a backend failure.
+            event_state=$(printf '%s' "$metadata" | python3 -B -c '
+import json,sys
+try: print(json.load(sys.stdin)["state"])
+except (ValueError,KeyError,TypeError): sys.exit(1)
+') || cleanup_rc=1
+            [[ $event_status = 1 && $event_state = CANCELADO ]] || cleanup_rc=1
+        fi
+        (( cleanup_rc == 0 )) || _forensics_block
+        _FORENSICS_CLEANUP_ACTIVE=0
+        if (( has_int )); then trap -- "$old_int" INT; else trap - INT; fi
+        if (( has_term )); then trap -- "$old_term" TERM; else trap - TERM; fi
+    fi
     _forensics_helper finish --run "$FORENSICS_RUN_DIR" >/dev/null
     status=$?
+    # capture itself notifies its prior handler for an earlier cancellation.
+    # A signal newly observed during ordinary finish is notified exactly once,
+    # after cleanup publication and closure, with the original traps restored.
+    if (( did_cleanup && initial_cancel == 0 && _FORENSICS_CANCELLED != 0 )); then
+        if { (( _FORENSICS_CANCELLED == 2 )) && (( has_int )) && [[ -n $old_int ]]; } || \
+           { (( _FORENSICS_CANCELLED == 15 )) && (( has_term )) && [[ -n $old_term ]]; }; then
+            kill -s "$_FORENSICS_CANCELLED" "$$"
+        fi
+    fi
     (( status == 0 && ${_FORENSICS_FAILED:-1} == 0 )) || return 1
 }

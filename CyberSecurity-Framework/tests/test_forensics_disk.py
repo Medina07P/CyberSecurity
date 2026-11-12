@@ -40,7 +40,9 @@ if name == 'losetup':
   if os.environ.get('DETACH_LIES'): sys.exit(0)
   s['loop']=None; save(); sys.exit(0)
 if name == 'mount':
- s.update(point=a[-1], mounted=True, fs=a[a.index('-t')+1], options=a[a.index('-o')+1]); save()
+ covered=p(a[-1]).stat()
+ s.update(point=a[-1], mounted=True, fs=a[a.index('-t')+1], options=a[a.index('-o')+1],
+          covered_dev=covered.st_dev,covered_ino=covered.st_ino); save()
  sys.exit(int(os.environ.get('MOUNT_RC','0')))
 if name == 'findmnt':
  if '--list' in a:
@@ -49,7 +51,8 @@ if name == 'findmnt':
   print(json.dumps({'filesystems':rows})); sys.exit(0)
  if not s.get('mounted'): sys.exit(1)
  source='/dev/foreign' if os.environ.get('FOREIGN_MOUNT') else s.get('loop')
- print(json.dumps({'filesystems':[{'source':source,'target':s.get('point'),'fstype':s.get('fs'),'options':s.get('options')}]})); sys.exit(0)
+ print(json.dumps({'filesystems':[{'source':source,'target':s.get('point'),'fstype':s.get('fs'),
+  'options':s.get('options'),'maj:min':'7:900','id':901}]})); sys.exit(0)
 if name == 'umount':
  if os.environ.get('UMOUNT_FAIL'): sys.exit(32)
  if a[-1]!=s.get('point'): sys.exit(88)
@@ -109,6 +112,7 @@ class DiskTests(unittest.TestCase):
         self.source.write_bytes(b'A'*1024)
         self.source.chmod(0o640)
         self.original=inventory(self.root/'sources')
+        self.mounted_stat_model()
 
     def leaf(self, name, *args, input='', **env):
         result = subprocess.run(['/bin/bash', str(self.framework/'08_Forensics/disk'/name),
@@ -124,6 +128,41 @@ class DiskTests(unittest.TestCase):
 
     def manifests(self):
         return sorted([json.loads(p.read_text()) for p in (self.root/'outputs'/'analysis').glob('runs/*/run.json')],key=lambda d:d['started'])
+
+    def mounted_stat_model(self):
+        """Only copied helper stat: a mount covers, not mutates, its directory."""
+        library=self.framework/'00_Config/lib/forensics_disk.bash'
+        injection='''
+from types import SimpleNamespace
+_fixture_stat = Path.stat
+def _mounted_stat(p, *args, **kwargs):
+    info = _fixture_stat(p, *args, **kwargs)
+    statefile = Path(os.environ['ROOT'])/'kernel.json'
+    try: _fixture_stat(statefile)
+    except FileNotFoundError: return info
+    state=json.loads(statefile.read_text())
+    if (state.get('mounted') and str(p)==state.get('point') and
+        (info.st_dev,info.st_ino)==(state.get('covered_dev'),state.get('covered_ino'))):
+        return SimpleNamespace(st_mode=stat.S_IFDIR|int(os.environ.get('ROOT_MODE','755'),8),
+            st_uid=12345,st_dev=os.makedev(7,900),st_ino=2)
+    return info
+Path.stat = _mounted_stat
+'''
+        library.write_text(library.read_text().replace('from pathlib import Path\n',
+                            'from pathlib import Path\n'+injection))
+
+    def test_mounted_filesystem_stat_is_not_the_private_covered_directory(self):
+        for mode in ('755','700'):
+            with self.subTest(mode=mode):
+                result=self.leaf('disk_forensics.sh',self.source,'--mount-copy',
+                                 input='MONTAR_COPIA\n',ROOT_MODE=mode)
+                self.assertEqual(result.returncode,0,result.stderr)
+                data=self.manifests()[-1]
+                self.assertTrue(any(s['name']=='filelist' for s in data['steps']))
+                state=json.loads((self.root/'kernel.json').read_text())
+                self.assertFalse(state['mounted'])
+                self.assertIsNone(state['loop'])
+                self.assertFalse(Path(state['point']).exists())
 
     def physical_device(self):
         helper=self.framework/'00_Config/lib/forensics_evidence.py'
@@ -317,6 +356,19 @@ exit "$status"
         self.assertFalse(any(s['name']=='filelist' for s in self.manifests()[0]['steps']))
         self.assertFalse(any(n=='umount' for n,_ in self.calls()))
 
+    def test_umount_reveals_wrong_underlying_inode_without_detach_or_rmdir(self):
+        backend=self.root/'bin'/'umount'
+        backend.write_text(backend.read_text().replace("s['mounted']=False; save(); sys.exit(0)", """s['mounted']=False; save()
+ point=p(s['point']); point.rename(point.with_name('owned-old-point'))
+ point.mkdir(mode=0o700); (point/'foreign-sentinel').write_text('intact')
+ sys.exit(0)"""))
+        result=self.leaf('disk_forensics.sh',self.source,'--mount-copy',input='MONTAR_COPIA\n')
+        self.assertEqual(result.returncode,1,result.stderr)
+        state=json.loads((self.root/'kernel.json').read_text())
+        self.assertFalse(state['mounted'])
+        self.assertEqual((Path(state['point'])/'foreign-sentinel').read_text(),'intact')
+        self.assertFalse(any(n=='losetup' and '--detach' in a for n,a in self.calls()))
+
     def test_cancel_inside_mount_capture_reaps_before_releasing(self):
         backend=self.root/'bin'/'mount'
         backend.write_text(backend.read_text().replace("sys.exit(int(os.environ.get('MOUNT_RC','0')))","""
@@ -347,6 +399,103 @@ exit "$status"
         finally:
             if process.poll() is None:
                 process.terminate(); process.communicate(timeout=20)
+
+    def cancel_cleanup_receipt(self, inside, failure):
+        if inside:
+            backend=self.root/'bin'/'mount'
+            backend.write_text(backend.read_text().replace("sys.exit(int(os.environ.get('MOUNT_RC','0')))",
+                "(root/'started').touch()\n __import__('signal').pause()"))
+        else:
+            backend=self.root/'bin'/'findmnt'
+            backend.write_text(backend.read_text().replace("if name == 'findmnt':", """if name == 'findmnt':
+ if not (root/'started').exists():
+  (root/'started').touch()
+  import time
+  while not (root/'continue').exists(): time.sleep(.01)
+"""))
+        script=self.framework/'08_Forensics/disk/disk_forensics.sh'
+        env={**self.env,**({'UMOUNT_FAIL':'1'} if failure else {})}
+        process=subprocess.Popen(['/bin/bash',str(script),str(self.source),'--mount-copy'],env=env,
+            stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        process.stdin.write('MONTAR_COPIA\n'); process.stdin.close(); process.stdin=None
+        try:
+            deadline=time.monotonic()+20
+            while not (self.root/'started').exists() and process.poll() is None and time.monotonic()<deadline:
+                time.sleep(.01)
+            self.assertTrue((self.root/'started').exists())
+            process.send_signal(signal.SIGTERM)
+            (self.root/'continue').touch()
+            out,err=process.communicate(timeout=25)
+            self.assertEqual(process.returncode,1,err)
+            data=self.manifests()[0]
+            steps={s['name']:s for s in data['steps']}
+            self.assertIn('cleanup_umount',steps,'cleanup rc is absent from the sealed run')
+            self.assertEqual(steps['cleanup_umount']['rc'],32 if failure else 0)
+            self.assertEqual(steps['disk_resources']['state'],'FALLIDO' if failure else 'COMPLETADO')
+            self.assertEqual(data['state'],'FALLIDO' if failure else 'CANCELADO')
+            self.assertIsNotNone(data['finished'])
+            if inside:
+                self.assertEqual(steps['mount_copy']['signal'],15)
+                self.assertEqual(steps['mount_copy']['rc'],137)
+            state=json.loads((self.root/'kernel.json').read_text())
+            self.assertEqual(state['mounted'],failure)
+            self.assertEqual(state['loop'],'/dev/loop900' if failure else None)
+            self.assertEqual(Path(state['point']).exists(),failure)
+            reference=next(a for a in steps['disk_resources']['artifacts']
+                           if a['path']=='disk-control/cleanup.log')
+            self.assertEqual(reference['root'],'analysis')
+            run=Path(data['artifact_roots']['analysis']).parent
+            helper=self.framework/'00_Config/lib/forensics_evidence.py'
+            before=inventory(run)
+            for command,expected in [('validate',0),('finish',1),('validate',0)]:
+                result=subprocess.run([sys.executable,'-B',str(helper),command,'--run',str(run)],
+                    env=self.env,capture_output=True,text=True,timeout=10)
+                self.assertEqual(result.returncode,expected,result.stderr)
+            self.assertEqual(inventory(run),before,'closed metadata/streams changed on repeated finish')
+            (run/'analysis/disk-control/cleanup.log').write_text('tampered cleanup diagnostic\n')
+            result=subprocess.run([sys.executable,'-B',str(helper),'validate','--run',str(run)],
+                env=self.env,capture_output=True,text=True,timeout=10)
+            self.assertEqual(result.returncode,2,'cleanup tampering was not detected')
+            self.assertNotIn('SECRET-CONTENT',out+err)
+        finally:
+            (self.root/'continue').touch(exist_ok=True)
+            if process.poll() is None:
+                process.terminate(); process.communicate(timeout=25)
+
+    def test_cancel_cleanup_receipt_inside_capture_success(self):
+        self.cancel_cleanup_receipt(True,False)
+
+    def test_cancel_cleanup_receipt_inside_capture_failure(self):
+        self.cancel_cleanup_receipt(True,True)
+
+    def test_cancel_cleanup_receipt_outside_capture_success(self):
+        self.cancel_cleanup_receipt(False,False)
+
+    def test_cancel_cleanup_receipt_outside_capture_failure(self):
+        self.cancel_cleanup_receipt(False,True)
+
+    def test_cancel_before_cleanup_traps_installation_still_seals_release(self):
+        script=self.framework/'08_Forensics/disk/disk_forensics.sh'
+        injection=r'''
+injected=0
+inject_finish() {
+    [[ $BASHPID = $$ && $injected = 0 && ${FUNCNAME[1]} = forensics_finish &&
+       $BASH_COMMAND = '_FORENSICS_CLEANUP_DONE=1' ]] || return 0
+    injected=1; kill -TERM "$$"
+}
+set -T
+trap inject_finish DEBUG
+'''
+        script.write_text(script.read_text().replace('forensics_finish || failed=1',
+                            injection+'\nforensics_finish || failed=1'))
+        result=self.leaf('disk_forensics.sh',self.source,'--mount-copy',input='MONTAR_COPIA\n')
+        self.assertEqual(result.returncode,1,result.stderr)
+        data=self.manifests()[0]
+        self.assertIn('cleanup_umount',[s['name'] for s in data['steps']])
+        self.assertEqual(data['state'],'CANCELADO')
+        state=json.loads((self.root/'kernel.json').read_text())
+        self.assertFalse(state['mounted'])
+        self.assertIsNone(state['loop'])
 
     def test_mount_signal_releases_only_owned_resources_and_waits_backend(self):
         backend=self.root/'bin'/'findmnt'
