@@ -47,4 +47,4 @@
 - [x] Corregir referencias documentales erróneas a 05 y documentar limitaciones reales.
 - [x] Ejecutar regresiones pertinentes aisladas, sintaxis con stderr, AST Python, git diff --check y hashes de fuentes. Once suites pasan, run_tests sigue rojo: diez fallos reproducidos en padre y un SSTI intermitente de causa no determinada.
 - [x] Revisión independiente exclusiva de mantenimiento; corregir problemas importantes con pruebas.
-- [ ] Commit local de rutas explícitas y traspaso: mantenimiento cerrado; revisión operacional integral fuera del alcance y no implementada; 07 no iniciado.
+- [x] Commit local `1a9b4a6`, 13 rutas explícitas, y traspaso: mantenimiento cerrado; revisión operacional integral fuera del alcance y no implementada; 07 no iniciado.

@@ -30,7 +30,7 @@ existentes; no se mejoraron ni ejecutaron operaciones activas.
 ## Verificación y revisión
 
 Commit previo: `37bdd16` (infraestructura/evidencia y privacidad de menú).
-La entrega final se registra en el historial Git local con rutas explícitas.
+Commit de cierre del mantenimiento: **`1a9b4a6`** (13 rutas explícitas).
 Sin push, instalaciones ni pruebas de explotación/post-explotación reales.
 
 La regresión final se ejecuta en copias de fuentes con Git local, configuración
