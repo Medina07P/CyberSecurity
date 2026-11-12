@@ -459,6 +459,74 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(json.loads(result.stdout)['rc'], 42)
 
+    def assert_contradictory_snapshots_rejected(self, run):
+        consumers = {
+            'read_with_artifacts': lambda: self.e.read_run(run),
+            'read_without_artifacts': lambda: self.e.read_run(run, verify_artifacts=False),
+            'record_complete': lambda: self.step(run),
+            'finish': lambda: self.e.finish_run(run),
+            'integrity': lambda: self.e.check_integrity(run),
+        }
+        before = inventory(run)
+        for name, consume in consumers.items():
+            with self.subTest(consumer=name):
+                with self.assertRaises(ValueError) as error:
+                    consume()
+                self.assertNotIn('SECRET', str(error.exception))
+        self.assertEqual(inventory(run), before)
+
+    def test_file_contradictory_original_and_work_snapshots_rejected(self):
+        for changed in (b'X' * len(self.before), b'changed synthetic SECRET content'):
+            with self.subTest(size=len(changed)):
+                run, item = self.staged()
+                Path(item['work_path']).write_bytes(changed)
+                def change_only_work(data):
+                    data['inputs'][0]['work'].update(
+                        sha256=hashlib.sha256(changed).hexdigest(), size=len(changed))
+                self.rewrite(run, change_only_work)
+                self.assert_contradictory_snapshots_rejected(run)
+                self.assertEqual(self.source.read_bytes(), self.before)
+
+    def test_tree_contradictory_original_and_work_snapshots_rejected(self):
+        tree = self.root / 'sources' / 'tree'
+        tree.mkdir(mode=0o755)
+        (tree / 'data').write_bytes(b'original synthetic')
+        (tree / 'data').chmod(0o644)
+        for changed in (b'X' * len(b'original synthetic'), b'changed synthetic SECRET content'):
+            with self.subTest(size=len(changed)):
+                run = self.run_new()
+                item = self.e.stage_input(run, tree, 'tree')
+                (Path(item['work_path']) / 'data').write_bytes(changed)
+                def change_only_work(data):
+                    work = data['inputs'][0]['work']
+                    entry = next(e for e in work['inventory'] if e['path'] == 'data')
+                    entry.update(sha256=hashlib.sha256(changed).hexdigest(), size=len(changed))
+                    work['size'] = len(changed)
+                    canonical = json.dumps(work['inventory'], sort_keys=True, separators=(',', ':'),
+                                           ensure_ascii=True).encode()
+                    work['sha256'] = hashlib.sha256(canonical).hexdigest()
+                self.rewrite(run, change_only_work)
+                self.assert_contradictory_snapshots_rejected(run)
+                self.assertEqual((tree / 'data').read_bytes(), b'original synthetic')
+
+    def test_public_tree_original_private_copy_can_complete(self):
+        tree = self.root / 'sources' / 'public-tree'
+        tree.mkdir(mode=0o755)
+        (tree / 'nested').mkdir(mode=0o755)
+        (tree / 'nested' / 'data').write_bytes(b'synthetic')
+        (tree / 'nested' / 'data').chmod(0o644)
+        run = self.run_new()
+        item = self.e.stage_input(run, tree, 'tree')
+        self.assertNotEqual(item['original']['sha256'], item['work']['sha256'])
+        self.assertEqual(item['original']['mode'], 0o755)
+        self.assertEqual(item['work']['mode'], 0o700)
+        self.e.read_run(run)
+        self.e.read_run(run, verify_artifacts=False)
+        self.step(run)
+        self.assertEqual(self.e.finish_run(run)['state'], 'COMPLETADO')
+        self.assertEqual(stat.S_IMODE((tree / 'nested' / 'data').stat().st_mode), 0o644)
+        self.assertEqual(stat.S_IMODE((Path(item['work_path']) / 'nested' / 'data').stat().st_mode), 0o600)
+
 
 if __name__ == '__main__':
     unittest.main()
