@@ -33,6 +33,218 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(len(files), 1)
         return json.loads(files[0].read_text())
 
+    def test_cleanup_opt_in_seals_before_close_once_and_preserves_capture_rc(self):
+        with sandbox() as root:
+            result=self.run_shell(root,r'''
+forensics_begin disk offline "$ROOT/outputs" || exit
+cleanup() {
+    [[ -z $_FORENSICS_ACTIVE_PID && -z $_FORENSICS_CONTROL_FD ]] || return 80
+    [[ $(_forensics_helper validate --run "$FORENSICS_RUN_DIR" | _forensics_field finished) = None ]] || return 81
+    forensics_finish && return 82
+    forensics_capture forbidden printf unsafe && return 83
+    printf once >> "$ROOT/cleanup-count"
+    printf diagnostic > "$FORENSICS_RUN_DIR/analysis/cleanup.log"
+    _forensics_helper step --run "$FORENSICS_RUN_DIR" --name cleanup_result --tool internal --rc 0 \
+        --state COMPLETADO --coverage-code cleanup_checked --complete \
+        --artifact "$FORENSICS_RUN_DIR/analysis/cleanup.log" >/dev/null
+}
+forensics_register_cleanup cleanup || exit
+forensics_capture backend bash -c 'printf partial; exit 7'
+forensics_complete_step backend FALLIDO checked || exit
+forensics_finish
+[[ $FORENSICS_STEP_RC = 7 ]] || exit 84
+forensics_finish
+''')
+            self.assertEqual(result.returncode,1,result.stderr)
+            self.assertEqual((root/'cleanup-count').read_text(),'once')
+            data=self.manifest(root)
+            self.assertEqual([s['name'] for s in data['steps']],['backend','cleanup_result'])
+            self.assertEqual(data['steps'][0]['rc'],7)
+            self.assertEqual(data['steps'][1]['state'],'COMPLETADO')
+            self.assertIsNotNone(data['finished'])
+
+    def test_cleanup_opt_in_prelaunch_cancel_keeps_sticky_gate_and_prior_trap_order(self):
+        with sandbox() as root:
+            result=self.run_shell(root,r'''
+prior() {
+    [[ $(_forensics_helper validate --run "$FORENSICS_RUN_DIR" | _forensics_field finished) != None ]] || exit 81
+    printf prior >> "$ROOT/prior"
+}
+trap prior TERM
+forensics_begin disk offline "$ROOT/outputs" || exit
+cleanup() {
+    [[ -z $_FORENSICS_ACTIVE_PID ]] || return 82
+    printf sealed > "$FORENSICS_RUN_DIR/analysis/cleanup.log"
+    _forensics_helper step --run "$FORENSICS_RUN_DIR" --name cleanup_result --tool internal --rc 0 \
+        --state COMPLETADO --coverage-code cleanup_checked --complete \
+        --artifact "$FORENSICS_RUN_DIR/analysis/cleanup.log" >/dev/null
+}
+forensics_register_cleanup cleanup || exit
+backend() { printf forbidden > "$ROOT/backend-started"; }
+injected=0
+inject_cancel() {
+    [[ $BASHPID = $$ && $injected = 0 && $BASH_COMMAND = _forensics_start_supervisor* ]] || return 0
+    injected=1; kill -TERM "$$"; kill -TERM "$$"
+}
+set -T
+trap inject_cancel DEBUG
+forensics_capture interrupted backend
+trap - DEBUG
+[[ $(trap -p TERM) = *prior* ]] || exit 83
+forensics_finish
+''')
+            self.assertEqual(result.returncode,1,result.stderr)
+            self.assertFalse((root/'backend-started').exists())
+            self.assertEqual((root/'prior').read_text(),'prior')
+            data=self.manifest(root)
+            self.assertEqual(data['state'],'CANCELADO')
+            self.assertEqual(data['steps'][0]['rc'],0)
+            self.assertIsNone(data['steps'][0]['signal'])
+            self.assertIn('cleanup_result',[s['name'] for s in data['steps']])
+
+    def test_cleanup_opt_in_failure_blocks_success_without_inventing_backend_rc(self):
+        with sandbox() as root:
+            result=self.run_shell(root,r'''
+forensics_begin disk offline "$ROOT/outputs" || exit
+cleanup() { return 23; }
+forensics_register_cleanup cleanup || exit
+forensics_capture backend printf okay || exit
+forensics_complete_step backend COMPLETADO checked || exit
+forensics_finish
+[[ $FORENSICS_STEP_RC = 0 ]] || exit 80
+forensics_finish
+''')
+            self.assertEqual(result.returncode,1,result.stderr)
+            data=self.manifest(root)
+            self.assertTrue(data['dependents_blocked'])
+            self.assertEqual(data['state'],'FALLIDO')
+            self.assertEqual(data['steps'][0]['rc'],0)
+
+    def test_cleanup_opt_in_signal_during_finish_is_sticky_and_prior_handler_after_close(self):
+        with sandbox() as root:
+            result=self.run_shell(root,r'''
+forensics_begin disk offline "$ROOT/outputs" || exit
+prior() {
+    [[ $(_forensics_helper validate --run "$FORENSICS_RUN_DIR" | _forensics_field finished) != None ]] || exit 81
+    printf prior >> "$ROOT/prior"
+}
+trap prior TERM
+trap '' INT
+old_int=$(trap -p INT)
+cleanup() {
+    kill -TERM "$$"
+    kill -TERM "$$"
+    [[ $(_forensics_helper validate --run "$FORENSICS_RUN_DIR" | _forensics_field finished) = None ]] || return 82
+    printf sealed > "$FORENSICS_RUN_DIR/analysis/cleanup.log"
+    _forensics_helper step --run "$FORENSICS_RUN_DIR" --name cleanup_result --tool internal --rc 0 \
+        --state COMPLETADO --coverage-code cleanup_checked --complete \
+        --artifact "$FORENSICS_RUN_DIR/analysis/cleanup.log" >/dev/null
+}
+forensics_register_cleanup cleanup || exit
+forensics_capture backend printf okay || exit
+forensics_complete_step backend COMPLETADO checked || exit
+forensics_finish
+[[ $(trap -p INT) = "$old_int" && $(trap -p TERM) = *prior* ]] || exit 83
+[[ $FORENSICS_STEP_RC = 0 ]] || exit 84
+forensics_finish
+''')
+            self.assertEqual(result.returncode,1,result.stderr)
+            self.assertEqual((root/'prior').read_text(),'prior')
+            data=self.manifest(root)
+            self.assertEqual(data['state'],'CANCELADO')
+            self.assertEqual(data['steps'][0]['rc'],0)
+            self.assertIsNone(data['steps'][0]['signal'])
+
+    def test_cleanup_opt_in_registration_validated_and_begin_does_not_inherit_it(self):
+        with sandbox() as root:
+            result=self.run_shell(root,r'''
+forensics_begin disk offline "$ROOT/outputs" || exit
+cleanup() { printf once >> "$ROOT/cleanup-count"; }
+forensics_register_cleanup 'cleanup;printf unsafe'; [[ $? = 2 ]] || exit 80
+forensics_register_cleanup missing; [[ $? = 2 ]] || exit 81
+forensics_register_cleanup cleanup || exit
+forensics_register_cleanup cleanup; [[ $? = 2 ]] || exit 82
+forensics_capture backend printf okay || exit
+forensics_complete_step backend COMPLETADO checked || exit
+forensics_finish || exit
+forensics_register_cleanup cleanup; [[ $? = 2 ]] || exit 83
+forensics_begin strings offline "$ROOT/other" || exit
+forensics_capture backend printf okay || exit
+forensics_complete_step backend COMPLETADO checked || exit
+forensics_finish
+''')
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual((root/'cleanup-count').read_text(),'once')
+
+    def test_cleanup_opt_in_cancel_metadata_failure_is_not_semantic_rc_one(self):
+        with sandbox() as root:
+            env=self.environment(root)
+            copied=root/'lib'; copied.mkdir(mode=0o700)
+            for name in ('forensics_runtime.bash','forensics_evidence.py'):
+                (copied/name).write_bytes(RUNTIME.with_name(name).read_bytes())
+            helper=copied/'forensics_evidence.py'
+            helper.write_text(helper.read_text().replace("elif command == 'step':", """elif command == 'step':
+            if args.name == 'runtime_cleanup_cancelled': raise OSError('synthetic metadata failure')"""))
+            env['RUNTIME']=str(copied/'forensics_runtime.bash')
+            result=self.run_shell(root,r'''
+forensics_begin disk offline "$ROOT/outputs" || exit
+cleanup() { kill -TERM "$$"; return 0; }
+forensics_register_cleanup cleanup || exit
+forensics_capture backend printf okay || exit
+forensics_complete_step backend COMPLETADO checked || exit
+forensics_finish
+''',env)
+            self.assertEqual(result.returncode,1,result.stderr)
+            data=self.manifest(root)
+            self.assertEqual(data['state'],'FALLIDO')
+            self.assertTrue(data['dependents_blocked'])
+            self.assertEqual(data['steps'][0]['rc'],0)
+
+    def test_cleanup_opt_in_cannot_mutate_a_run_closed_outside_the_runtime(self):
+        with sandbox() as root:
+            result=self.run_shell(root,r'''
+forensics_begin disk offline "$ROOT/outputs" || exit
+cleanup() { printf forbidden > "$FORENSICS_RUN_DIR/analysis/late.log"; }
+forensics_register_cleanup cleanup || exit
+forensics_capture backend printf okay || exit
+forensics_complete_step backend COMPLETADO checked || exit
+_forensics_helper finish --run "$FORENSICS_RUN_DIR" >/dev/null || exit
+forensics_finish
+''')
+            self.assertEqual(result.returncode,1,result.stderr)
+            run=next((root/'outputs').iterdir())
+            self.assertFalse((run/'analysis/late.log').exists())
+            self.assertEqual(self.manifest(root)['state'],'COMPLETADO')
+
+    def test_cleanup_opt_in_reentry_before_trap_installation_cannot_run_callback_twice(self):
+        with sandbox() as root:
+            result=self.run_shell(root,r'''
+forensics_begin disk offline "$ROOT/outputs" || exit
+cleanup() {
+    printf once >> "$ROOT/cleanup-count"
+    printf sealed > "$FORENSICS_RUN_DIR/analysis/cleanup.log"
+    _forensics_helper step --run "$FORENSICS_RUN_DIR" --name cleanup_result --tool internal --rc 0 \
+        --state COMPLETADO --coverage-code cleanup_checked --complete \
+        --artifact "$FORENSICS_RUN_DIR/analysis/cleanup.log" >/dev/null
+}
+forensics_register_cleanup cleanup || exit
+forensics_capture backend printf okay || exit
+forensics_complete_step backend COMPLETADO checked || exit
+trap forensics_finish TERM
+injected=0
+inject_finish() {
+    [[ $BASHPID = $$ && $injected = 0 && ${FUNCNAME[1]} = forensics_finish &&
+       $BASH_COMMAND = 'old_int='* ]] || return 0
+    injected=1; kill -TERM "$$"
+}
+set -T
+trap inject_finish DEBUG
+forensics_finish
+''')
+            self.assertEqual((root/'cleanup-count').read_text(),'once')
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(self.manifest(root)['state'],'COMPLETADO')
+
     def test_cancel_before_launch_and_before_registration_never_starts_backend(self):
         for boundary in ('launch', 'registration', 'authorization'):
             with self.subTest(boundary=boundary), sandbox() as root:

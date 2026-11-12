@@ -42,13 +42,23 @@ try:
         require(re.fullmatch(r'/dev/loop[0-9]+',d['name']) is not None)
         print(d['name'])
     elif action=='mount-check':
-        metadata,loop,point,fs,options=args
+        metadata,loop,point,fs,options,expected_id=args
         records=json.loads(path(metadata).read_text())['filesystems']
         require(len(records)==1)
         d=records[0]
         require(d['source']==loop and d['target']==str(path(point)) and d['fstype']==fs)
         required=set(options.split(',')); actual=set(d['options'].split(','))
         require(required<=actual and 'rw' not in actual)
+        # stat(path) now describes the mounted filesystem, not its covered
+        # directory. Authenticate this active view against the kernel mount.
+        require(re.fullmatch(r'[0-9]+:[0-9]+',d['maj:min']) is not None)
+        major,minor=map(int,d['maj:min'].split(':'))
+        info=path(point).stat()
+        require(stat.S_ISDIR(info.st_mode) and info.st_dev==os.makedev(major,minor))
+        mount_id=d['id']
+        require(type(mount_id) is int and mount_id>0)
+        require(not expected_id or mount_id==int(expected_id))
+        print(mount_id)
     elif action=='mount-absent':
         records=json.loads(path(args[0]).read_text())['filesystems']
         require(type(records) is list)
@@ -104,6 +114,12 @@ try:
         p=path(args[0]); s=p.stat()
         require(stat.S_ISDIR(s.st_mode) and s.st_uid==os.geteuid() and
                 stat.S_IMODE(s.st_mode)==0o700 and f'{s.st_dev}:{s.st_ino}'==args[1])
+    elif action=='anchor-check':
+        # This inherited descriptor stays attached to the private covered inode,
+        # including while the pathname resolves to a different filesystem root.
+        s=os.fstat(int(args[0]))
+        require(stat.S_ISDIR(s.st_mode) and s.st_uid==os.geteuid() and
+                stat.S_IMODE(s.st_mode)==0o700 and f'{s.st_dev}:{s.st_ino}'==args[1])
     elif action=='point-id':
         s=path(args[0]).stat(); print(f'{s.st_dev}:{s.st_ino}')
     elif action=='rmdir':
@@ -157,11 +173,14 @@ _forensics_disk_loop_probe() {
 }
 
 _forensics_disk_mount_probe() {
-    findmnt --json --mountpoint "$_FORENSICS_DISK_POINT" --output SOURCE,TARGET,FSTYPE,OPTIONS \
+    _forensics_disk_python anchor-check "$_FORENSICS_DISK_POINT_FD" "$_FORENSICS_DISK_POINT_ID" || return 1
+    findmnt --json --mountpoint "$_FORENSICS_DISK_POINT" --output SOURCE,TARGET,FSTYPE,OPTIONS,MAJ:MIN,ID \
         >"$_FORENSICS_DISK_CONTROL/mount.json" 2>>"$_FORENSICS_DISK_CONTROL/cleanup.log" || return 1
-    _forensics_disk_python same-point "$_FORENSICS_DISK_POINT" "$_FORENSICS_DISK_POINT_ID" || return 1
-    _forensics_disk_python mount-check "$_FORENSICS_DISK_CONTROL/mount.json" \
-        "$_FORENSICS_DISK_LOOP" "$_FORENSICS_DISK_POINT" "$_FORENSICS_DISK_FS" "$_FORENSICS_DISK_OPTIONS"
+    local observed
+    observed=$(_forensics_disk_python mount-check "$_FORENSICS_DISK_CONTROL/mount.json" \
+        "$_FORENSICS_DISK_LOOP" "$_FORENSICS_DISK_POINT" "$_FORENSICS_DISK_FS" "$_FORENSICS_DISK_OPTIONS" \
+        "${_FORENSICS_DISK_MOUNT_ID:-}") || return 1
+    _FORENSICS_DISK_MOUNT_ID=$observed
 }
 
 _forensics_disk_publish_step() {
@@ -216,7 +235,7 @@ forensics_disk_release() {
     [[ -n ${_FORENSICS_DISK_CONTROL:-} ]] || return 0
     [[ ${_FORENSICS_DISK_RELEASED:-0} = 0 ]] || return 0
     [[ ${_FORENSICS_DISK_CLEANUP_FAILED:-0} = 0 ]] || return 1
-    _forensics_disk_python same-point "$_FORENSICS_DISK_POINT" "$_FORENSICS_DISK_POINT_ID" || {
+    _forensics_disk_python anchor-check "$_FORENSICS_DISK_POINT_FD" "$_FORENSICS_DISK_POINT_ID" || {
         _forensics_disk_manual; return 1;
     }
     if [[ ${_FORENSICS_DISK_LOOP_ATTEMPTED:-0} = 1 ]]; then
@@ -236,6 +255,10 @@ forensics_disk_release() {
                 _forensics_disk_python mount-absent "$_FORENSICS_DISK_CONTROL/mount-after.json" "$_FORENSICS_DISK_POINT" || {
                     _forensics_disk_manual; return 1;
                 }
+            # Only now does stat(path) expose the covered private directory.
+            _forensics_disk_python same-point "$_FORENSICS_DISK_POINT" "$_FORENSICS_DISK_POINT_ID" || {
+                _forensics_disk_manual; return 1;
+            }
         fi
         # Check backing identity/ro again immediately before detach.
         _forensics_disk_loop_probe >/dev/null || { _forensics_disk_manual; return 1; }
@@ -253,12 +276,19 @@ forensics_disk_release() {
     _forensics_disk_python same-point "$_FORENSICS_DISK_POINT" "$_FORENSICS_DISK_POINT_ID" && \
         _forensics_disk_python rmdir "$_FORENSICS_DISK_POINT" || { _forensics_disk_manual; return 1; }
     _FORENSICS_DISK_RELEASED=1
+    exec {_FORENSICS_DISK_POINT_FD}<&-
     printf 'cleanup_complete\n' >>"$_FORENSICS_DISK_CONTROL/cleanup.log"
 }
 
 _forensics_disk_cancel() {
+    if [[ ${_FORENSICS_CLEANUP_ACTIVE:-0} = 1 ]]; then
+        # During finish's pre-trap boundary, defer rather than exiting before
+        # the registered finalizer can release resources and seal its receipt.
+        _forensics_cleanup_signal "${1:-15}"
+        return 0
+    fi
     trap '' INT TERM
-    forensics_disk_release || :
+    if (( _FORENSICS_CANCELLED == 0 )); then _FORENSICS_CANCELLED=${1:-15}; fi
     local metadata finished
     metadata=$(_forensics_helper validate --run "$FORENSICS_RUN_DIR") || metadata=
     if [[ -n $metadata ]]; then
@@ -270,6 +300,15 @@ _forensics_disk_cancel() {
     fi
     forensics_finish || :
     exit 1
+}
+
+# Registered explicitly by the mounting leaf. Runs after all capture writers
+# are reaped, but BEFORE finish seals the run. Late prior handlers do no cleanup.
+forensics_disk_finalize() {
+    local state=COMPLETADO
+    forensics_disk_release || state=FALLIDO
+    [[ ${_FORENSICS_DISK_REQUEST_FAILED:-0} = 0 ]] || state=FALLIDO
+    _forensics_disk_publish_resources "$state"
 }
 
 forensics_disk_listing() {
@@ -309,6 +348,9 @@ sys.exit(0 if data["mode"]=="offline" and data["finished"] is None and
     _FORENSICS_DISK_CONTROL=$(_forensics_disk_python mkdir "$FORENSICS_RUN_DIR/analysis/disk-control") || return 1
     _FORENSICS_DISK_POINT=$(_forensics_disk_python mkdir "$FORENSICS_RUN_DIR/work/mountpoint") || return 1
     _FORENSICS_DISK_POINT_ID=$(_forensics_disk_python point-id "$_FORENSICS_DISK_POINT") || return 1
+    exec {_FORENSICS_DISK_POINT_FD}<"$_FORENSICS_DISK_POINT" || return 1
+    _forensics_disk_python anchor-check "$_FORENSICS_DISK_POINT_FD" "$_FORENSICS_DISK_POINT_ID" || return 1
+    _FORENSICS_DISK_MOUNT_ID=
     _FORENSICS_DISK_RELEASED=0
     _FORENSICS_DISK_CLEANUP_FAILED=0
     _FORENSICS_DISK_MOUNT_ATTEMPTED=0

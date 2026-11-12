@@ -45,7 +45,10 @@ else
     printf 'Se copiará y verificará la imagen íntegra; requiere tiempo y espacio.\n' >&2
     copy=$(forensics_stage "$source_path") || exit $?
 fi
-trap _forensics_disk_cancel INT TERM
+trap '_forensics_disk_cancel 2' INT
+trap '_forensics_disk_cancel 15' TERM
+_FORENSICS_DISK_REQUEST_FAILED=0
+if (( mount_copy )); then forensics_register_cleanup forensics_disk_finalize || exit $?; fi
 failed=0
 for tool in file fdisk blkid; do
     if ! command -v "$tool" >/dev/null 2>&1; then forensics_skip "$tool" dependency_missing || :; failed=1; continue; fi
@@ -60,9 +63,7 @@ done
 if (( mount_copy )); then
     if [[ -z $offset ]]; then forensics_disk_mount "$copy" || failed=1
     else forensics_disk_mount "$copy" "$offset" "$length" || failed=1; fi
-    forensics_disk_release || failed=1
-    if (( failed )); then resource_state=FALLIDO; else resource_state=COMPLETADO; fi
-    _forensics_disk_publish_resources "$resource_state" || failed=1
+    _FORENSICS_DISK_REQUEST_FAILED=$failed
 fi
 # Autopsy remains a manual optional method, never auto-launched.
 command -v autopsy >/dev/null 2>&1 && printf 'Autopsy disponible para apertura manual de una copia.\n' >&2
