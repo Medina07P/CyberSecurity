@@ -482,7 +482,7 @@ _RULES: dict[str, tuple[str, str, str, str, str, str, str, tuple[str, ...]]] = {
         ("https://owasp.org/www-project-top-ten/",),
     ),
     "postexploitation.denegado": (
-        "media",
+        "info",
         "observacion",
         "Acceso denegado en post-explotación",
         "La capacidad de post-explotación fue rechazada por el sistema y quedó "

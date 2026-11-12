@@ -1,5 +1,16 @@
 # AGENTS.md
 
+**Actualización 2026-11-11:** la nota de pausa siguiente es histórica. El bloque
+de infraestructura de 06 está en el commit local `37bdd16`; el cierre de
+**mantenimiento** (menú, informes, validación y pruebas aisladas) se documenta
+en `docs/CIERRE-MANTENIMIENTO-06-2026-11-11.md`, con su estado de verificación.
+No confundirlo con integración operacional de las hojas o el flujo completo:
+no se declaran terminados. Los cambios previos de scope.yaml, cleanup,
+port_forward y run_all_post se conservan fuera del commit de mantenimiento.
+No repetir 05 como si estuviera pendiente desde la nota antigua ni iniciar 07
+sin leer los documentos actuales. Sin push; suites antiguas solo en copia
+limpia sin configuración/evidencia real.
+
 **Pausa 2026-11-10:** 03/04 terminados y diez suites pasando en clon limpio.
 Commits locales autorizados después de la pausa, sin push; scope.yaml permanece
 como configuración local fuera de los commits. El permiso api_keys.py se incluye.
