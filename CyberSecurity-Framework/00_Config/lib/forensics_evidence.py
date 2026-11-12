@@ -668,12 +668,17 @@ class _OwnedProcessGroup:
             os.close(self.hold_fd)
 
 
-_EXEC_GATE = '''import os, sys
+_EXEC_GATE = '''import os, signal, sys
 gate = int(sys.argv[1])
 permission = os.read(gate, 1)
 os.close(gate)
 if permission != b'G':
     os._exit(125)
+# Match Popen(restore_signals=True) again: starting this Python gate reset
+# these dispositions to SIG_IGN after Popen's initial child restoration.
+for name in ('SIGPIPE', 'SIGXFZ', 'SIGXFSZ'):
+    if hasattr(signal, name):
+        signal.signal(getattr(signal, name), signal.SIG_DFL)
 os.execvp('bash', ['bash', '-c', 'set -o pipefail; "$@"', 'forensics', *sys.argv[2:]])
 '''
 
