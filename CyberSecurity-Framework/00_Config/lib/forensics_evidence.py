@@ -279,6 +279,19 @@ def start_run(root: Path, operation: str, mode: str, inputs: list[dict]) -> Path
     return run
 
 
+def _same_content(original, work, kind):
+    if original['size'] != work['size']:
+        return False
+    if kind == 'file':
+        return original['sha256'] == work['sha256']
+    # Tree digests include permissions; compare every inventory field except
+    # mode, since staging deliberately makes the copy private (700/600).
+    def contents(snapshot):
+        return [{k: v for k, v in entry.items() if k != 'mode'}
+                for entry in snapshot['inventory']]
+    return contents(original) == contents(work)
+
+
 def stage_input(run_dir: Path, source: Path, kind: str = 'file') -> dict:
     run = _path(run_dir)
     data = read_run(run)
@@ -296,12 +309,7 @@ def stage_input(run_dir: Path, source: Path, kind: str = 'file') -> dict:
         _copy(source, destination, kind, snapshot)
         _require(_snapshot(source, kind) == snapshot)
         work = _snapshot(destination, kind)
-        if kind == 'file':
-            _require((snapshot['sha256'], snapshot['size']) == (work['sha256'], work['size']))
-        else:
-            def contents(s):
-                return [{k: v for k, v in entry.items() if k != 'mode'} for entry in s['inventory']]
-            _require(contents(snapshot) == contents(work))
+        _require(_same_content(snapshot, work, kind))
         item = dict(input_id=input_id, kind=kind, work_path=str(destination),
                     sha256=snapshot['sha256'], size=snapshot['size'], mode=snapshot['mode'],
                     original=snapshot, work=work)
@@ -420,6 +428,7 @@ def read_run(path: Path, *, verify_artifacts: bool = True) -> dict:
             _require(item['work_path'] == str(run / 'work' / iid))
             for snapshot in ('original', 'work'):
                 _validate_snapshot(item[snapshot], item['kind'])
+            _require(_same_content(item['original'], item['work'], item['kind']))
             _require(all(item[k] == item['original'][k] and type(item[k]) is type(item['original'][k])
                          for k in ('sha256', 'size', 'mode')))
             if verify_artifacts:
