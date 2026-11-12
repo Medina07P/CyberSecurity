@@ -1,5 +1,10 @@
 # Post-explotación guiada (06) — 2026-11-10
 
+**Actualización 2026-11-11:** el usuario aceptó cerrar únicamente mantenimiento
+de menú, informes, validación y pruebas aisladas. El estado vigente de esa
+entrega está en `CIERRE-MANTENIMIENTO-06-2026-11-11.md`; las menciones siguientes
+a pendientes operacionales pertenecen al plan integral, no se declaran resueltas.
+
 ## Objetivo
 
 Conservar todas las capacidades de `06_PostExploitation`, registrar su
