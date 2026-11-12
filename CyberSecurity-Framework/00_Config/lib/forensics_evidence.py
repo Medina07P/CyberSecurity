@@ -668,12 +668,23 @@ class _OwnedProcessGroup:
             os.close(self.hold_fd)
 
 
+_EXEC_GATE = '''import os, sys
+gate = int(sys.argv[1])
+permission = os.read(gate, 1)
+os.close(gate)
+if permission != b'G':
+    os._exit(125)
+os.execvp('bash', ['bash', '-c', 'set -o pipefail; "$@"', 'forensics', *sys.argv[2:]])
+'''
+
+
 def _supervise_capture(run_dir, name, tool, arguments):
     """Internal Linux supervisor; stdin/stdout are private protocol pipes.
 
     READY -> GO|CANCEL N -> RESULT json -> RELEASE. GO is launch authorization;
-    cancellation queued before authorization wins. No backend can exist before
-    the Bash owner has registered its control channel and authorized GO.
+    cancellation queued before authorization wins. GO permits an innocuous
+    worker only; the tool's exec is gated on that worker's concrete pidfd and
+    selector registration. Exec retains the PID to which the handle refers.
     """
     run, _, _, _ = _pending_capture(run_dir, name, CAPTURE_PENDING)
     _identifier(tool)
@@ -681,6 +692,8 @@ def _supervise_capture(run_dir, name, tool, arguments):
     streams = [_private(p) for p in _capture_paths(run, name)]
     group = backend = None
     pid_fd = None
+    gate_write = None
+    tool_authorized = False
     cancelled = 0
     authorized = False
     buffered = b''
@@ -734,13 +747,31 @@ def _supervise_capture(run_dir, name, tool, arguments):
                             os.read(wake_read, 4096)
                     if cancelled:
                         break
-                    with streams[0].open('wb') as out, streams[1].open('wb') as err:
-                        backend = subprocess.Popen(
-                            ['bash', '-c', 'set -o pipefail; "$@"', 'forensics', tool, *arguments],
-                            stdin=subprocess.DEVNULL, stdout=out, stderr=err,
-                            process_group=group.pid)
+                    gate_read, gate_write = os.pipe()
+                    try:
+                        with streams[0].open('wb') as out, streams[1].open('wb') as err:
+                            backend = subprocess.Popen(
+                                [sys.executable, '-B', '-c', _EXEC_GATE, str(gate_read), tool, *arguments],
+                                stdin=subprocess.DEVNULL, stdout=out, stderr=err,
+                                pass_fds=(gate_read,), process_group=group.pid)
+                    finally:
+                        os.close(gate_read)
                     pid_fd = os.pidfd_open(backend.pid)
                     selector.register(pid_fd, selectors.EVENT_READ, 'backend')
+                    # A self-probe or hasattr cannot represent this child's
+                    # permissions. Until the real handle is usable, this PID
+                    # runs only the inert gate, never Bash or the requested tool.
+                    for key, _ in selector.select(0):
+                        if key.data == 'control':
+                            control()
+                        elif key.data == 'signal':
+                            os.read(wake_read, 4096)
+                    if cancelled:
+                        break
+                    os.write(gate_write, b'G')
+                    tool_authorized = True
+                    os.close(gate_write)
+                    gate_write = None
                 if backend is not None and backend.poll() is not None:
                     selector.unregister(pid_fd)
                     os.close(pid_fd)
@@ -753,7 +784,7 @@ def _supervise_capture(run_dir, name, tool, arguments):
             result = dict(rc=128 - actual_rc if actual_rc < 0 else actual_rc,
                           terminating_signal=terminating_signal,
                           cancellation_wrapper_signal=cancelled or None,
-                          started=backend is not None)
+                          started=tool_authorized, worker_created=backend is not None)
             if group is not None:
                 group.close()
             print('RESULT ' + json.dumps(result, sort_keys=True), flush=True)
@@ -772,6 +803,8 @@ def _supervise_capture(run_dir, name, tool, arguments):
             backend.wait()
         if pid_fd is not None:
             os.close(pid_fd)
+        if gate_write is not None:
+            os.close(gate_write)
         process_signal.set_wakeup_fd(previous_wakeup)
         for sig, handler in previous_handlers.items():
             process_signal.signal(sig, handler)
