@@ -7,8 +7,11 @@
 permisos ni auditoría. `wifi_handshake.sh` imprime guía, no captura ni verifica
 automáticamente. Las diez fuentes originales y los cuatro pendientes ajenos
 se conservan por hash/modo; no se ejecutan hojas, radio, sudo o instalaciones.
-Documentación y regresión en `docs/WIRELESS-MANTENIMIENTO-2026-11-11.md`;
-la revisión de Task 2 y la aprobación final corresponden al controlador.
+Documentación y regresión entregadas en `7bcc5bc` y descritas en
+`docs/WIRELESS-MANTENIMIENTO-2026-11-11.md`. Ambas tareas tienen revisión de
+especificación y calidad aprobadas; la revisión global aprobó el cierre del
+mantenimiento, entregado y revisado. Evidencia definitiva del controlador:
+`/tmp/opencode/wireless-maint-avl4ag6x/` (cinco suites rc 0 sobre `7bcc5bc`).
 No declarar implementado el plan operacional integral de 07 ni toda la rama
 verde: `run_tests` sigue heredada en rojo (último cierre de 06: 374 pasan,
 11 fallan, incluido SSTI intermitente sin causa determinada). Suites antiguas

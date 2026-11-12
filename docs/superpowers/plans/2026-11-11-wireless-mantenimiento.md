@@ -66,12 +66,18 @@ controlador. Los cinco pasos siguientes corresponden a esa entrega.
 
 - [x] **Step 1: Corregir documentación.** Describir menú y opciones, lista original conservada, handshake como guía y diferencia entre comprobar dependencias y ejecutar operaciones. No añadir comandos de ataque nuevos.
 - [x] **Step 2: Regresión aislada.** Suite wireless_maintenance, postexploitation, smoke, e2e y reports en copia limpia; conservar logs y rc. Comparar hash/modo de scripts originales y pendientes ajenos; git diff --check y sintaxis con stderr. No declarar run_tests satisfactoria: su estado heredado documentado es rojo.
-- [ ] **Step 3: Revisión independiente.** Revisor solo de mantenimiento, sin operaciones activas. Importantes se reproducen con tests RED→GREEN y una pasada de fixes; menores se documentan.
-- [ ] **Step 4: Commit y traspaso.** Rutas documentales explícitas, sin push; cierre denominado mantenimiento de 07, no implementación del plan operacional integral.
+- [x] **Step 3: Revisión independiente.** Ambas tareas aprobadas en especificación y calidad. Revisión global de mantenimiento sin críticos/importantes; único menor documental atendido en la pasada final, sin operaciones activas.
+- [x] **Step 4: Commit y traspaso.** Entregas locales `045d2c8` (Task 1) y `7bcc5bc` (Task 2), con rutas explícitas y sin push; mantenimiento entregado y revisado, no implementación del plan operacional integral.
 
-Documentación/regresión preparadas para el controlador; su revisión de Task 2
-y aprobación final siguen pendientes. Step 4 se registra en el reporte local
-de la tarea al crear el commit, sin anticipar una aprobación independiente.
+La revisión global `ses_e329500e4ffeR1bjD7XXwthgjS` indicó «Ready to cerrar: Sí».
+Evidencia definitiva del controlador sobre `7bcc5bc`:
+`/tmp/opencode/wireless-maint-avl4ag6x/` (cinco suites rc 0 y
+`suite-results.json`). El historial local registra los commits entregados y
+la pasada documental final; su re-revisión acotada corresponde al controlador.
+No se repiten suites por esta corrección documental: diffcheck, referencias,
+inventario y guardas de hash/modo verifican el cambio, con código intacto.
+El plan operacional integral de 07 no está implementado y la rama no está toda
+verde: `run_tests.sh` conserva el rojo heredado (último cierre de 06: 374/11).
 
 ## Self-review
 
