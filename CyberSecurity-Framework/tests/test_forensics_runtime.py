@@ -86,6 +86,72 @@ forensics_finish
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse((root / 'signal-calls').exists(), 'Bash still signals a reusable numeric PGID')
 
+    def test_pidfd_failure_never_executes_tool_even_after_go(self):
+        for failure in ('ENOSYS', 'EPERM', 'CHILD_EPERM'):
+            with self.subTest(failure=failure), sandbox() as root:
+                env = self.environment(root)
+                copied = root / 'lib'
+                copied.mkdir(mode=0o700)
+                for name in ('forensics_runtime.bash', 'forensics_evidence.py'):
+                    (copied / name).write_bytes(RUNTIME.with_name(name).read_bytes())
+                    (copied / name).chmod(0o600)
+                env['RUNTIME'] = str(copied / 'forensics_runtime.bash')
+                env['FAILURE'] = failure
+                injector = root / 'sources/injector.py'
+                injector.write_text('''import errno, os, subprocess, sys
+from pathlib import Path
+namespace = {'__name__': 'injected_evidence', '__file__': sys.argv[1]}
+exec(compile(Path(sys.argv[1]).read_bytes(), sys.argv[1], 'exec'), namespace)
+real_open, real_popen = os.pidfd_open, subprocess.Popen
+failure = os.environ['FAILURE']
+if failure == 'CHILD_EPERM':
+    handle = real_open(os.getpid())
+    os.close(handle)
+    Path(os.environ['ROOT']+'/self-probe-ok').write_text('ok')
+def opening(pid, flags=0):
+    if failure == 'CHILD_EPERM' and pid == os.getpid():
+        return real_open(pid, flags)
+    Path(os.environ['ROOT']+'/pidfd-attempt').write_text('child' if pid != os.getpid() else 'self')
+    raise OSError(errno.ENOSYS if failure == 'ENOSYS' else errno.EPERM, 'injected pidfd failure')
+def scheduled(argv, **kwargs):
+    child = real_popen(argv, **kwargs)
+    # Make the original unsafe direct-Bash launch finish its innocuous marker
+    # before returning Popen. Never wait for a gated interpreter to be released.
+    if argv[0] == 'bash':
+        child.wait()
+    return child
+os.pidfd_open, subprocess.Popen = opening, scheduled
+sys.exit(namespace['main'](sys.argv[2:]))
+''')
+                injector.chmod(0o600)
+                result = self.run_shell(root, r'''
+_forensics_helper() {
+    if [[ $1 = supervise ]]; then
+        python3 -B "$ROOT/sources/injector.py" "$_FORENSICS_HELPER" "$@"
+    else
+        python3 -B "$_FORENSICS_HELPER" "$@"
+    fi
+}
+forensics_begin strings offline "$ROOT/outputs" || exit
+backend() { printf forbidden > "$ROOT/tool-started"; }
+forensics_capture failed backend
+capture_status=$?
+[[ $capture_status = 1 ]] || exit 80
+forensics_finish
+''', env)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertFalse((root / 'tool-started').exists(), 'tool ran without an effective concrete pidfd')
+                self.assertEqual(result.stdout, '')
+                self.assertIn('Error forense', result.stderr)
+                self.assertEqual((root / 'pidfd-attempt').read_text(), 'child')
+                if failure == 'CHILD_EPERM':
+                    self.assertEqual((root / 'self-probe-ok').read_text(), 'ok')
+                data = self.manifest(root)
+                self.assertEqual((data['state'], data['rc'], data['complete']), ('FALLIDO', 1, False))
+                self.assertTrue(data['dependents_blocked'])
+                self.assertEqual(data['steps'][0]['state'], 'PARCIAL')
+                self.assertEqual(data['steps'][0]['coverage']['code'], 'runtime_pending')
+
     def test_streams_and_delayed_publication_preserve_each_rc(self):
         with sandbox() as root:
             result = self.run_shell(root, '''
@@ -502,7 +568,8 @@ class CaptureApiTests(unittest.TestCase):
                 self.assertTrue(line.startswith('RESULT '), line)
                 result = json.loads(line.removeprefix('RESULT '))
                 self.assertEqual(result, dict(rc=137, terminating_signal=9,
-                                             cancellation_wrapper_signal=2, started=True))
+                                             cancellation_wrapper_signal=2, started=True,
+                                             worker_created=True))
                 worker.stdin.write('RELEASE\n')
                 worker.stdin.flush()
                 stdout, stderr = worker.communicate(timeout=5)
