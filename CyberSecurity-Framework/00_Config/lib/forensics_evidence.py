@@ -12,7 +12,10 @@ import json
 import os
 from pathlib import Path
 import re
+import selectors
+import signal as process_signal
 import stat
+import subprocess
 import sys
 import uuid
 
@@ -618,6 +621,164 @@ def complete_capture(run_dir, name, state, coverage_code):
     return _publish_capture(run, data, index, step)
 
 
+class _OwnedProcessGroup:
+    """Dedicated unreaped child reserves the PGID until every group signal ends.
+
+    Only the dedicated supervisor owns/reaps this fork child. In particular it
+    is NOT a Popen object subject to subprocess's asynchronous cleanup list.
+    """
+    def __init__(self):
+        _require(process_signal.getsignal(process_signal.SIGCHLD) == process_signal.SIG_DFL)
+        read_fd, self.hold_fd = os.pipe()
+        self.pid = os.fork()
+        if self.pid == 0:
+            try:
+                os.close(self.hold_fd)
+                os.setpgid(0, 0)
+                process_signal.signal(process_signal.SIGTERM, process_signal.SIG_IGN)
+                process_signal.signal(process_signal.SIGINT, process_signal.SIG_IGN)
+                for fd in (0, 1, 2):
+                    if fd != read_fd:
+                        os.close(fd)
+                os.read(read_fd, 1)  # supervisor death closes the sole writer
+            finally:
+                os._exit(0)
+        os.close(read_fd)
+        os.setpgid(self.pid, self.pid)
+
+    def stop(self):
+        if self.pid is not None:
+            try:
+                os.killpg(self.pid, process_signal.SIGKILL)
+            except ProcessLookupError:
+                # Even a dead anchor is NOT reaped yet; its PID cannot be reused.
+                pass
+
+    def close(self):
+        if self.pid is not None:
+            self.stop()
+            while True:
+                try:
+                    os.waitpid(self.pid, 0)
+                    break
+                except InterruptedError:
+                    continue
+            # No group signal is allowed beyond this ownership-release point.
+            self.pid = None
+            os.close(self.hold_fd)
+
+
+def _supervise_capture(run_dir, name, tool, arguments):
+    """Internal Linux supervisor; stdin/stdout are private protocol pipes.
+
+    READY -> GO|CANCEL N -> RESULT json -> RELEASE. GO is launch authorization;
+    cancellation queued before authorization wins. No backend can exist before
+    the Bash owner has registered its control channel and authorized GO.
+    """
+    run, _, _, _ = _pending_capture(run_dir, name, CAPTURE_PENDING)
+    _identifier(tool)
+    _require(sys.version_info >= (3, 11) and hasattr(os, 'pidfd_open'))
+    streams = [_private(p) for p in _capture_paths(run, name)]
+    group = backend = None
+    pid_fd = None
+    cancelled = 0
+    authorized = False
+    buffered = b''
+    wake_read, wake_write = os.pipe2(os.O_NONBLOCK | os.O_CLOEXEC)
+    previous_wakeup = process_signal.set_wakeup_fd(wake_write)
+    previous_handlers = {}
+
+    def cancellation(signum, frame):
+        nonlocal cancelled
+        cancelled = cancelled or signum
+
+    for sig in (process_signal.SIGINT, process_signal.SIGTERM):
+        previous_handlers[sig] = process_signal.signal(sig, cancellation)
+
+    def control():
+        nonlocal buffered, authorized, cancelled
+        chunk = os.read(0, 256)
+        _require(bool(chunk))
+        buffered += chunk
+        _require(len(buffered) <= 1024)
+        while b'\n' in buffered:
+            line, buffered = buffered.split(b'\n', 1)
+            if line == b'GO':
+                _require(not authorized)
+                authorized = True
+            else:
+                _require(line in (b'CANCEL 2', b'CANCEL 15'))
+                cancelled = cancelled or int(line.split()[1])
+
+    try:
+        with selectors.DefaultSelector() as selector:
+            selector.register(0, selectors.EVENT_READ, 'control')
+            selector.register(wake_read, selectors.EVENT_READ, 'signal')
+            print('READY', flush=True)
+            while True:
+                for key, _ in selector.select():
+                    if key.data == 'control':
+                        control()
+                    elif key.data == 'signal':
+                        os.read(wake_read, 4096)
+                if cancelled:
+                    break
+                if authorized and backend is None:
+                    group = _OwnedProcessGroup()
+                    # Drain cancellation already queued while establishing the
+                    # anchor, before committing to the backend fork.
+                    for key, _ in selector.select(0):
+                        if key.data == 'control':
+                            control()
+                        elif key.data == 'signal':
+                            os.read(wake_read, 4096)
+                    if cancelled:
+                        break
+                    with streams[0].open('wb') as out, streams[1].open('wb') as err:
+                        backend = subprocess.Popen(
+                            ['bash', '-c', 'set -o pipefail; "$@"', 'forensics', tool, *arguments],
+                            stdin=subprocess.DEVNULL, stdout=out, stderr=err,
+                            process_group=group.pid)
+                    pid_fd = os.pidfd_open(backend.pid)
+                    selector.register(pid_fd, selectors.EVENT_READ, 'backend')
+                if backend is not None and backend.poll() is not None:
+                    selector.unregister(pid_fd)
+                    os.close(pid_fd)
+                    pid_fd = None
+                    break
+            if cancelled and group is not None:
+                group.stop()  # anchor is still live or an unreaped zombie
+            actual_rc = backend.wait() if backend is not None else 0
+            terminating_signal = -actual_rc if actual_rc < 0 else None
+            result = dict(rc=128 - actual_rc if actual_rc < 0 else actual_rc,
+                          terminating_signal=terminating_signal,
+                          cancellation_wrapper_signal=cancelled or None,
+                          started=backend is not None)
+            if group is not None:
+                group.close()
+            print('RESULT ' + json.dumps(result, sort_keys=True), flush=True)
+            # A late cancellation can no longer signal a group: ownership has
+            # ended. Keep the pipe alive until the owner releases the channel.
+            while True:
+                line = sys.stdin.buffer.readline(64)
+                if line == b'RELEASE\n':
+                    break
+                _require(line in (b'CANCEL 2\n', b'CANCEL 15\n', b'GO\n'))
+            return result
+    finally:
+        if group is not None:
+            group.close()
+        if backend is not None:
+            backend.wait()
+        if pid_fd is not None:
+            os.close(pid_fd)
+        process_signal.set_wakeup_fd(previous_wakeup)
+        for sig, handler in previous_handlers.items():
+            process_signal.signal(sig, handler)
+        os.close(wake_read)
+        os.close(wake_write)
+
+
 def select_runs(root, filters) -> list[dict]:
     """Newest-first summaries. Any unreadable run blocks current attribution.
 
@@ -715,6 +876,11 @@ def main(argv=None):
     complete.add_argument('--name', required=True)
     complete.add_argument('--state', required=True, choices=STATES)
     complete.add_argument('--coverage-code', required=True)
+    supervise = subs.add_parser('supervise')
+    supervise.add_argument('--run', required=True, type=Path)
+    supervise.add_argument('--name', required=True)
+    supervise.add_argument('--tool', required=True)
+    supervise.add_argument('arguments', nargs=argparse.REMAINDER)
     listing = subs.add_parser('list')
     listing.add_argument('--root', required=True, type=Path)
     for flag in ('run-id', 'operation', 'identity'):
@@ -747,6 +913,10 @@ def main(argv=None):
                                     cancelled=args.cancelled)
         elif command == 'complete-capture':
             result = complete_capture(args.run, args.name, args.state, args.coverage_code)
+        elif command == 'supervise':
+            arguments = args.arguments[1:] if args.arguments[:1] == ['--'] else args.arguments
+            _supervise_capture(args.run, args.name, args.tool, arguments)
+            return 0
         elif command == 'validate':
             result = read_run(args.run)
         elif command == 'integrity':
