@@ -24,6 +24,7 @@ source "$LIB_DIR/scanners_menu.bash"
 source "$LIB_DIR/exploitation_menu.bash"
 source "$LIB_DIR/enumeration_menu.bash"
 source "$LIB_DIR/postexploitation_menu.bash"
+source "$LIB_DIR/wireless_menu.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -440,7 +441,7 @@ module_postexploitation() {
 }
 
 module_wireless() {
-    run_module_scripts "07_Wireless" "07_Wireless"
+    wireless_menu
 }
 
 module_forensics() {
