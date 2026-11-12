@@ -1,8 +1,11 @@
 # Mantenimiento de 07 — 2026-11-11
 
-Estado: entrega de documentación y regresión de mantenimiento; **revisión de
-Task 2 y aprobación final pendientes del controlador**. No se declara
-implementado el plan operacional integral de 07 ni realizada una auditoría real.
+Estado: **mantenimiento entregado y revisado**. Ambas tareas tienen revisión de
+especificación y calidad aprobadas; la revisión global aprobó el cierre del
+mantenimiento, sin hallazgos críticos ni importantes. Esta pasada documental
+corrige el único menor señalado (referencia a evidencia y estado de cierre).
+No se declara implementado el plan operacional integral de 07 ni realizada una
+auditoría real.
 
 ## Alcance entregado
 
@@ -25,10 +28,12 @@ anterior ni se añadieron recetas de ataque.
 ## Verificación de la entrega
 
 Regresión requerida: `run_wireless_maintenance.sh`, `run_postexploitation.sh`,
-`run_smoke.sh`, `run_e2e.sh` y `run_reports.sh`. Se ejecutan sobre fuentes del
-commit `045d2c8`, superponiendo exclusivamente las siete rutas documentales de
-Task 2, con Git local, HOME y configuración sintéticos en `/tmp/opencode`.
-Los comandos, logs completos, códigos de salida y guardas se conservan en
+`run_smoke.sh`, `run_e2e.sh` y `run_reports.sh`. La evidencia definitiva del
+controlador corresponde al commit completo `7bcc5bc`, en copia de fuentes con
+Git local, HOME y configuración sintéticos en `/tmp/opencode`.
+La ejecución previa del implementador usó fuentes de `045d2c8`, superponiendo
+exclusivamente las siete rutas documentales de Task 2; sus comandos, logs,
+códigos de salida y guardas se describen en
 `.superpowers/sdd/2026-11-11-wireless-mantenimiento/task-2-report.md`.
 No se usan los resultados de baseline como evidencia de esta entrega.
 
@@ -42,9 +47,15 @@ Resultados de esta entrega (todos rc 0):
 | e2e | 11 comprobaciones, 0 fallos |
 | reports | 78 tests Python y 28 checks shell |
 
-Logs y `suite-results.json`: `/tmp/opencode/wireless-maint-9k7pda9_/`.
-Los tres checks de sintaxis terminaron con rc 0 y stderr vacío; las 14 guardas
-coinciden con `preserved-sources.json`. Estos resultados no certifican radio,
+Logs definitivos y `suite-results.json` del controlador:
+`/tmp/opencode/wireless-maint-avl4ag6x/` (commit completo `7bcc5bc`, cinco suites
+rc 0). Cada log se llama `<runner>.log`, por ejemplo
+`run_wireless_maintenance.sh.log`.
+La primera tanda del implementador, `/tmp/opencode/wireless-maint-9k7pda9_/`,
+es histórica; su copia final fue `/tmp/opencode/wireless-maint-w_4askln/`.
+Los tres checks de sintaxis de esa copia final terminaron con rc 0 y stderr
+vacío; las 14 guardas coinciden con `preserved-sources.json`.
+Estos resultados no certifican radio,
 captura ni operaciones de las hojas.
 
 Se comprueba sintaxis con `bash -n` de gestor, biblioteca wireless y runner,
@@ -69,7 +80,11 @@ se trata como digest/modo para la guarda autorizada. Permanecen fuera del
 commit los cambios previos de scope.yaml, logs_cleaner.sh, port_forward.sh y
 run_all_post.sh, y los diseños/planes operacionales anteriores sin seguimiento.
 
-Diseño y plan de **mantenimiento** aprobados se versionan junto a las cinco
-rutas de documentación de esta tarea. Commit local de rutas explícitas,
-sin push. La revisión independiente y el cierre final los coordina el
-controlador; esta entrega no presume su aprobación.
+Diseño y plan de **mantenimiento** aprobados se versionaron junto a las cinco
+rutas de documentación de Task 2 en `7bcc5bc`, tras Task 1 en `045d2c8`.
+Ambas tareas fueron aprobadas en especificación y calidad; la revisión global
+`ses_e329500e4ffeR1bjD7XXwthgjS` indicó «Ready to cerrar: Sí», con un menor
+documental atendido en esta pasada. El historial local registra los commits;
+sin push. El controlador hará la re-revisión acotada de este diff documental,
+no una nueva revisión global. No se implementó el plan operacional integral
+de 07 ni se declara toda la rama verde.
