@@ -79,9 +79,20 @@ def shell_rc(rc):
 
 def text_time(line, year, zone):
     try:
-        match = re.match(r'^(\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?)', line)
+        match = re.match(
+            r'^(?P<seconds>\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d)'
+            r'(?:\.(?P<fraction>\d{1,9}))?'
+            r'(?P<offset>Z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?(?=\s|$)', line)
         if match:
-            return utc(datetime.fromisoformat(match[1].replace('Z', '+00:00')), zone)
+            # Require the whole timestamp token: malformed/unsupported suffixes
+            # must not turn an explicit zone into a naive timestamp prefix.
+            seconds = match['seconds'] + (match['offset'] or '').replace('Z', '+00:00')
+            resolved = utc(datetime.fromisoformat(seconds), zone)
+            # Convert only integer seconds through datetime (microsecond-only).
+            # ISO fractions are unchanged by the integer-second UTC offset.
+            if resolved and match['fraction'] is not None:
+                return resolved[:-1] + '.' + match['fraction'] + 'Z'
+            return resolved
         match = re.match(r'^([A-Z][a-z]{2}\s+\d{1,2}\s+\d\d:\d\d:\d\d)', line)
         if match and year:
             return utc(datetime.strptime(f'{year} {match[1]}', '%Y %b %d %H:%M:%S'), zone)
