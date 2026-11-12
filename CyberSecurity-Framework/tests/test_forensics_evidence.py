@@ -1,12 +1,14 @@
 """Evidence-store contracts. No real evidence, subprocess backend or host acquisition."""
 import contextlib
 import errno
+import fcntl
 import hashlib
 import io
 import json
 import os
 from pathlib import Path
 import stat
+import struct
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -51,6 +53,188 @@ class EvidenceTests(unittest.TestCase):
         data = json.loads(path.read_text())
         change(data)
         path.write_text(json.dumps(data))
+
+    def test_registered_roots_are_created_private_and_artifacts_verified(self):
+        run, _ = self.staged()
+        parent = self.root / 'external'
+        parent.mkdir(mode=0o755)
+        recovered = self.e.register_artifact_root(run, 'recovered', parent)
+        self.assertEqual(recovered, parent / run.name)
+        self.assertEqual(stat.S_IMODE(parent.stat().st_mode), 0o755)
+        self.assertEqual(stat.S_IMODE(recovered.stat().st_mode), 0o700)
+        artifact = recovered / 'image'
+        artifact.touch(mode=0o600)
+        step = self.step(run, artifacts=[artifact])
+        self.assertEqual(step['artifacts'][0]['root'], 'recovered')
+        self.source.unlink()
+        self.e.read_run(run)  # readers never reopen originals
+        artifact.write_bytes(b'mutation')
+        with self.assertRaises(ValueError):
+            self.e.read_run(run)
+
+    def test_root_registration_rejects_collision_overlap_link_and_repeat(self):
+        run, _ = self.staged()
+        parent = self.root / 'external'
+        parent.mkdir()
+        (parent / run.name).mkdir(mode=0o700)
+        with self.assertRaises((OSError, ValueError)):
+            self.e.register_artifact_root(run, 'recovered', parent)
+        with self.assertRaises(ValueError):
+            self.e.register_artifact_root(run, 'recovered', self.source.parent)
+        alias = self.root / 'alias'
+        alias.symlink_to(parent)
+        with self.assertRaises(ValueError):
+            self.e.register_artifact_root(run, 'recovered', alias)
+        target = self.e.register_artifact_root(run, 'captures', self.root / 'memory')
+        with self.assertRaises(ValueError):
+            self.e.register_artifact_root(run, 'captures', self.root / 'other')
+        self.assertEqual(target.name, run.name)
+
+    def test_root_json_redirect_or_replaced_directory_is_not_authority(self):
+        for mutation in ('json', 'replace', 'mode', 'symlink'):
+            run = self.run_new()
+            target = self.e.register_artifact_root(run, 'recovered', self.root / mutation)
+            if mutation == 'json':
+                arbitrary = self.root / 'arbitrary'
+                arbitrary.mkdir(mode=0o700)
+                self.rewrite(run, lambda d: d['artifact_roots'].update(recovered=str(arbitrary)))
+            elif mutation == 'replace':
+                target.rename(target.with_name(target.name + '-old'))
+                target.mkdir(mode=0o700)
+            elif mutation == 'mode':
+                target.chmod(0o755)
+            else:
+                target.rename(target.with_name(target.name + '-old'))
+                target.symlink_to(self.root / 'sources', target_is_directory=True)
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                self.e.read_run(run, verify_artifacts=False)
+
+    def test_unregistered_root_json_never_authorizes_even_private_directory(self):
+        run = self.run_new()
+        arbitrary = self.root / 'private'
+        arbitrary.mkdir(mode=0o700)
+        self.rewrite(run, lambda d: d['artifact_roots'].update(recovered=str(arbitrary)))
+        with self.assertRaises(ValueError):
+            self.e.read_run(run)
+
+    def test_forged_registration_or_cross_run_receipt_cannot_authorize_roots(self):
+        first=self.run_new()
+        self.e.register_artifact_root(first,'recovered',self.root/'external')
+        registry=first/'roots.json'
+        signed=json.loads(registry.read_text())
+        signed['records']['recovered']['path']=str(self.root/'sources')
+        registry.write_text(json.dumps(signed))
+        with self.assertRaises(ValueError): self.e.read_run(first)
+        second=self.run_new()
+        for name in ('roots.json','.roots-key'):
+            (second/name).write_bytes((first/name).read_bytes())
+            (second/name).chmod(0o600)
+        with self.assertRaises(ValueError): self.e.read_run(second)
+
+    def test_registered_artifact_link_escape_and_nonprivate_parents_rejected(self):
+        for mutation in ('link','directory_mode','file_mode'):
+            run=self.run_new()
+            root=self.e.register_artifact_root(run,'recovered',self.root/mutation)
+            nested=root/'nested'; nested.mkdir(mode=0o700)
+            product=nested/'result'
+            if mutation=='link': product.symlink_to(self.source)
+            else:
+                product.touch(mode=0o600)
+                if mutation=='directory_mode': nested.chmod(0o755)
+                else: product.chmod(0o644)
+            with self.subTest(mutation=mutation),self.assertRaises(ValueError):
+                self.step(run,artifacts=[product])
+
+    def test_roots_cannot_be_registered_after_steps_and_reader_is_readonly(self):
+        run=self.run_new()
+        self.e.register_artifact_root(run,'captures',self.root/'memory')
+        before=inventory(self.root)
+        self.e.read_run(run)
+        self.e.select_runs(run,{})
+        self.assertEqual(inventory(self.root),before)
+        self.step(run)
+        with self.assertRaises(ValueError):
+            self.e.register_artifact_root(run,'recovered',self.root/'late')
+
+    def test_registered_roots_cannot_relocate_sealed_runtime_streams(self):
+        run=self.run_new()
+        root=self.e.register_artifact_root(run,'recovered',self.root/'external')
+        self.e.prepare_capture(run,'analyze','internal')
+        self.e.capture_result(run,'analyze',0)
+        for suffix in ('.stdout','.stderr'): (root/('analyze'+suffix)).touch(mode=0o600)
+        def relocate(data):
+            for artifact in data['steps'][0]['artifacts']: artifact['root']='recovered'
+        self.rewrite(run,relocate)
+        data=json.loads((run/'run.json').read_text())
+        next((run/'steps').iterdir()).write_text(json.dumps(data['steps'][0]))
+        with self.assertRaises(ValueError): self.e.read_run(run,verify_artifacts=False)
+        with self.assertRaises(ValueError): self.e.complete_capture(run,'analyze','COMPLETADO','analysis')
+
+    def test_physical_observation_is_stat_only_and_not_content_hash(self):
+        run = self.e.start_run(self.root / 'outputs', 'carving', 'physical', [])
+        real = self.source.lstat()
+        observed = SimpleNamespace(st_mode=stat.S_IFBLK | 0o600, st_dev=real.st_dev,
+                                   st_ino=real.st_ino, st_rdev=os.makedev(240, 19))
+        original_lstat = Path.lstat
+        def fake_stat(path):
+            return observed if path == self.source else original_lstat(path)
+        with patch.object(Path, 'lstat', fake_stat), patch.object(
+                self.e, '_digest_file', side_effect=AssertionError('physical data read')):
+            item = self.e.observe_device(run, self.source)
+            self.assertEqual(item['rdev'], os.makedev(240, 19))
+            self.assertIsNone(item['size'])
+            self.assertNotIn('sha256', item)
+            data = self.e.read_run(run)
+            self.assertEqual(data['inputs'], [])
+            self.assertIsNotNone(data['identity'])
+            self.assertTrue(self.e.check_integrity(run))
+        self.source.unlink()
+        self.e.read_run(run)  # physical reader uses receipt, never device
+        self.assertFalse(self.e.check_integrity(run))
+
+    def test_physical_regular_file_or_offline_observation_rejected(self):
+        for mode in ('physical', 'offline'):
+            run = self.e.start_run(self.root / 'outputs', 'disk', mode, [])
+            with self.assertRaises(ValueError):
+                self.e.observe_device(run, self.source)
+
+    def test_physical_identity_stable_between_runs_and_labelled_not_payload_hash(self):
+        observed=dict(dev=1,ino=2,rdev=3,mode=0o600,size=1024)
+        runs=[]
+        with patch.object(self.e,'_device_observation',return_value=observed):
+            for _ in range(2):
+                run=self.e.start_run(self.root/'outputs','carving','physical',[])
+                self.e.observe_device(run,self.source)
+                runs.append(run)
+        first,second=[self.e.read_run(run) for run in runs]
+        self.assertEqual(first['identity'],second['identity'])
+        rows=self.e.select_runs(self.root/'outputs',{})
+        self.assertEqual(sum(row['current'] for row in rows),1)
+        self.assertTrue(all(row['identity_kind']=='device_observation' for row in rows))
+        self.assertTrue(all(row['inputs']==[] for row in rows))
+
+    def test_physical_size_uses_readonly_metadata_ioctl_without_payload_read(self):
+        info = self.source.lstat()
+        block = SimpleNamespace(st_mode=stat.S_IFBLK | 0o600, st_dev=info.st_dev,
+                                st_ino=info.st_ino, st_rdev=os.makedev(240, 19))
+        original_lstat = Path.lstat
+        original_open = os.open
+        flags_seen = []
+        def fake_stat(path):
+            return block if path == self.source else original_lstat(path)
+        def read_only(path, flags, *args):
+            flags_seen.append(flags)
+            return original_open(path, flags, *args)
+        def metadata_ioctl(fd, request, buffer):
+            self.assertEqual(request, 0x80081272)  # Linux BLKGETSIZE64
+            return struct.pack('=Q', 1024)
+        with patch.object(Path, 'lstat', fake_stat), patch.object(os,'open',read_only), \
+                patch.object(os,'fstat',return_value=block), patch.object(fcntl,'ioctl',metadata_ioctl), \
+                patch.object(os,'read',side_effect=AssertionError('payload read')):
+            observation = self.e._device_observation(self.source)
+        self.assertEqual(observation['size'],1024)
+        self.assertTrue(flags_seen)
+        self.assertTrue(all((flags & os.O_ACCMODE) == os.O_RDONLY for flags in flags_seen))
 
     def test_unique_private_independent_and_identity(self):
         run, item = self.staged()

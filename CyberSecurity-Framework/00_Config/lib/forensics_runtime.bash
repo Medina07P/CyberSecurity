@@ -56,6 +56,30 @@ forensics_stage() {
     printf '%s' "$metadata" | _forensics_field work_path
 }
 
+# Explicit root registration; safe in command substitution, like staging.
+# NAME is recovered or captures. Existing roots/finished runs are never reused.
+forensics_register_root() {
+    local metadata parent
+    case "$1" in
+        recovered) parent=${2:-$FORENSICS_RECOVERED_ROOT} ;;
+        captures) parent=${2:-$FORENSICS_MEMORY_ROOT} ;;
+        *) return 2 ;;
+    esac
+    metadata=$(_forensics_helper register-root --run "$FORENSICS_RUN_DIR" \
+        --name "$1" --parent "$parent") || { _forensics_block; return 1; }
+    printf '%s' "$metadata" | _forensics_field path
+}
+
+# Observation has no copy/content digest. Physical mode only; metadata ioctl
+# may supply size, otherwise it stays explicitly unknown. No payload is read.
+forensics_observe_device() {
+    local metadata
+    metadata=$(_forensics_helper observe-device --run "$FORENSICS_RUN_DIR" --source "$1") || {
+        _forensics_block; return 1;
+    }
+    FORENSICS_DEVICE_SIZE=$(printf '%s' "$metadata" | _forensics_field size) || return 1
+}
+
 # trap -p is shell-quoted; shlex decodes it without eval or executing its text.
 _forensics_trap_body() {
     python3 -B -c 'import shlex,sys; s=shlex.split(sys.stdin.read()); print(s[2] if s else "")'
