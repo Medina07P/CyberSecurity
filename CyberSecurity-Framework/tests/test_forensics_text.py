@@ -339,6 +339,68 @@ class TextTests(unittest.TestCase):
         self.assertEqual(self.invoke('timeline', '--tree', tree).returncode, 0)
         self.assertEqual([e['body'] for e in self.events(self.read())], ['b', 'a'])
 
+    def test_iso_explicit_offsets_do_not_depend_on_operator_timezone(self):
+        cases = [
+            ('2000-01-01T00:00:00+0200 compact', '1999-12-31T22:00:00Z'),
+            ('2000-01-01T00:00:00+02:00 colon', '1999-12-31T22:00:00Z'),
+            ('2000-01-01T00:00:00-0230 negative', '2000-01-01T02:30:00Z'),
+            ('2000-01-01T00:00:00Z zulu', '2000-01-01T00:00:00Z'),
+        ]
+        self.source.write_text('\n'.join(line for line, _ in cases) + '\n')
+        for label, options in [('no-zone', []), ('operator-utc', ['--timezone', 'UTC'])]:
+            with self.subTest(label=label):
+                output = self.root / label
+                result = self.invoke('timeline', output, '--auth', self.source, *options)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                actual = {e['body']: e['timestamp_utc'] for e in self.events(self.read(output))}
+                self.assertEqual(actual, dict(cases))
+
+    def test_iso_invalid_zone_suffix_is_not_reinterpreted_as_naive(self):
+        lines = [
+            '2000-01-01T00:00:00+02 partial-hour',
+            '2000-01-01T00:00:00+020 partial-compact',
+            '2000-01-01T00:00:00+02:0 partial-minute',
+            '2000-01-01T00:00:00+02:00extra attached-text',
+            '2000-01-01T00:00:00Zextra attached-zulu',
+            '2000-01-01T00:00:00+02:60 invalid-minute',
+            '2000-01-01T00:00:00+2400 invalid-hour',
+            '2000-01-01T00:00:00+02:00:30 unsupported-offset-seconds',
+        ]
+        self.source.write_text('\n'.join(lines) + '\n')
+        result = self.invoke('timeline', '--syslog', self.source, '--timezone', 'UTC')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = self.events(self.read())
+        self.assertEqual([e['body'] for e in events], lines)
+        self.assertTrue(all(e['timestamp_utc'] is None and e['section'] == 'unresolved' for e in events))
+
+    def test_iso_nanosecond_fraction_survives_conversion_and_sorting(self):
+        self.source.write_text('2000-01-01T00:00:00.123456789Z later\n'
+                               '2000-01-01T00:00:00.123456788Z earlier\n')
+        result = self.invoke('timeline', '--auth', self.source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = self.events(self.read())
+        self.assertEqual([e['timestamp_utc'] for e in events],
+                         ['2000-01-01T00:00:00.123456788Z', '2000-01-01T00:00:00.123456789Z'])
+        self.assertEqual([e['body'].split()[-1] for e in events], ['earlier', 'later'])
+
+    def test_iso_fraction_bounds_naive_options_and_dst(self):
+        cases = [
+            ('2000-01-01T00:00:00.1+0200 compact', '1999-12-31T22:00:00.1Z'),
+            ('2000-01-01T00:00:00.123456789+02:00 colon', '1999-12-31T22:00:00.123456789Z'),
+            ('2000-01-01 00:00:00.123456 naive', '1999-12-31T23:00:00.123456Z'),
+            ('2000-01-01T00:00:00.000000000Z zeros', '2000-01-01T00:00:00.000000000Z'),
+            ('2000-01-01T00:00:00.1234567890Z too-precise', None),
+            ('2000-01-01T00:00:00.1234567890+0200 too-precise-offset', None),
+            ('2000-01-01T00:00:00.Z empty-fraction', None),
+            ('2026-10-25 02:30:00.123456789 ambiguous', None),
+            ('2026-03-29 02:30:00.123456789 nonexistent', None),
+        ]
+        self.source.write_text('\n'.join(line for line, _ in cases) + '\n')
+        result = self.invoke('timeline', '--auth', self.source, '--timezone', 'Europe/Madrid')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        actual = {e['body']: e['timestamp_utc'] for e in self.events(self.read())}
+        self.assertEqual(actual, dict(cases))
+
 
 if __name__ == '__main__':
     unittest.main()
