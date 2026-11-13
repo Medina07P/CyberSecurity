@@ -1,5 +1,10 @@
 # 09_Automation — planes explícitos
 
+**Verificación Task9 BLOQUEADA (round1):** `tests/run_automation.sh` no lanza
+pruebas. Falta una barrera SO heredada revisada para filesystem/red; audithook
+no la sustituye. Las pruebas nuevas solo están escritas, sin ejecución. No
+reanudar tests/probes por los conteos históricos: decisión del controlador.
+
 Entrada preview-first para acciones de catálogo cerrado, no automatización de
 todas las fases ni sustituto de autorización. Entrar en 09 abre un menú sin
 ejecutar herramientas ni heredar el objetivo de sesión.

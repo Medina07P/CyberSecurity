@@ -1,8 +1,21 @@
 # 09_Automation — contratos y verificación Task9 (2026-11-13)
 
-Estado: Tasks1–8 implementadas/revisadas según controlador; Task9 implementada,
-con auto-revisión y pruebas, **pendiente de revisión independiente**. No es
-cierre global, compatibilidad operacional ni declaración de rama completa verde.
+**Estado vigente round1: NEEDS_CONTEXT / EJECUCIÓN BLOQUEADA.** La revisión
+independiente encontró I1–I3. Esta corrección es exclusivamente estática: I2
+corregido documentalmente e I3 ampliado en fuentes/pruebas escritas, **sin
+ejecutarlas**. I1 sigue abierto: no hay barrera SO efectiva/heredada acreditada.
+El runner ahora solo emite BLOCKED y sale2 mediante builtins; no discovery,
+imports, hijos, probes, env/flag de bypass ni fallback. Audithook no aísla
+descendientes: es defensa adicional local y ya no permite ningún Popen ni
+clasifica ejecutables por basename/prefijo temporal. No se implementa un
+sandbox ficticio ni se supone autorización por tener bwrap.
+
+Tasks1–8 conservan su estado previo según controlador. Task9 no está aprobada.
+Los conteos/comandos siguientes son **históricos de09e16c8**, no resultados de
+round1 ni autorización para repetirlos. Pendiente revisión estática independiente
+y decisión del controlador sobre diseño de barrera/runtime antes de cualquier
+ejecución, siquiera un probe. No es cierre global, compatibilidad operacional
+ni declaración de rama completa verde.
 Sin merge/push, instalaciones ni Docker build/up. No se ejecutó flujo99.
 
 - [Uso09, flags reales, gates y conservación](../CyberSecurity-Framework/09_Automation/USE.md).
@@ -11,7 +24,7 @@ Sin merge/push, instalaciones ni Docker build/up. No se ejecutó flujo99.
 
 ## Cambios acotados
 
-Runner `CyberSecurity-Framework/tests/run_automation.sh`: discovery
+Runner histórico09e16c8 `CyberSecurity-Framework/tests/run_automation.sh`: discovery
 `test_automation_*.py`, Python aislado, `PYTHONDONTWRITEBYTECODE=1`, diagnóstico y
 rc de unittest. Nuevo contrato estático de rutas versionadas, acciones originales,
 opciones de fuentes (incluidos Labs y alias06), flags, matrices con entradas,
@@ -20,7 +33,12 @@ La guarda no abre ni hashea configuración para demostrar inmutabilidad: rechaza
 acceso a datos del checkout y mutaciones; fixtures copian allowlist de fuentes,
 construyen configuración/HOME y ejecutan entradas copiadas con dobles.
 La guarda es defensa del harness, **no sandbox para código arbitrario** ni
-control heredado por todo hijo. Pruebas negativas tienen stub de respaldo.
+control heredado por todo hijo. **Esa limitación incumple I1**, no se resuelve
+con una advertencia ni con PATH/prefijos. Runner actual bloqueado. El negativo
+anterior se retiró: los nuevos payloads hijo/nieto solo contienen datos y
+backends/red dobles sintéticos, y únicamente prueban bloqueo del launcher; no
+prueban una barrera SO. Escritos sin ejecución. Test de contención SO pendiente
+marcado skip en código (no ejecutado), no un falso test verde.
 
 README09 se sustituyó por guía preview-first; USE detalla las13 entradas del
 árbol original y19 acciones de catálogo. Allowlist Docker añade únicamente
@@ -28,7 +46,7 @@ README09 se sustituyó por guía preview-first; USE detalla las13 entradas del
 Sin cambios de comportamiento en00–08/10–13, sin pulido de minors anteriores ni
 cambios en diseño ajeno de fichas-modulos.
 
-## Evidencia reproducible
+## Evidencia histórica conservada (NO ejecutar comandos ahora)
 
 Logs locales conservados: `/tmp/opencode/automation-task9/`; reporte/checkpoints:
 `.superpowers/sdd/2026-11-13-automation-integral/task-9-report.md`.
@@ -63,6 +81,11 @@ rc97 como segunda barrera y verifica que ni siquiera se alcanza ese stub. La
 suite final113tests rc0 incluye el rechazo dinámico de lectura de config y de
 backend. La corrección no borra la incidencia histórica ni convierte esta
 sesión en validación operacional autorizada.
+
+Round1 retira la clasificación temporal como identidad. La revisión confirmó
+que incluso el audithook corregido no se hereda a hijos/nietos; los resultados
+históricos no acreditan seguridad de nuevos runs. No hubo nuevos tests/probes
+en round1 ni nuevos resultados RED/GREEN.
 
 El primer runner con guarda también produjo fallos falsos al clasificar
 operaciones relativas a dir_fd como relativas al checkout; se preservan
@@ -107,3 +130,28 @@ harness temporal, no en fuentes; el resultado es subconjunto, no suite completa.
 histórico. La publicación shim exige mismo filesystem Linux renameat2; EXDEV
 falla conservando originales. Docker es estático/no sandbox; PowerShell requiere
 padre controlado, no garantía anti-TOCTOU ni compatibilidad Windows probada.
+
+## Round1: alcance estático y contexto que falta
+
+- I2: K.4 inicia sincronización directamente al seleccionar4, **sin confirmación
+  adicional**. Solo cambia la explicación; producto K intacto.
+- I3: helper fuente/contratos para principal/R/T/lista/K/wizard/APIkeys/evidencia,
+  incluyendo abrir, índices dinámicos, aliases y subcomandos AST; pruebas de
+  eliminación por fila y adiciones de opciones sobre strings. Cobertura
+  estructural ≠ corrección semántica: significado requiere revisión del
+  despacho. K.4 tiene además comprobación semántica estática acotada escrita.
+  M1 sigue diferido, sin pulir firmas CLI de claves en este round.
+- I1: sin cerrar. Para avanzar se necesita un diseño independiente revisado de
+  launcher SO (p.ej.bwrap) con manifest exacto de ejecutables runtime/libs y
+  fuentes, resolución/identidad controladas, root privado, config/HOME/temp solo
+  sintéticos y barreras heredadas filesystem/red; sin bind de raíz/HOME/etc/tmp
+  reales ni directorios bin completos con herramientas. Discovery/source_paths,
+  fixtures multiintérprete/pwsh/utilidades y supervisor deben adaptarse a ese
+  contrato, no incluirse implícitamente desde el host. Presencia de bwrap y
+  namespaces NO se comprobó mediante ejecución y NO acredita el contrato.
+- El bloqueo es incondicional, no depende de bwrap/env/flags. Se elige el
+  fallback permitido por el usuario: **mantener bloqueado y NEEDS_CONTEXT**,
+  no desplegar una barrera que no se puede acreditar dentro de este round.
+- Validación actual limitada a lectura/diff, AST de Python como dato y bash-n
+  del runner nuevo. Ningún unittest/framework/negativo/pwsh/probe/backend fue
+  ejecutado. La revisión independiente aún debe evaluar estas fuentes.

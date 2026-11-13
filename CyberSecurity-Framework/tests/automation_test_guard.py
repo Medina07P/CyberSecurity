@@ -1,7 +1,8 @@
-"""Fail-fast discovery guard, not a sandbox for arbitrary test code.
+"""Additional controller-only diagnostics, NOT a descendant isolation barrier.
 
 Never inspect/hash protected data to prove it unchanged. Fixtures construct
-synthetic configuration; only source/documentation reads are allowed here.
+synthetic configuration. Runner is BLOCKED pending an inherited OS barrier;
+this helper must not be used as authority to resume tests or launch probes.
 """
 import os
 from contextvars import ContextVar
@@ -47,16 +48,10 @@ def check_event(root, event, args):
         if write or config_data or set(parts) & forbidden or relative.name.startswith('.'):
             raise PermissionError('Automation tests must not open checkout data: ' + str(relative))
     elif event == 'subprocess.Popen':
-        executable, argv, cwd, _env = args
-        if list(argv) == ['git', 'ls-files', '-z', 'CyberSecurity-Framework']:
-            return
-        if any(isinstance(arg, str) and arg.startswith(str(root) + os.sep) for arg in argv):
-            raise PermissionError('Run copied entries only, never checkout scripts')
-        name = Path(os.fsdecode(executable)).name
-        synthetic = (os.path.isabs(executable) and
-                     str(Path(os.fsdecode(executable)).resolve()).startswith('/tmp/opencode/automation-'))
-        if name not in ('bash', 'python', 'python3', Path(sys.executable).name, 'pwsh') and not synthetic:
-            raise PermissionError('Real backend forbidden during automation tests: ' + name)
+        # Neither basename nor temporary-path prefix proves identity. No
+        # interpreter/backend exemptions while the OS barrier is unresolved.
+        # This remains local to this interpreter, NOT a process-tree policy.
+        raise PermissionError('BLOCKED: subprocess requires an approved inherited OS barrier')
     elif event in ('os.remove', 'os.rmdir', 'os.mkdir', 'os.chmod', 'os.rename'):
         if event == 'os.rename':
             paths = ((args[0], args[2]), (args[1], args[3]))

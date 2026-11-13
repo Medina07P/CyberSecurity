@@ -19,6 +19,9 @@ del lanzamiento no ejecuta; no se promete rollback de una hoja ya iniciada.
 Los `run_all` heredados no tienen el contrato conservador de 09 y sus mensajes
 de éxito no prueban cobertura. Nunca usar `99` como smoke test.
 
+En el principal se acepta un dígito como alias de00–09; `?` admite también
+`??`, help/HELP y H/h; Q/q admite salir/exit. Entrada vacía solo redisplay.
+
 ## Menú principal
 
 | Opción | Finalidad | Entrada | Efectos y límites |
@@ -43,6 +46,7 @@ de éxito no prueban cobertura. Nunca usar `99` como smoke test.
 | `K` | Registro de API keys | subopción y herramienta/campo | puede leer/escribir HOME y registro; secretos nunca deben publicarse; Enter conserva y '-' borra |
 | `?` | Ayuda | sin parámetros adicionales | muestra módulos, orden sugerido, marcas y rutas; no ejecuta auditoría |
 | `Q` | Salir | sin parámetros adicionales | termina gestor; no equivale a limpiar ni revertir operaciones previas |
+| `principal.vacio` | Redisplay principal | Enter sin texto | no despacha hoja ni concede permisos; vuelve a mostrar menú |
 
 ### R, T, K y selección genérica
 
@@ -58,9 +62,11 @@ de éxito no prueban cobertura. Nunca usar `99` como smoke test.
 | `K.1` | Pedir claves faltantes | valores de campos por herramienta | actualiza registro y destinos soportados; Enter conserva, '-' elimina |
 | `K.2` | Pedir una herramienta | índice entre theHarvester/Shodan/h8mail/amass/recon-ng/SpiderFoot y campos | escribe claves seleccionadas;0 en selector vuelve, sin conceder permisos de red |
 | `K.3` | Estado detallado | sin campos secretos | muestra presencia/longitud/divergencia, nunca valor; estado no prueba API válida |
-| `K.4` | Sincronizar | confirmación y registro local | registro manda por campo, preserva no vacío solo externo; BD ausente no se inventa |
+| `K.4` | Sincronizar | seleccionar4 y registro local; sin confirmación adicional | inicia directamente escritura/sincronización del registro y destinos; preserva no vacío solo externo, BD ausente no se inventa |
 | `K.5` | Importar claves externas | archivos de herramientas locales | lee destinos soportados al registro, no publica ni valida cuotas |
 | `K.0` | Volver | ninguna adicional | no cambia claves; retorna al menú o00 según origen |
+| `K.herramienta.numero` | Elegir herramienta en K.2/K.5 | índice dinámico mostrado | selecciona herramienta para pedir/importar; la selección no valida API ni autoriza red |
+| `K.herramienta.0` | Cancelar selector de herramienta | 0, vacío o EOF | vuelve sin pedir/importar claves; no borra el registro existente |
 | `lista.numero` | Ejecutar hoja por ruta | slots o argumentos manuales | efectos de tablas siguientes; run_all pide confirmación adicional; números no estables |
 | `lista.0` | Volver | ninguna adicional | sin ejecución nueva ni borrado de resultados |
 | `lista.R` | Recargar listado | ninguna adicional | redescubre fuentes, no genera informe ni ejecuta herramientas |
@@ -412,10 +418,34 @@ antes de operar: no se ha verificado aquí compatibilidad operacional.
 
 ## Verificación y alcance documental
 
-La suite `tests/test_automation_contract.py` contrasta rutas versionadas de
-hojas, opciones de fuentes y contenido de filas (entradas/efectos/límites), no
-solo títulos. Las bibliotecas no se listan como herramientas. La matriz09
-contrasta todas las entradas de ORIGINAL y acciones del catálogo. Añadir una
-hoja/opción exige explicar sus efectos, no basta añadir su encabezado.
-Los documentos de cada módulo prevalecen para detalles; este inventario no
-cambia comportamiento de00–08/10–13 ni aprueba un diseño ajeno de fichas.
+**Round1: ejecución BLOQUEADA.** Las pruebas nuevas/modificadas se escribieron
+sin ejecutarlas. No hay nueva validación RED/GREEN ni aislamiento SO heredado
+acreditado. `tests/run_automation.sh` solo contiene un diagnóstico builtin y
+exit2; no discovery, intérpretes, probes ni fallback. Los resultados anteriores
+son históricos, no autorización para reanudar.
+
+Cobertura **estructural** diseñada en `tests/test_automation_contract.py` y
+`tests/automation_menu_inventory.py`: cada ruta/opción requerida tiene una fila
+con entrada y explicación, no solo título. Mutaciones escritas eliminan cada
+fila de los namespaces siguientes e insertan nuevas opciones en texto fuente;
+se espera fallo por falta de fila o contrato desconocido. Esto NO contrasta por
+sí solo el significado de las celdas con los efectos reales. La **revisión
+semántica** exige leer despacho/hojas; K.4 se contrastó específicamente con la
+llamada directa a sincronizar, sin confirmación adicional. Una longitud mínima
+o una prueba estructural verde nunca certifican veracidad semántica global.
+
+| Namespace | Fuente de opciones | Contrato estructural y límites |
+|---|---|---|
+| Principal00–13/99/R/T/K/?/Q | cyber_framework.sh:main_menu y main | etiquetas fijas y case de despacho, aliases explícitos, vacío sin acción; sintaxis no reconocida exige revisión |
+| R.* | quick_report:case eleccion y abrir | deriva opciones numéricas y selector abrir; selección HTML es una acción, no una fila por alias s/si/sí |
+| T.* | change_target:sel/nuevo y etiquetas | índice dinámico→T.numero, manual→T.0; límites/registro contrastados como contrato de fuente; nueva opción literal requiere fila |
+| lista.* | run_module_scripts:choice/scripts | índice dinámico→lista.numero,0/recargarR por etiquetas/comparaciones; no números fijos por archivo |
+| K.* y K.herramienta.* | keys_menu y keys_elegir_herramienta | case/etiquetas y selector dinámico; elegir4 escribe directamente, sin añadir un gate ficticio |
+| 00.wizard.* | config_wizard.sh:main | case de modos y conjunto de prompts de confirmar/duplicados/otro/guardar; cambio de prompts exige revisar contrato |
+| 00.keys.* | api_keys.py:main/add_parser (AST como dato) | comandos derivados del parser, no lista fija; firmas de argumentos requieren revisión semántica separada (M1 diferido) |
+| 10.* | evidence_manager.sh:case "$1" | comandos largos derivados y alias -h→help explícito; nuevo comando/alias exige fila/contrato |
+| 03–08/09/13 submenús | *_menu.bash, CLI09 y main.sh Labs | branches/etiquetas/contratos de fuente; incluye timeline y shell_opt, no ejecución de menús |
+
+Las bibliotecas no son herramientas. La matriz09 cubre ORIGINAL y catálogo,
+no certifica integración operacional. Los documentos de cada módulo prevalecen
+para detalles; no cambia comportamiento00–08/10–13 ni aprueba fichas ajenas.

@@ -1,5 +1,19 @@
 # AGENTS.md
 
+**Task9 round1 sobre09e16c8 — NEEDS_CONTEXT / EJECUCIÓN BLOQUEADA:** revisión
+estática encontró I1–I3. I1 permanece abierto: no hay aislamiento SO heredado
+acreditado. Runner ahora solo printf/exit2 builtins, sin discovery/imports,
+probes/hijos/fallback/env-bypass. Audithook adicional local rechaza todo Popen;
+no acepta basename ni /tmp/opencode/automation-* como identidad. No ejecutar
+framework/tests/negativos/pwsh/probes/backends hasta revisión estática
+independiente y autorización explícita del controlador. I2 corregido (K.4
+sin confirmación adicional) sin tocarK. I3 namespaces fuente/contrato y
+mutaciones ampliados; pruebas hijo/nieto solo doubles sintéticos para bloqueo,
+escritas SIN ejecución, no prueba de sandbox. M1 diferido. Solo AST/Bash-n/diff
+en este round; ningún nuevo RED/GREEN ni conteo de pruebas. Resultados debajo
+son históricos y no acreditan aislamiento ni autorizan nuevos runs. Conservar
+incidente/evidencia y no cerrar Task9/global; sin instalaciones/push/merge.
+
 **09_Automation — Task9, 2026-11-13:** documentación/runner/contratos implementados
 sobre72c6a9c, pendientes de revisión independiente del controlador, NO cierre
 global. `09_Automation/USE.md` explica previews/permisos y conservación;
