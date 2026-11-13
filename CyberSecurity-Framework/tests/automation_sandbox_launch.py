@@ -18,6 +18,11 @@ import sys
 import threading
 import time
 
+# -I deliberately omits the script directory. Add only the directory derived
+# from this trusted entry script, before sibling imports; no host site paths,
+# environment search path, working-directory lookup or dependency installation.
+sys.path.insert(0, str(Path(__file__).resolve(strict=True).parent))
+
 from automation_sandbox_prepare import (
     IsolationBlocked, REPO, _identity, _new_json, _open_directory, _open_regular,
     load_json, prepare, read_regular, source_names,
@@ -461,12 +466,15 @@ def launch() -> int:
         if receipt['state'] == 'PASS' or (receipt['state'] == 'BLOCKED' and result == 2):
             probes = load_json(run.evidence / 'probes.json', {
                 'version', 'run_id', 'state', 'checks', 'context', 'namespaces',
-                'descendants', 'cancel'})
+                'descendants', 'cancel', 'entry_fds'})
             if (probes['run_id'] != run.root.name or probes['state'] != 'PASS' or
+                    probes['entry_fds'] != {'valid': True, 'observed': [0, 1, 2, 3],
+                                           'live': [0, 1, 2], 'closed_transient': [3]} or
                     not isinstance(probes['checks'], list) or
                     {row.get('id') for row in probes['checks'] if isinstance(row, dict)} !=
-                    {'python-child', 'bash-grandchild', 'bash-child', 'cancel-owned-descendants'} or
-                    len(probes['checks']) != 4 or
+                    {'entry-fds', 'python-child', 'bash-grandchild', 'bash-child',
+                     'cancel-owned-descendants'} or
+                    len(probes['checks']) != 5 or
                     any(not isinstance(row, dict) or set(row) != {'id', 'result', 'reason'} or
                         row['result'] != 'PASS' for row in probes['checks'])):
                 raise IsolationBlocked('Fresh probe result missing or inconsistent')

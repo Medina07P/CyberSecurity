@@ -40,13 +40,78 @@ class SandboxBoundaryTests(unittest.TestCase):
         self.assertNotIn('.send(', text)
 
     def test_namespace_identity_and_cancel(self):
+        entry = self.result['entry_fds']
+        self.assertTrue(entry['valid'])
+        self.assertEqual(entry['observed'], [0, 1, 2, 3])
+        self.assertEqual(entry['live'], [0, 1, 2])
+        self.assertEqual(entry['closed_transient'], [3])
         self.assertTrue(self.result['cancel']['descendant_reaped'])
         self.assertTrue(self.result['cancel']['direct_child_reaped'])
         for result in self.result['descendants']:
             self.assertEqual(result['fds'], [0, 1, 2])
+            self.assertTrue(result['fd_observation']['valid'])
+            self.assertEqual(result['fd_observation']['observed'], [0, 1, 2, 3])
+            self.assertEqual(result['fd_observation']['closed_transient'], [3])
             for name, value in result['namespaces'].items():
                 self.assertNotEqual(value, self.result['context']['host_namespaces'][name])
                 self.assertEqual(value, self.result['namespaces'][name])
+
+    def test_entry_fd_leak_fails_before_sanitizing_children_and_is_retained(self):
+        leaked = {'valid': False, 'observed': [0, 1, 2, 3, 41],
+                  'live': [0, 1, 2, 41], 'closed_transient': [3]}
+        with mock.patch.object(inside, '_fd_observation', return_value=leaked), \
+                mock.patch.object(inside, '_context', return_value={'run_id': 'synthetic'}), \
+                mock.patch.object(inside, 'namespaces', return_value={'mnt': 'synthetic'}), \
+                mock.patch.object(inside, '_capture') as capture, \
+                mock.patch.object(inside, '_cancel') as cancel, \
+                mock.patch.object(inside.subprocess, 'Popen') as spawn:
+            result = inside.run_probes('synthetic')
+        self.assertEqual(result['state'], 'FAIL')
+        self.assertEqual(result['entry_fds'], leaked)
+        self.assertEqual(result['checks'][0]['id'], 'entry-fds')
+        self.assertEqual(result['checks'][0]['result'], 'FAIL')
+        capture.assert_not_called()
+        cancel.assert_not_called()
+        spawn.assert_not_called()
+
+    def test_clean_entry_snapshot_precedes_first_child(self):
+        events = []
+        def snapshot():
+            events.append('entry')
+            return {'valid': True, 'observed': [0, 1, 2, 3],
+                    'live': [0, 1, 2], 'closed_transient': [3]}
+        def first_child(*args):
+            events.append('spawn')
+            raise ValueError('synthetic stop, no process')
+        with mock.patch.object(inside, '_fd_observation', side_effect=snapshot), \
+                mock.patch.object(inside, '_context', return_value={'run_id': 'synthetic'}), \
+                mock.patch.object(inside, 'namespaces', return_value={'mnt': 'synthetic'}), \
+                mock.patch.object(inside, '_capture', side_effect=first_child):
+            with self.assertRaisesRegex(ValueError, 'synthetic stop'):
+                inside.run_probes('synthetic')
+        self.assertEqual(events, ['entry', 'spawn'])
+
+    def test_fd_snapshot_rejects_extra_missing_stdio_and_live_transient(self):
+        for observed, live, valid in (
+                ([0, 1, 2, 3], {0, 1, 2}, True),
+                ([0, 1, 2, 3, 41], {0, 1, 2, 41}, False),
+                ([0, 1, 2, 3, 41], {0, 1, 2}, False),
+                ([0, 1, 2, 3, 4], {0, 1, 2, 3}, False),
+                ([0, 1, 2], {1, 2}, False)):
+            def metadata(number):
+                if number not in live:
+                    raise OSError(errno.EBADF, 'synthetic closed')
+                return mock.sentinel.metadata
+            with self.subTest(observed=observed, live=live), \
+                    mock.patch.object(inside.os, 'listdir', return_value=list(map(str, observed))), \
+                    mock.patch.object(inside.os, 'fstat', side_effect=metadata), \
+                    mock.patch.object(inside.os, 'close') as close:
+                result = inside._fd_observation()
+                self.assertEqual(result['valid'], valid)
+                self.assertEqual(result['observed'], observed)
+                self.assertEqual(result['live'], sorted(live))
+                self.assertEqual(result['closed_transient'], sorted(set(observed) - live))
+                close.assert_not_called()
 
     def test_no_environment_authority_or_legacy_discovery(self):
         with mock.patch.object(inside, 'run_probes') as probes, \
