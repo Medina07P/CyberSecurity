@@ -94,7 +94,7 @@ class AdapterTests(unittest.TestCase):
         # Task5 does not exist yet. Only the report branch may import its API.
         module = types.ModuleType('automation.reporting')
         sentinel = object()
-        module.report_command = lambda *args: sentinel
+        module.report_command = lambda step, run_dir, ctx: sentinel
         with patch.dict(sys.modules, {'automation.reporting': module}):
             self.assertEqual(compile_step(self.plan('report').steps[0], self.run, self.ctx,
                                          self.permissions(self.plan('report'))), (sentinel,))
@@ -174,6 +174,18 @@ class AdapterTests(unittest.TestCase):
         (self.f.framework/'03_Scanners/network_scanners/nmap/nmap_smart.sh').unlink()
         with self.assertRaises(PreflightError):
             preflight(plan, self.ctx, self.permissions(plan))
+
+    def test_yaml_missing_preflight_fails_before_run_with_diagnostic(self):
+        plan = self.plan('osint_domains')
+        with patch('importlib.util.find_spec', return_value=None) as find_spec:
+            with self.assertRaisesRegex(PreflightError, 'PyYAML.*yaml'):
+                execute_plan(plan, self.ctx, self.permissions(plan))
+            find_spec.assert_called_once_with('yaml')
+        self.assertEqual(self.f.records(), [])
+        self.assertFalse((self.f.repo/'scans').exists())
+        with patch('importlib.util.find_spec', side_effect=AssertionError('builtin must not probe yaml')):
+            builtin = self.plan('ping')
+            preflight(builtin, self.ctx, self.permissions(builtin))
 
     def test_preflight_all_steps_before_creating_run(self):
         good = self.plan('ping').steps[0]

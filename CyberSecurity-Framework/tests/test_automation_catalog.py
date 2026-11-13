@@ -164,6 +164,23 @@ class CatalogTests(unittest.TestCase):
         self.assertNotIn('enum4linux', get_action('smb_audit').tools)
         self.assertTrue({'sqlmap', 'timeout', 'mktemp', 'sed', 'awk', 'od'} <= set(get_action('sqlmap_request').tools))
 
+    def test_osint_requires_discoverable_yaml_only(self):
+        with AutomationFixtureContext() as fixture:
+            for tool in {tool for action in GATES for tool in get_action(action).tools}:
+                fixture.stub(tool)
+            ctx = RuntimeContext(fixture.framework, fixture.repo, Path(sys.executable), str(fixture.bin))
+            with patch('importlib.util.find_spec', return_value=None) as find_spec, \
+                    patch('subprocess.Popen', side_effect=AssertionError('process forbidden')):
+                found = availability(ctx)
+                self.assertFalse(found['osint_domains'])
+                self.assertTrue(all(found[action] for action in GATES if action != 'osint_domains'))
+                find_spec.assert_called_once_with('yaml')
+            with patch('importlib.util.find_spec', return_value=object()) as find_spec:
+                self.assertTrue(availability(ctx)['osint_domains'])
+                find_spec.assert_called_once_with('yaml')
+            self.assertEqual(fixture.records(), [])
+            self.assertFalse((fixture.repo / 'scans').exists())
+
     def test_no_data_reads_or_environment_authority(self):
         with patch('builtins.open', side_effect=AssertionError('data read forbidden')), \
                 patch.object(Path, 'open', side_effect=AssertionError('data read forbidden')), \

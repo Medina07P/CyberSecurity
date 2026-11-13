@@ -3,6 +3,7 @@
 Availability maps action ids to required-tool presence, not operational support.
 Optional tools remain coverage omissions, never required dependencies.
 """
+import importlib.util
 import shutil
 from types import MappingProxyType
 from typing import Mapping
@@ -60,7 +61,8 @@ _ACTIONS = (
             'enum4linux opcional, omisión visible; no sustituye smb_shares.'),
     _action('osint_domains', {'domain': 'domain'}, ('domain',), ('osint',), _BASH, True,
             'Hoja OSINT con dominio explícito y salida privada.',
-            'whois/whatweb/dig opcionales, con cobertura omitida; no importar backends al comprobar.'),
+            'Requiere PyYAML (yaml); whois/whatweb/dig opcionales, con cobertura omitida; '
+            'no importar backends al comprobar.'),
     _action('config_check', {}, (), ('config_read',), _BASH + ('wc', 'basename'), False,
             'Validador local lee configuración y cuenta wordlists solo en ejecución.',
             'Opt-in; planificación no lee datos ni certifica autorización.'),
@@ -95,6 +97,16 @@ def get_action(id: str) -> ActionSpec:
         raise PlanError('Acción desconocida') from None
 
 
+def missing_python_dependencies(action: str) -> tuple[str, ...]:
+    """Discover top-level packages in the current interpreter, without imports.
+
+    Production uses sys.executable. No package probe for builtin-only actions;
+    optional workflow YAML loading remains independent of action availability.
+    """
+    packages = ('yaml',) if action == 'osint_domains' else ()
+    return tuple(name for name in packages if importlib.util.find_spec(name) is None)
+
+
 def availability(ctx: RuntimeContext) -> Mapping[str, bool]:
     """Resolve required executables in the explicit PATH, without launching any.
 
@@ -106,4 +118,5 @@ def availability(ctx: RuntimeContext) -> Mapping[str, bool]:
     present = {tool: bool(path) and shutil.which(tool, path=path) is not None
                for action in _ACTIONS for tool in action.tools}
     return MappingProxyType({id: all(present[tool] for tool in action.tools)
+                            and not missing_python_dependencies(id)
                              for id, action in _BY_ID.items()})
