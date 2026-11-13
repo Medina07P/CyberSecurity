@@ -213,6 +213,9 @@
     "CyberSecurity-Framework/tests/automation_test_guard.py",
     "CyberSecurity-Framework/tests/automation_sandbox_prepare.py",
     "CyberSecurity-Framework/tests/automation_sandbox_elf.py",
+    "CyberSecurity-Framework/tests/automation_sandbox_policy.py",
+    "CyberSecurity-Framework/tests/automation_sandbox_launch.py",
+    "CyberSecurity-Framework/tests/automation_sandbox_inside.py",
     "CyberSecurity-Framework/tests/automation_sandbox_manifest.json",
     "CyberSecurity-Framework/tests/automation_sandbox_sources.json",
     "CyberSecurity-Framework/tests/fixtures/automation/powershell_contract.ps1",
@@ -228,6 +231,7 @@
     "CyberSecurity-Framework/tests/test_automation_reports.py",
     "CyberSecurity-Framework/tests/test_automation_runner.py",
     "CyberSecurity-Framework/tests/test_automation_sandbox_prepare.py",
+    "CyberSecurity-Framework/tests/test_automation_sandbox_policy.py",
     "docs/AUTOMATION-2026-11-13.md",
     "docs/MENU-OPCIONES.md"
   ]
