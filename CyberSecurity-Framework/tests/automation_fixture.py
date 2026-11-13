@@ -9,9 +9,24 @@ from tempfile import TemporaryDirectory
 SOURCE_FILES = tuple(
     '00_Config/lib/automation/' + name + '.py'
     for name in ('__init__', 'model', 'validation', 'catalog', 'planner', 'workflows',
-                 'storage', 'runner')
+                 'storage', 'runner', 'adapters')
 ) + ('09_Automation/workflows/quick_scan.yaml',
-     '09_Automation/workflows/full_audit.yaml')
+     '09_Automation/workflows/full_audit.yaml',
+     '00_Config/lib/dangerous.txt',
+     '03_Scanners/network_scanners/nmap/nmap_smart.sh',
+     '03_Scanners/web_scanners/nikto/nikto_scan.sh',
+     '04_Enumeration/ssh/enum_ssh.sh',
+     '04_Enumeration/smb/enum_smb_advanced.sh',
+     '01_OSINT/scripts/osint_harvester.sh',
+     '00_Config/scripts/validate_config.sh',
+     '05_Exploitation/web/sqlmap_request.sh')
+
+SOURCE_FILES += tuple('00_Config/lib/' + name for name in (
+    'scanner_runtime.bash', 'scans.bash', 'enumeration_services.bash',
+    'enumeration_runtime.bash', 'enumeration_evidence.py', 'http_request.bash',
+    'session.bash')) + tuple('00_Config/lib/osint/' + name + '.py' for name in (
+    '__init__', 'cli', 'credentials', 'discovery', 'dns', 'model', 'runtime', 'sources'
+)) + ('11_Reports/report_engine.py',)
 
 
 class AutomationFixture:
