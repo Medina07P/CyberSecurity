@@ -239,6 +239,10 @@ def _host(host):
         return
     except ValueError:
         pass
+    # Nmap parses numeric dotted octet ranges before attempting DNS. These
+    # otherwise valid DNS labels must not turn one requested host into many.
+    if '-' in host and re.fullmatch(r'(?:[0-9]+(?:-[0-9]+)?\.){3}[0-9]+(?:-[0-9]+)?', host):
+        raise UsageError('RANGO IPv4 AMBIGUO: SE REQUIERE UN HOST ÚNICO')
     if (len(host) > 253 or not host.isascii() or
             any(not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?', label)
                 for label in host.split('.'))):
