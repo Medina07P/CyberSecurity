@@ -1,0 +1,231 @@
+"""Static publication contracts: sources only, never configuration/evidence."""
+import ast
+import os
+from pathlib import Path
+import re
+import subprocess
+import unittest
+
+FW = Path(__file__).resolve().parents[1]
+ROOT = FW.parent
+
+
+def source_paths():
+    # Git inventories names only: never enumerate generated/recovered tools.
+    result = subprocess.run(['git', 'ls-files', '-z', 'CyberSecurity-Framework'],
+                            cwd=ROOT, check=True, capture_output=True)
+    return [ROOT / p for p in result.stdout.decode().split('\0') if p]
+
+
+def explained_row(doc, key):
+    row = next((line for line in doc.splitlines() if line.startswith('| `' + key + '` |')), '')
+    cells = [c.strip() for c in row.split('|')[1:-1]]
+    # Short tool names (SSH, FTP) and "0 o EOF" are legitimate inputs;
+    # require substantive effects/limits rather than padding their labels.
+    if len(cells) != 4 or len(cells[1]) < 3 or len(cells[2]) < 5 or len(cells[3]) < 20:
+        raise AssertionError('Falta finalidad/entrada/efectos/límites: ' + key)
+    return row
+
+
+def numeric_case_options(text, variable, occurrence=0):
+    """Read fixed Bash case arms (including aliases/inline arms), never run UI."""
+    headers = list(re.finditer(r'\bcase\s+["\']?\$' + variable + r'["\']?\s+in\b', text))
+    start = headers[occurrence].end()
+    depth, cursor, parts = 1, start, []
+    for token in re.finditer(r'\bcase\s+["\']?\$\w+["\']?\s+in\b|\besac\b', text[start:]):
+        begin, end = start + token.start(), start + token.end()
+        if token[0] == 'esac':
+            depth -= 1
+            if depth == 0:
+                parts.append(text[cursor:begin])
+                break
+            if depth == 1:
+                cursor = end
+        else:
+            if depth == 1:
+                parts.append(text[cursor:begin])
+            depth += 1
+    else:
+        raise AssertionError('Unterminated static case: ' + variable)
+    body = '\n'.join(parts)
+    choices = set()
+    for arm in re.findall(r'(?:^|;;)\s*([0-9][0-9|]*)\)', body, re.M):
+        choices.update(arm.split('|'))
+    # Mixed numeric/cancel arms, such as 0|'!', still have a numeric option.
+    choices.update(re.findall(r'^\s*(\d+)\|[\'"!]', body, re.M))
+    if not choices:
+        raise AssertionError('No numeric options found: ' + variable)
+    return choices
+
+
+class Contracts(unittest.TestCase):
+    def test_no_legacy_success_or_shell_execution(self):
+        for source in source_paths():
+            if source.suffix != '.py' or not ('09_Automation' in source.parts or
+                                             source.parent.name == 'automation'):
+                continue
+            tree = ast.parse(source.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call):
+                    self.assertFalse(isinstance(node.func, ast.Attribute) and
+                                     isinstance(node.func.value, ast.Name) and
+                                     node.func.value.id == 'os' and node.func.attr == 'system')
+                    self.assertFalse(any(k.arg == 'shell' and isinstance(k.value, ast.Constant)
+                                         and k.value.value is True for k in node.keywords))
+        self.assertNotIn('Auditoría completa con Bash', (FW / '09_Automation/README.md').read_text())
+
+    def test_complete_capability_matrix(self):
+        use = (FW / '09_Automation/USE.md').read_text()
+        cli = ast.parse((FW / '00_Config/lib/automation/cli.py').read_text())
+        originals = next(ast.literal_eval(n.value) for n in cli.body
+                         if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'ORIGINAL' for t in n.targets))
+        for entry in originals:
+            row = next((line for line in use.splitlines() if '`' + entry + '`' in line), '')
+            self.assertGreaterEqual(len(row.split('|')), 6, entry)
+            self.assertTrue(all(len(c.strip()) > 8 for c in row.split('|')[2:5]), entry)
+
+    def test_docs_use_real_flags(self):
+        use = (FW / '09_Automation/USE.md').read_text()
+        for text in ('post', '--authorized-target', '--allow', 'sqlmap_replay', 'EXDEV', 'renameat2', 'históricos'):
+            self.assertIn(text, use)
+        cli = (FW / '00_Config/lib/automation/cli.py').read_text()
+        accepted = set(re.findall(r"'(--[a-z-]+)'", cli))
+        accepted.update('--' + k.replace('_', '-') for k in ('target url domain ports port request_file scheme account wordlist max_attempts max_seconds product database table report_input menu list check execute include_config').split())
+        for flag in re.findall(r'--[a-z][a-z-]+', use):
+            self.assertIn(flag, accepted, flag)
+
+    def test_suite_isolated(self):
+        runner = (FW / 'tests/run_automation.sh').read_text()
+        self.assertIn('PYTHONDONTWRITEBYTECODE', runner)
+        self.assertIn('test_automation_*.py', runner)
+        self.assertNotIn('run_tests.sh', runner)
+        fixture = (FW / 'tests/automation_fixture.py').read_text()
+        self.assertNotIn('copytree', fixture)
+        self.assertNotIn('scope.yaml', fixture.split('class AutomationFixture:')[0])
+
+    def test_every_leaf_explained(self):
+        doc = (ROOT / 'docs/MENU-OPCIONES.md').read_text()
+        for source in source_paths():
+            relative = source.relative_to(FW)
+            if ('lib' in relative.parts or 'tests' in relative.parts or
+                    not re.match(r'^\d\d_', relative.parts[0]) or
+                    source.suffix not in ('.sh', '.py', '.ps1')):
+                continue
+            explained_row(doc, relative.as_posix())
+
+    def test_every_menu_option_explained(self):
+        doc = (ROOT / 'docs/MENU-OPCIONES.md').read_text()
+        for key in [f'{n:02d}' for n in range(14)] + ['99', 'R', 'T', 'K', '?', 'Q']:
+            explained_row(doc, key)
+        # Main case arms of each source function; nested case arms are checked
+        # separately below. New numeric options cannot silently lose coverage.
+        for module, name in (('03', 'scanners'), ('04', 'enumeration'),
+                             ('05', 'exploitation'), ('06', 'postexploitation'),
+                             ('07', 'wireless'), ('08', 'forensics')):
+            text = (FW / f'00_Config/lib/{name}_menu.bash').read_text()
+            function = text.split(f'{name}_menu() {{', 1)[1]
+            for option in numeric_case_options(function, 'choice'):
+                explained_row(doc, f'{module}.{option}')
+        for name, variable, occurrence, prefix in (
+                ('scanners', 'web_choice', 0, '03.web'),
+                ('enumeration', 'sub', 0, '04.bd'),
+                ('enumeration', 'sub', 1, '04.web'),
+                ('postexploitation', 'sub', 0, '06.persist'),
+                ('postexploitation', 'sub', 1, '06.lateral'),
+                ('forensics', 'action', 0, '08.disk'),
+                ('forensics', 'action', 1, '08.local'),
+                ('forensics', 'choice', 0, '08.requirements')):
+            text = (FW / f'00_Config/lib/{name}_menu.bash').read_text()
+            for option in numeric_case_options(text, variable, occurrence):
+                explained_row(doc, prefix + '.' + option)
+        cli = ast.parse((FW / '00_Config/lib/automation/cli.py').read_text())
+        menu = next(n for n in cli.body if isinstance(n, ast.FunctionDef) and n.name == 'menu')
+        labels = [n.args[0].value for n in ast.walk(menu) if isinstance(n, ast.Call)
+                  and isinstance(n.func, ast.Name) and n.func.id == 'print'
+                  and n.args and isinstance(n.args[0], ast.Constant) and isinstance(n.args[0].value, str)]
+        for label in labels:
+            match = re.match(r'^(\d+) ', label)
+            if match:
+                explained_row(doc, '09.' + match[1])
+        labs = (FW / '13_Labs/main.sh').read_text()
+        for name, prefix in [('main_menu', '13'), ('htb_menu', '13.htb'),
+                             ('thm_menu', '13.thm'), ('ad_menu', '13.ad'),
+                             ('web_menu', '13.web'), ('cloud_menu', '13.cloud'),
+                             ('tools_menu', '13.tools'), ('vpn_menu', '13.vpn'),
+                             ('delete_menu', '13.delete')]:
+            body = labs.split(name + '() {', 1)[1].split('\n}', 1)[0]
+            for option in re.findall(r'echo -e "\$\{GREEN\}(\d+)\.', body):
+                # Nested shell choices are a distinct namespace.
+                if name == 'tools_menu' and option in ('1', '2', '3', '4', '5'):
+                    explained_row(doc, '13.shell.' + option)
+                explained_row(doc, prefix + '.' + option)
+        for prefix, options in [('03.web', range(3)), ('04.bd', range(4)),
+                                ('04.web', range(3)), ('06.persist', range(3)),
+                                ('06.lateral', range(4)), ('08.disk', (1, 2)),
+                                ('08.local', range(1, 7)), ('08.requirements', (1, 2)),
+                                ('R', range(4)), ('K', range(6)), ('00.wizard', range(3))]:
+            for option in options:
+                explained_row(doc, prefix + '.' + str(option))
+        for option in ('journal', 'auth', 'syslog', 'dpkg', 'wtmp', 'tree'):
+            explained_row(doc, '08.timeline.' + option)
+        # Mutation checks: a header/name without explanation must fail.
+        for broken in ('| `09.3` | | | |', '| `09.3` | Quick | target | preview |'):
+            with self.assertRaises(AssertionError):
+                explained_row(broken, '09.3')
+
+    def test_catalog_actions_have_effects_and_conditions(self):
+        source = ast.parse((FW / '00_Config/lib/automation/catalog.py').read_text())
+        use = (FW / '09_Automation/USE.md').read_text()
+        for node in ast.walk(source):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == '_action':
+                action = ast.literal_eval(node.args[0])
+                line = next((s for s in use.splitlines() if s.startswith('| ' + action + ' |')), '')
+                cells = [c.strip() for c in line.split('|')[1:-1]]
+                self.assertEqual(len(cells), 4, action)
+                self.assertTrue(all(len(c) >= 9 for c in cells[1:]), action)
+
+    def test_guard_rejects_real_data_and_backend(self):
+        from automation_test_guard import check_event
+        for path in (FW / '00_Config/scope.yaml', FW / '00_Config/targets.txt',
+                     ROOT / 'scans/secret.txt', FW / '10_Evidence/credentials/x'):
+            with self.assertRaises(PermissionError):
+                check_event(ROOT, 'open', (str(path), 'r', 0))
+        with self.assertRaises(PermissionError):
+            check_event(ROOT, 'open', (str(FW / 'tests/../00_Config/scope.yaml'), 'r', 0))
+        with self.assertRaises(PermissionError):
+            check_event(ROOT, 'subprocess.Popen', ('nmap', ['nmap', '192.0.2.1'], None, None))
+        with self.assertRaises(PermissionError):
+            check_event(ROOT, 'subprocess.Popen', ('bash', ['bash', str(FW / '09_Automation/run_all_automation.sh')], None, None))
+        check_event(ROOT, 'open', (str(FW / '09_Automation/USE.md'), 'r', 0))
+
+    def test_runner_discovery_guard_and_failure_rc(self):
+        from automation_fixture import AutomationFixture
+        fixture = AutomationFixture()
+        self.addCleanup(fixture.close)
+        tests = fixture.framework / 'tests'
+        tests.mkdir(exist_ok=True)
+        for name in ('run_automation.sh', 'automation_test_guard.py'):
+            (tests / name).write_text((FW / 'tests' / name).read_text())
+        (tests / 'test_automation_probe.py').write_text(
+            'import unittest, subprocess\nfrom pathlib import Path\n'
+            'class Probe(unittest.TestCase):\n'
+            ' def test_config(self):\n'
+            f'  Path({str(fixture.framework / "00_Config/scope.yaml")!r}).read_text()\n'
+            ' def test_backend(self):\n'
+            '  subprocess.run(["nmap", "192.0.2.1"], check=True)\n')
+        # Defense in depth: even a broken guard must only reach our stub.
+        fixture.stub('nmap', rc=97)
+        result = subprocess.run(['/bin/bash', str(tests / 'run_automation.sh')],
+                                cwd=fixture.repo, text=True, capture_output=True, timeout=20,
+                                env={**os.environ, 'PATH': str(fixture.bin) + os.pathsep + os.defpath})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Ran 2 tests', result.stderr)
+        self.assertIn('PermissionError', result.stderr)
+        self.assertIn('must not open checkout data', result.stderr)
+        self.assertIn('Real backend forbidden', result.stderr)
+        self.assertIn('rc=1', result.stderr)
+        self.assertFalse(fixture.log.exists(), 'Guard let a backend reach even the fallback stub')
+
+
+if __name__ == '__main__':
+    unittest.main()

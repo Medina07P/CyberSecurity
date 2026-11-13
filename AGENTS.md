@@ -1,5 +1,22 @@
 # AGENTS.md
 
+**09_Automation — Task9, 2026-11-13:** documentación/runner/contratos implementados
+sobre72c6a9c, pendientes de revisión independiente del controlador, NO cierre
+global. `09_Automation/USE.md` explica previews/permisos y conservación;
+`docs/MENU-OPCIONES.md` inventaría módulos00–13, teclas, submenús y130hojas por
+fuentes; no cambiar comportamiento ajeno ni fichas-modulos. Suite09 final113tests
+rc0; carreras20×8=160 rc0 bajo supervisor sintético, sin supervivientes vivos.
+Regresiones solo en copia fuentes/config sintética: config19/scanners27/enum39,
+reports28checks+78tests/e2e11 y explotación sin red54 verdes. Smoke solo
+subconjunto23checks sin99; explotación web/run_tests/SSTI no ejecutados. Ver
+`docs/AUTOMATION-2026-11-13.md` y reporte local Task9. **Incidencia del harness**:
+una prueba negativa invocó Nmap real a192.0.2.1 por clasificación incorrecta de
+ejecutable relativo; se comunicó, conservó evidencia y corrigió guarda más stub
+de respaldo. No afirmar que toda la sesión fue exclusivamente sintética ni
+operacionalmente autorizada/validada. Sin instalaciones, Docker build/up,99,
+merge ni push; conservar todos los logs/workspace. Nota de próxima sesión bajo
+este bloque es histórica:09 sí fue solicitado posteriormente.
+
 **Próxima sesión, 2026-11-13:** usuario pide continuar con `09_Automation`;
 leer `docs/RETOMAR-09-2026-11-13.md`. No iniciar09 ahora ni asumir diseño
 aprobado. 08 cerrado según bloque siguiente; preservar ledger/logs y pendientes.
