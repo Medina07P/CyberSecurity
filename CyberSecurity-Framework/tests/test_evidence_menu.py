@@ -1,7 +1,7 @@
 """Real Bash UI/dispatch in allowlisted synthetic copies, no backends."""
 import subprocess
 import unittest
-from evidence_fixture import sandbox, copy_sources, closed_env, snapshot
+from evidence_fixture import sandbox, copy_sources, closed_env, snapshot, legacy_pair
 
 
 class EvidenceMenuTests(unittest.TestCase):
@@ -155,21 +155,22 @@ run_module_scripts() {''' + listing + '\nrun_module_scripts 10_Evidence original
 
     def test_phase_all_categories_legacy_not_diagnostics(self):
         module = self.fw / '10_Evidence'
-        for category in ('screenshots', 'pcaps', 'credentials', 'findings', 'proofs', 'logs'):
-            folder = module / category / ('results' if category == 'logs' else 'test')
-            folder.mkdir(parents=True)
-            payload = folder / 'old'
-            payload.write_text('not read')
-            self.assertEqual(self.phase(), 'pending')
-            meta = folder / 'old.meta'
-            meta.write_text('FILE=old\n')
-            self.assertEqual(self.phase(), 'done')
-            meta.unlink()
-            payload.unlink()
+        for category, kind in (('screenshots', 'screenshot'), ('pcaps', 'pcap'),
+                               ('credentials', 'credential'), ('findings', 'finding'),
+                               ('proofs', 'proof'), ('logs', 'log')):
+            for subdir in ('', '.archive/nested'):
+                for name in ('old proof', ' leading and trailing ', '.hidden', 'body.meta'):
+                    with self.subTest(category=category, subdir=subdir, name=name):
+                        folder = module / category / subdir
+                        payload, meta = legacy_pair(folder, name, kind)
+                        self.assertEqual(self.phase(), 'done')
+                        meta.unlink()
+                        self.assertEqual(self.phase(), 'pending')
+                        payload.unlink()
         diag = module / 'logs/runs'
         diag.mkdir()
-        (diag / 'old').write_text('diagnostic')
-        (diag / 'old.meta').write_text('FILE=old\n')
+        legacy_pair(diag, kind='log')
+        legacy_pair(diag / 'nested', kind='log')
         self.assertEqual(self.phase(), 'pending')
 
     def test_phase_relative_root_returns_without_effects(self):
@@ -181,9 +182,42 @@ run_module_scripts() {''' + listing + '\nrun_module_scripts 10_Evidence original
     def test_phase_hidden_legacy_regular_pair_is_presence(self):
         folder = self.fw / '10_Evidence/proofs/.archive'
         folder.mkdir(parents=True)
-        (folder / '.proof').write_text('private payload')
-        (folder / '.proof.meta').write_text('FILE=.proof\n')
+        legacy_pair(folder, '.proof')
         self.assertEqual(self.phase(), 'done')
+
+    def test_phase_legacy_reads_only_sidecar_and_rejects_links(self):
+        folder = self.fw / '10_Evidence/logs/.archive'
+        payload, meta = legacy_pair(folder, ' leading body.meta ', 'log')
+        # Corrupt MD5 still counts as presence: the banner must not verify.
+        meta.write_text(meta.read_text().replace('900150983cd24fb0d6963f7d28e17f72', 'wrong'))
+        probe = '''source "$FRAMEWORK_DIR/00_Config/lib/phase_status.bash"
+read() {
+    if [[ ! /proc/self/fd/0 -ef "$FRAMEWORK_DIR/10_Evidence/logs/.archive/ leading body.meta .meta" ]]; then
+        echo forbidden >> "$HOME/../forbidden"
+        return 1
+    fi
+    builtin read "$@"
+}
+if _evidence_has_records "$FRAMEWORK_DIR/10_Evidence"; then echo done; else echo pending; fi'''
+        self.assertEqual(self.run_ui(probe).stdout, 'done\n')
+        payload.rename(self.root / 'outside')
+        payload.symlink_to(self.root / 'outside')
+        self.assertEqual(self.phase(), 'pending')
+        payload.unlink()
+        payload.write_bytes(b'abc')
+        meta.rename(self.root / 'outside.meta')
+        meta.symlink_to(self.root / 'outside.meta')
+        self.assertEqual(self.phase(), 'pending')
+        meta.unlink()
+        legacy_pair(folder, payload.name, 'log')
+        folder.rename(self.root / 'outside-directory')
+        folder.symlink_to(self.root / 'outside-directory', target_is_directory=True)
+        self.assertEqual(self.phase(), 'pending')
+
+    def test_phase_equal_separator_is_not_legacy(self):
+        _, meta = legacy_pair(self.fw / '10_Evidence/proofs/access')
+        meta.write_text(meta.read_text().replace('FILE: ', 'FILE='))
+        self.assertEqual(self.phase(), 'pending')
 
     def test_phase_legacy_requires_safe_basename_and_regular_pair(self):
         folder = self.fw / '10_Evidence/proofs/access'
@@ -192,7 +226,7 @@ run_module_scripts() {''' + listing + '\nrun_module_scripts 10_Evidence original
             payload = folder / name
             meta = folder / (name + '.meta')
             payload.write_text('not evidence')
-            meta.write_text('FILE=' + name + '\n')
+            meta.write_text('FILE: ' + name + '\n')
             self.assertEqual(self.phase(), 'pending')
             payload.unlink()
             meta.unlink()

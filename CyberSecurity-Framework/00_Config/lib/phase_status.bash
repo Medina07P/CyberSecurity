@@ -18,7 +18,8 @@ _has_files() {
 
 # Presence only. No JSON/schema validation, hashing or payload reads.
 _evidence_record_tree() {
-    local dir=$1 item name line file
+    local dir=$1 excluded=${2:-} item name line file
+    [[ $dir != "$excluded" ]] || return 1
     [[ -d $dir && ! -L $dir ]] || return 1
     name=${dir##*/}
     if [[ $name =~ ^[0-9a-f]{32}$ && -f $dir/evidence.json && ! -L $dir/evidence.json &&
@@ -26,12 +27,18 @@ _evidence_record_tree() {
     for item in "$dir"/* "$dir"/.[!.]* "$dir"/..?*; do
         [[ ! -L $item ]] || continue
         if [[ -d $item ]]; then
-            _evidence_record_tree "$item" && return 0
+            _evidence_record_tree "$item" "$excluded" && return 0
         elif [[ -f $item && $item = *.meta && ! -e $item.meta && ! -L $item.meta ]]; then
             # Only sidecar metadata; FILE must be the exact paired basename.
             file=
             while IFS= read -r line || [[ -n $line ]]; do
-                case $line in FILE=*) file=${line#FILE=}; break ;; esac
+                case $line in
+                    FILE:*)
+                        file=${line#FILE:}
+                        # Remove only the single optional legacy formatting space.
+                        file=${file# }
+                        break ;;
+                esac
             done < "$item"
             [[ -n $file && $file != . && $file != .. && $file != .gitkeep &&
                $file != */* && $file != *\\* &&
@@ -55,9 +62,7 @@ _evidence_has_records() {
         _evidence_record_tree "$root/$category" && return 0
     done
     [[ -d $root/logs && ! -L $root/logs ]] || return 1
-    for category in results audit; do
-        _evidence_record_tree "$root/logs/$category" && return 0
-    done
+    _evidence_record_tree "$root/logs" "$root/logs/runs" && return 0
     return 1
 }
 
