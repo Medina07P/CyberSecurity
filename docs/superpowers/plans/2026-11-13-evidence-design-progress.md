@@ -7,8 +7,9 @@
 - [x] Redactar diseño con alcance, contratos, compatibilidad y aceptación.
 - [x] Revisión independiente del diseño; sin preguntas importantes pendientes
   (`ses_e29e50f1cffeIzQaj5CtEy6No3`).
-- [ ] Presentar diseño al usuario y obtener aprobación explícita.
-- [ ] Invocar writing-plans y preparar plan tras aprobación.
+- [x] Presentar diseño al usuario y obtener aprobación explícita (`Aprobado`).
+- [x] Invocar writing-plans y preparar plan tras aprobación.
+- [ ] Revisión del plan por el usuario y elección de método de ejecución.
 
-No hay modificaciones de producto ni implementación autorizada por el diseño
-todavía. La aprobación del enfoque no equivale a aprobar este documento.
+Diseño aprobado; plan en `2026-11-13-evidence-integral.md`, pendiente de revisión
+y elección de ejecución. No hay modificaciones de producto todavía.
