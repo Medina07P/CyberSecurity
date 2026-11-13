@@ -145,3 +145,15 @@ def snapshot(root):
                 visit(child)
     visit(root)
     return result
+
+
+def legacy_pair(parent, name='old proof with spaces.bin', kind='proof'):
+    """Original colon format, shared by inventory and phase presence tests."""
+    parent.mkdir(parents=True, exist_ok=True)
+    payload = parent / name
+    payload.write_bytes(b'abc')
+    metadata = parent / (name + '.meta')
+    metadata.write_text('TYPE: ' + kind + '\nDATE: historical: date\nFILE: ' + name +
+                        '\nDESCRIPTION: \nHASH: 900150983cd24fb0d6963f7d28e17f72\n'
+                        'USER: $(never execute)\n')
+    return payload, metadata

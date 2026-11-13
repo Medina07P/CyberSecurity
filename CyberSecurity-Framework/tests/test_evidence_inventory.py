@@ -13,7 +13,7 @@ import sys
 import unittest
 from unittest import mock
 
-from evidence_fixture import sandbox, copy_sources, closed_env, snapshot
+from evidence_fixture import sandbox, copy_sources, closed_env, snapshot, legacy_pair
 
 
 class InventoryTests(unittest.TestCase):
@@ -52,15 +52,7 @@ class InventoryTests(unittest.TestCase):
                               text=True, timeout=10)
 
     def legacy(self, name='old proof with spaces.bin'):
-        parent = self.module / 'proofs/access'
-        parent.mkdir(parents=True, exist_ok=True)
-        payload = parent / name
-        payload.write_bytes(b'abc')
-        metadata = parent / (name + '.meta')
-        metadata.write_text('TYPE: proof\nDATE: historical: date\nFILE: ' + name +
-                            '\nDESCRIPTION: \nHASH: 900150983cd24fb0d6963f7d28e17f72\n'
-                            'USER: $(never execute)\n')
-        return payload, metadata
+        return legacy_pair(self.module / 'proofs/access', name)
 
     def assert_bad(self):
         self.assertFalse(self.inventory().verify(self.module).ok)
