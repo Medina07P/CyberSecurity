@@ -51,6 +51,12 @@ la herramienta; la terminación supervisada añade hasta 2 s de gracia TERM
 (tráfico: INT 2 s, luego TERM 2 s), después KILL y espera de reap sin plazo.
 Es supervisión Linux con subreaper, no aislamiento de backends hostiles capaces
 de escapar de su grupo mediante setsid/setpgid.
+La importación difiere INT/TERM solo durante los traspasos breves de identidad
+de archivos/reserva/publicación, no durante la copia en streaming. Tras señal,
+las acciones siguientes quedan `not-run`; cleanup no sustituye la interrupción
+por un fallo ordinario y solo retira entradas cuya identidad sigue siendo propia.
+Un reemplazo ajeno o un error persistente del sistema de archivos puede impedir
+retirar una reserva: no se borra material ajeno para ocultarlo.
 
 `run_all_evidence.sh --capture` acepta las selecciones anteriores y después
 lista/verifica, conservando fallos/parciales. `--offline` solo lista/verifica.
@@ -68,3 +74,6 @@ No se cambia TARGET al entrar; la lista avanzada y despacho aceptan solo las
 tres hojas originales, nunca código importado. `--prepared` no evita las
 confirmaciones de captura/exportación. La marca de fase `done` significa
 **hay evidencia reconocible**, no integridad verificada.
+Incluye pares históricos `FILE: nombre` con espacios en las seis categorías,
+tanto en raíz como en subdirectorios; excluye enlaces y `logs/runs/` diagnóstico.
+El sondeo solo lee sidecars legacy, nunca cuerpos ni hashes de evidencias.

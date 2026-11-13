@@ -283,6 +283,7 @@ class CaptureTests(unittest.TestCase):
     def test_real_signals_at_storage_ownership_boundaries_cancel_without_orphans(self):
         storage = importlib.import_module('evidence.storage')
         process = importlib.import_module('evidence.process')
+        cli = importlib.import_module('evidence.cli')
         for boundary in ('copy-return', 'copy-stream', 'artifact-open', 'metadata-open', 'publish', 'reservation', 'foreign-replacement'):
             for sig in (signal.SIGINT, signal.SIGTERM):
                 with self.subTest(boundary=boundary, signal=sig):
@@ -327,7 +328,9 @@ class CaptureTests(unittest.TestCase):
                         return process.ProcessResult(0, False, None)
                     descriptors = len(list(Path('/proc/self/fd').iterdir()))
                     with mock.patch.object(owner, operation, side_effect=inject), mock.patch.object(self.c, 'run_child', side_effect=backend) as child:
-                        rc = self.run_plan(web='https://localhost', scan='localhost', scan_profile='basic', system=True)
+                        rc = cli.main(['--root', str(self.root), 'run', '--capture',
+                                       '--web', 'https://localhost', '--scan', 'localhost',
+                                       '--scan-profile', 'basic', '--system', '--authorize-network'])
                     self.assertEqual(len(list(Path('/proc/self/fd').iterdir())), descriptors)
                     self.assertTrue(fired)
                     self.assertEqual(rc, 128 + sig)

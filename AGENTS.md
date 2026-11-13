@@ -1,5 +1,15 @@
 # AGENTS.md
 
+**Fixes globales 10, 2026-11-13 (re-review e integración pendientes):**
+I1 corregido en `5a02c8c`: ownership acreditado antes de entregar INT/TERM,
+cleanup conserva interrupción y no borra reemplazos ajenos; copia larga sigue
+interrumpible. I2 en `ebc19fb`: fase reconoce `FILE:` con espacios en raíz/subárboles
+de seis categorías; excluye `logs/runs` y enlaces, sin leer cuerpos ni hashes.
+Fixtures legacy compartidos con inventario. Reporte/logs de esta ola en
+`.superpowers/sdd/2026-11-13-evidence-integral/final-fix-report.md`.
+No equivale a revisión global aprobada, integración, compatibilidad operacional,
+custodia legal ni rama completa verde. Conservar workspace/logs; sin push.
+
 **Entrega implementación 10, 2026-11-13 (pendiente revisión global/integración):**
 Tasks1–7 revisadas según controlador; Task8 entregables1–6 añade runner allowlist
 y guardas de fuentes permitidas (hash/modo/layout sin leer config/evidencia real),
