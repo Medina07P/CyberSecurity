@@ -8,8 +8,9 @@ from tempfile import TemporaryDirectory
 
 SOURCE_FILES = tuple(
     '00_Config/lib/automation/' + name + '.py'
-    for name in ('__init__', 'model', 'validation', 'catalog')
-)
+    for name in ('__init__', 'model', 'validation', 'catalog', 'planner', 'workflows')
+) + ('09_Automation/workflows/quick_scan.yaml',
+     '09_Automation/workflows/full_audit.yaml')
 
 
 class AutomationFixture:
