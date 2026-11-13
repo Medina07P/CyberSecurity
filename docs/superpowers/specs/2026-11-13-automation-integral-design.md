@@ -1,14 +1,15 @@
 # Diseño: integración integral de 09_Automation
 
-Fecha: 2026-11-13. Estado: **BORRADOR, pendiente de aprobación del usuario**.
+Fecha: 2026-11-13. Estado: **APROBADO por el usuario para preparar el plan**.
 
 ## 1. Intención y decisiones acordadas
 
 Convertir 09 en una entrada fiable para planificar y ejecutar automatizaciones
 autorizadas, aprovechando el framework existente y conservando sus entradas y
 capacidades. El usuario eligió la integración integral frente a mantenimiento
-mínimo o una plataforma nueva. Eligió preparar este diseño; todavía no aprobó
-su contenido ni autorizó implementación.
+mínimo o una plataforma nueva. Tras recibir el documento, aprobó su contenido
+con «Si, aprobado». El siguiente paso autorizado es preparar el plan; todavía
+no se ha elegido método de ejecución ni iniciado implementación.
 
 El problema central no es la falta de herramientas: son ejecuciones implícitas,
 argumentos perdidos, errores ocultos, duplicación y declaraciones de éxito sin
@@ -277,9 +278,9 @@ se expone antes de escribir producto; no se retira silenciosamente.
 - [x] Redactar diseño y distinguir propuestas técnicas de acuerdos.
 - [x] Revisión independiente para detectar decisiones importantes sin resolver.
 - [x] Incorporar revisión y preparar documento para presentación al usuario.
-- [ ] Aprobación del documento por el usuario.
-- [ ] Invocar writing-plans después de la aprobación; no implementar antes.
+- [x] Aprobación del documento por el usuario.
+- [x] Invocar writing-plans después de la aprobación; no implementar antes.
 
 Revisión de constructor, sesión `ses_e2a4726aaffeO7WyFM2Wx003hc`: respuesta
-`nothing important left`. No implica aprobación del usuario, revisión de código
-ni validación operacional; el documento sigue siendo borrador.
+`nothing important left`. Esta revisión no implica revisión de código ni
+validación operacional. La aprobación posterior del usuario se registra arriba.
