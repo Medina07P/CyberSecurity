@@ -1,0 +1,210 @@
+"""Task1 contracts written before implementation. NOT RUN before static gate.
+
+Only synthetic bytes and persistent new directories; no legacy fixture import,
+cleanup, finalizer or real executable used as a negative ELF fixture.
+"""
+import ast
+from dataclasses import FrozenInstanceError
+from pathlib import Path
+import struct
+import unittest
+from unittest.mock import patch
+import uuid
+
+from automation_sandbox_prepare import (
+    IsolationBlocked, PreparedRun, RuntimeFile, copy_regular, load_json,
+    source_names,
+)
+from automation_sandbox_elf import read_elf, resolve_runtime
+
+
+def persistent_case():
+    root = Path('/tmp/opencode') / ('sandbox-prepare-case-' + uuid.uuid4().hex)
+    root.mkdir(mode=0o700)
+    return root
+
+
+def elf_bytes(needed=(), interpreter=None, rpath=None):
+    """Minimal ELF64 ET_DYN fixture, never executed."""
+    strings = b'\0'
+    dynamic = []
+    for name in needed:
+        dynamic.append((1, len(strings)))
+        strings += name.encode() + b'\0'
+    if rpath is not None:
+        dynamic.append((29, len(strings)))
+        strings += rpath.encode() + b'\0'
+    dynamic += [(5, 0x400200), (10, len(strings)), (0, 0)]
+    dyn = b''.join(struct.pack('<qQ', *item) for item in dynamic)
+    phnum = 2 + (interpreter is not None)
+    header = b'\x7fELF\x02\x01\x01' + b'\0' * 9
+    header += struct.pack('<HHIQQQIHHHHHH', 3, 62, 1, 0, 64, 0, 0,
+                          64, 56, phnum, 0, 0, 0)
+    size = 0x400 + len(dyn)
+    headers = struct.pack('<IIQQQQQQ', 1, 4, 0, 0x400000, 0, size, size, 0x1000)
+    headers += struct.pack('<IIQQQQQQ', 2, 4, 0x400, 0x400400, 0,
+                           len(dyn), len(dyn), 8)
+    if interpreter is not None:
+        raw = interpreter.encode() + b'\0'
+        headers += struct.pack('<IIQQQQQQ', 3, 4, 0x300, 0, 0,
+                               len(raw), len(raw), 1)
+    data = bytearray(size)
+    data[:64] = header
+    data[64:64 + len(headers)] = headers
+    data[0x200:0x200 + len(strings)] = strings
+    if interpreter is not None:
+        data[0x300:0x300 + len(raw)] = raw
+    data[0x400:] = dyn
+    return bytes(data)
+
+
+class Preparation(unittest.TestCase):
+    def test_source_symlink_rejected(self):
+        root = persistent_case()
+        (root / 'real').write_bytes(b'synthetic')
+        (root / 'link').symlink_to('real')
+        (root / 'dir').symlink_to(root, target_is_directory=True)
+        for name in ('link', 'dir/real'):
+            with self.subTest(name=name), self.assertRaises(IsolationBlocked):
+                copy_regular(root / name, root / ('copy-' + name.replace('/', '-')))
+
+    def test_no_config_or_generated_input(self):
+        names = source_names()
+        self.assertNotIn('CyberSecurity-Framework/00_Config/scope.yaml', names)
+        self.assertNotIn('CyberSecurity-Framework/00_Config/targets.txt', names)
+        for name in names:
+            self.assertNotIn('.git', Path(name).parts)
+            self.assertNotIn('credentials', Path(name).parts)
+            self.assertNotIn('scans', Path(name).parts)
+        self.assertEqual(len(names), len(set(names)))
+        self.assertIn('docs/MENU-OPCIONES.md', names)
+
+    def test_runtime_dependencies_closed(self):
+        root = persistent_case()
+        program = root / 'program'
+        program.write_bytes(elf_bytes(('libsynthetic.so',)))
+        dependency = root / 'libsynthetic.so'
+        dependency.write_bytes(elf_bytes())
+        # No host binary involved; dependency resolver's sole library lookup
+        # is replaced by an explicit synthetic path.
+        with patch('automation_sandbox_elf._library', return_value=dependency):
+            runtime = resolve_runtime((RuntimeFile(program, '/usr/bin/synthetic', 'elf'),))
+        self.assertEqual(len({entry.destination for entry in runtime}), len(runtime))
+        self.assertIn('/usr/lib/x86_64-linux-gnu/libsynthetic.so',
+                      {entry.destination for entry in runtime})
+        with patch('automation_sandbox_elf._library', side_effect=IsolationBlocked('missing')):
+            with self.assertRaises(IsolationBlocked):
+                resolve_runtime((RuntimeFile(program, '/usr/bin/synthetic', 'elf'),))
+
+    def test_dependency_depth_and_count_bounded(self):
+        root = persistent_case()
+        files = []
+        for index in range(4):
+            path = root / ('libsynthetic' + str(index) + '.so')
+            path.write_bytes(elf_bytes(('libsynthetic' + str(index + 1) + '.so',)
+                                      if index < 3 else ()))
+            files.append(path)
+        initial = (RuntimeFile(files[0], '/usr/bin/synthetic', 'elf'),)
+        with patch('automation_sandbox_elf._library', side_effect=lambda name: root / name):
+            with patch('automation_sandbox_elf.MAX_DEPTH', 1):
+                with self.assertRaises(IsolationBlocked):
+                    resolve_runtime(initial)
+            with patch('automation_sandbox_elf.MAX_DEPENDENCIES', 2):
+                with self.assertRaises(IsolationBlocked):
+                    resolve_runtime(initial)
+
+    def test_enospc_retains_partial_copy(self):
+        import errno
+        root = persistent_case()
+        source = root / 'source'
+        target = root / 'target'
+        source.write_bytes(b'synthetic')
+        with patch('automation_sandbox_prepare.os.write', side_effect=OSError(errno.ENOSPC, 'full')):
+            with self.assertRaises(IsolationBlocked):
+                copy_regular(source, target)
+        self.assertTrue(source.is_file())
+        self.assertTrue(target.is_file())
+
+    def test_conflicting_destination_rejected(self):
+        entry = RuntimeFile(Path('/synthetic'), '/usr/bin/synthetic', 'elf')
+        with self.assertRaises(IsolationBlocked):
+            resolve_runtime((entry, entry))
+
+    def test_no_cleanup_or_reuse(self):
+        root = persistent_case()
+        source, target = root / 'source', root / 'target'
+        source.write_bytes(b'preserve')
+        copy_regular(source, target)
+        with self.assertRaises(IsolationBlocked):
+            copy_regular(source, target)
+        self.assertEqual(target.read_bytes(), b'preserve')
+        for name in ('automation_sandbox_prepare.py', 'automation_sandbox_elf.py'):
+            tree = ast.parse(Path(__file__).with_name(name).read_text())
+            forbidden = {'unlink', 'rmdir', 'rmtree', 'remove', 'TemporaryDirectory',
+                         'cleanup', 'register', '__del__'}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call):
+                    self.assertNotIn(getattr(node.func, 'attr', getattr(node.func, 'id', '')), forbidden)
+
+    def test_elf_bounds_and_architecture(self):
+        root = persistent_case()
+        for name, data in (('elf32', b'\x7fELF\x01' + b'\0' * 80),
+                           ('truncated', elf_bytes()[:70]),
+                           ('needed-slash', elf_bytes(('../evil.so',))),
+                           ('rpath', elf_bytes(rpath='/home/private')),
+                           ('origin', elf_bytes(rpath='$ORIGIN/../outside')),
+                           ('loader', elf_bytes(interpreter='/tmp/loader'))):
+            path = root / name
+            path.write_bytes(data)
+            with self.subTest(name=name), self.assertRaises(IsolationBlocked):
+                read_elf(path)
+        good = root / 'good'
+        good.write_bytes(elf_bytes(('libc.so.6',)))
+        self.assertEqual(read_elf(good).needed, ('libc.so.6',))
+        huge = root / 'huge'
+        with huge.open('xb') as stream:
+            stream.truncate(32 * 1024 * 1024 + 1)
+        with self.assertRaises(IsolationBlocked):
+            read_elf(huge)
+
+    def test_json_closed_and_bounded(self):
+        root = persistent_case()
+        for name, data in (('extra', b'{"version":1,"other":0}'),
+                           ('duplicate', b'{"version":1,"version":1}'),
+                           ('huge', b' ' * (1024 * 1024 + 1))):
+            path = root / name
+            path.write_bytes(data)
+            with self.subTest(name=name), self.assertRaises(IsolationBlocked):
+                load_json(path, {'version'})
+
+    def test_new_json_no_overwrite_or_oversize(self):
+        from automation_sandbox_prepare import _new_json
+        root = persistent_case()
+        path = root / 'state.json'
+        _new_json(path, {'version': 1})
+        with self.assertRaises((IsolationBlocked, FileExistsError)):
+            _new_json(path, {'version': 2})
+        with self.assertRaises(IsolationBlocked):
+            _new_json(root / 'large.json', {'version': 1, 'data': 'x' * (1024 * 1024)})
+        self.assertEqual(path.read_text().count('1'), 1)
+
+    def test_copy_identity_change_blocks(self):
+        root = persistent_case()
+        source = root / 'source'
+        source.write_bytes(b'synthetic')
+        with patch('automation_sandbox_prepare._identity',
+                   side_effect=[(1, 1, 1, 9, 1, 1), (2, 1, 1, 9, 1, 1)]):
+            with self.assertRaises(IsolationBlocked):
+                copy_regular(source, root / 'target')
+
+    def test_models_frozen(self):
+        entry = RuntimeFile(Path('/synthetic'), '/usr/bin/synthetic', 'elf')
+        with self.assertRaises(FrozenInstanceError):
+            entry.destination = '/changed'
+        run = PreparedRun(*(Path('/synthetic') for _ in range(5)), (entry,))
+        with self.assertRaises(FrozenInstanceError):
+            run.root = Path('/changed')
+
+
+if __name__ == '__main__':
+    unittest.main()
