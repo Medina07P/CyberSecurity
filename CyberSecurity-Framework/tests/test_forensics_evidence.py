@@ -41,6 +41,29 @@ class EvidenceTests(unittest.TestCase):
         item = self.e.stage_input(run, self.source)
         return run, item
 
+    def test_unattributable_staging_attempt_never_revives_previous_success(self):
+        old,item=self.staged(); self.step(old); self.e.finish_run(old)
+        other=self.root/'sources/other'; other.write_bytes(b'DIFFERENT')
+        distinct=self.run_new(); self.e.stage_input(distinct,other); self.step(distinct); self.e.finish_run(distinct)
+        self.assertEqual(sum(r['current'] for r in self.e.select_runs(old.parent,{})),2)
+        for fault in ('enospc','mutation','incomplete'):
+            with self.subTest(fault=fault):
+                attempt=self.run_new()
+                if fault!='incomplete':
+                    original_copy=self.e._copy
+                    def fail(*args):
+                        if fault=='enospc': raise OSError(errno.ENOSPC,'synthetic')
+                        original_copy(*args)
+                        Path(args[1]).write_bytes(b'CORRUPTED STAGING')
+                    with patch.object(self.e,'_copy',side_effect=fail), self.assertRaises(ValueError):
+                        self.e.stage_input(attempt,self.source)
+                    self.e.finish_run(attempt)
+                for filters in ({},{'identity':self.e.read_run(old)['identity']}):
+                    rows=self.e.select_runs(old.parent,filters)
+                    self.assertFalse(any(r['current'] for r in rows),'unattributable attempt revived history')
+                self.assertEqual(self.e.read_run(attempt)['inputs'],[])
+                self.assertEqual(self.source.read_bytes(),self.before)
+
     def step(self, run, **changes):
         values = dict(name='analyze', rc=0, state='COMPLETADO',
                       coverage={'code': 'analysis', 'complete': True, 'requested': True},
@@ -71,6 +94,30 @@ class EvidenceTests(unittest.TestCase):
         artifact.write_bytes(b'mutation')
         with self.assertRaises(ValueError):
             self.e.read_run(run)
+
+    def test_cleanup_receipt_is_independent_closed_bound_and_not_analysis_authority(self):
+        run,item=self.staged(); self.e.init_cleanup(run)
+        self.step(run)
+        self.e.finish_run(run)
+        closed=(run/'run.json').read_bytes()
+        receipt=run/'analysis/cleanup.log'; receipt.touch(mode=0o600); receipt.write_bytes(b'synthetic cleanup')
+        self.e.record_cleanup_step(run,'disk_resources',0,'COMPLETADO',
+            dict(code='resource_ownership',complete=True,requested=True),[receipt])
+        self.e.finish_cleanup(run)
+        self.assertEqual((run/'run.json').read_bytes(),closed,'explicit receipt silently rewrote a closed run')
+        before=inventory(run); self.e.read_cleanup(run); self.e.finish_cleanup(run)
+        self.assertEqual(inventory(run),before)
+        with self.assertRaises(ValueError):
+            self.e.record_cleanup_step(run,'cleanup_detach',0,'COMPLETADO',
+                dict(code='cleanup_command',complete=True,requested=True),[])
+        (run/'run.json').write_text('{}')
+        self.e.read_cleanup(run)
+        with self.assertRaises(ValueError): self.e.read_run(run)
+        other=self.run_new(); (other/'cleanup.json').touch(mode=0o600)
+        (other/'cleanup.json').write_bytes((run/'cleanup.json').read_bytes())
+        with self.assertRaises(ValueError): self.e.read_cleanup(other)
+        receipt.write_bytes(b'CORRUPT')
+        with self.assertRaises(ValueError): self.e.read_cleanup(run)
 
     def test_root_registration_rejects_collision_overlap_link_and_repeat(self):
         run, _ = self.staged()

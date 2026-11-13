@@ -1,8 +1,9 @@
 # 08_Forensics — implementación integral y límites de entrega
 
-Diseño aprobado el 2026-11-11; continuación el 2026-11-12. Tasks1–7 aprobadas
-tras sus fixes hasta `d8967b2`. Task8 entrega verificación/documentación; revisión
-de Task8 y revisión global pendientes del controlador, NO cierre aprobado aún.
+Diseño aprobado el 2026-11-11; continuación el 2026-11-12. Tasks1–8 tienen gates
+aprobados hasta `38196e0`; `0913b0e` integra diseño/plan. La revisión GLOBAL
+encontró cuatro Important I1–I4 y bloqueó el cierre. Esta única ola de fixes está
+en verificación; la re-review global corresponde al controlador, NO está aprobada.
 La nota de pausa de `RETOMAR-FORENSE-2026-11-12.md` es histórica, no un mandato
 de repetir Tasks1–3. No se ejecutó operación forense real ni se usaron datos reales.
 
@@ -22,6 +23,10 @@ de repetir Tasks1–3. No se ejecutó operación forense real ni se usaron datos
 | SIGINT al grupo permitía siguiente fuente | Coordinador sticky espera hoja/cleanup y bloquea nuevas fuentes/prompts, sin confundir fallos ordinarios independientes |
 | Verificación manual sin contrato de salida | Task8 lector estricto de solo lectura, rc0/1/2 y rechazo seguro de contenedores corruptos |
 | Runner podía ocultar fallo o mutación | Task8 descubrimiento forense, rc verdadero y guardas de inventario/hash/modo incluidos nuevos archivos, sin recorrer evidencia real |
+| I1 integridad corrupta impedía cleanup propio | Cleanup tras reapear escritores independiente de confianza del contenido; ownership intacto, recibos explícitos `cleanup.json` ligados a inode/dev/UID sin reparar metadata ni relajar validador |
+| I2 Scalpel leía rutas desde bytes de imagen | Imagen posicional para Scalpel; Foremost conserva -i. Stub estricto modela -i como lista y demuestra que no se lee un segundo archivo no elegido |
+| I3 señal solo al PID coordinador no llegaba a hoja | Supervisor común/gate/pidfd entrega INT/TERM a hoja concreta y espera cleanup sin deadline; sticky bloquea hojas y prompts posteriores, rc1/130/143 no implica señal |
+| I4 staging fallido sin identidad revivía ACTUAL anterior | Selector y visor comparten reconciliación conservadora: intento offline no atribuible bloquea vigencia incluso filtrando digest, sin unir identidades ni inventar copia usable |
 
 Los diez puntos originales y métodos permanecen en
 [`README08`](../CyberSecurity-Framework/08_Forensics/README.md). CLI completa,
@@ -50,6 +55,8 @@ atribución por IP ni retirada de capacidades por dependencia ausente.
   No hay timeout operacional nuevo;10s exclusivamente ayuda de compatibilidad.
   No cubre escape deliberado de sesión ni cleanup garantizado ante SIGKILL.
 - Visor puede devolver0 mostrando FALLIDO porque consultó correctamente.
+  Intento offline sin identidad bloquea conservadoramente ACTUAL de la selección;
+  puede afectar otras identidades, sin atribuirles el fallo ni mezclarlas.
   Verificador devuelve0 solo completo coherente,1 inconsistente/parcial/fallido,
   2 incompleto/sin datos. No relee originales ni crea bytecode, incluso sin -B.
   Ninguno certifica ausencia de intrusión, integridad actual del origen ni legalidad.
@@ -65,6 +72,12 @@ schema/versionbool/módulo/sidecars/rc/hash/confinamiento/permisos y contenedore
 corruptos; runner con fixture representativa de fallo y mutación, no suite
 recursiva completa anidada. La guarda detecta archivos nuevos sin seguir enlaces.
 
+La ola global conserva RED→GREEN nuevos y comandos/resultados en
+`.superpowers/sdd/2026-11-11-forensics-integral/final-fix-logs/` y estado/API en
+`final-fix-report.md`. Estos registros no sustituyen los históricos perdidos.
+El diario de cleanup tiene validación independiente explícita: no implica run
+válido ni certifica integridad de copias/artefactos de análisis corruptos.
+
 Verificación exigida para entrega: runner y unittest forenses completos; Bash-n de
 todo08/bibliotecas/gestor con stderr vacío, AST/LF; reports, smoke, e2e,
 postexploitation, wireless_maintenance, config_menu, scanners_menu, enumeration
@@ -77,9 +90,9 @@ Las regresiones antiguas se aíslan; no se ejecuta `run_tests` sobre checkout ni
 se debilita su rojo heredado: cierre06 374 pasan/11 fallan, SSTI intermitente sin
 causa determinada. No declarar toda la rama verde.
 
-Menores diferidos a revisión global: Task5 M1 logs históricos RED/GREEN perdidos
+Menores DEFERRED tras triage global: Task5 M1 logs históricos RED/GREEN perdidos
 por reinicio (NO recreados como históricos); Task7 M1 seis avisos esperados de
-roots en fixture. No se modifican fuentes fuera de Task8 para pulirlos.
+roots en fixture. No entran en esta ola ni se pulen fuera de alcance.
 La evidencia de stubs no acredita hardware, instalación, adquisición, montaje,
 recuperación ni compatibilidad operacional real. No hay cadena de custodia legal
 validada ni autorización de push. Scope y tres pendientes06 permanecen ajenos.

@@ -46,8 +46,12 @@ if (( physical == 0 )); then
     for tool in foremost scalpel; do
         if ! command -v "$tool" >/dev/null 2>&1; then forensics_skip "$tool" dependency_missing || :; failed=1; continue; fi
         destination=$(_forensics_disk_python mkdir "$recovered/$tool") || exit 1
-        if [[ $tool = foremost ]]; then copy=$foremost_copy; else copy=$scalpel_copy; fi
-        forensics_capture "$tool" "$tool" -i "$copy" -o "$destination" || failed=1
+        if [[ $tool = foremost ]]; then
+            forensics_capture "$tool" "$tool" -i "$foremost_copy" -o "$destination" || failed=1
+        else
+            # Scalpel -i consumes a LIST of filenames, never an image.
+            forensics_capture "$tool" "$tool" -o "$destination" "$scalpel_copy" || failed=1
+        fi
         _forensics_disk_complete "$tool" carving_backend || failed=1
         if ! _forensics_disk_python products "$destination" >/dev/null; then _forensics_block; failed=1
         else _forensics_disk_record_products "$tool" COMPLETADO "$destination" || failed=1; fi

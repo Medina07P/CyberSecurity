@@ -47,16 +47,7 @@ try:
     for selected_root in roots:
         rows.extend(e.select_runs(selected_root, {k: v for k, v in filters.items() if k != 'identity'}))
     # Reconcile default and isolated local acquisitions as one UTC-ordered view.
-    rows.sort(key=lambda row: (e._time(row['started']) if row['started'] else
-              datetime.min.replace(tzinfo=timezone.utc), row['run_id']), reverse=True)
-    blocked = any(row['invalid'] for row in rows)
-    groups = set()
-    for row in rows:
-        if row['invalid']:
-            continue
-        group = (row['operation'], row['mode'], row['identity'])
-        row['current'] = not blocked and group not in groups
-        groups.add(group)
+    e.reconcile_current(rows)
     # --input accepts a source digest as well as the aggregate identity.
     # Filter last: unreadable/newest metadata must never revive an older run.
     if 'identity' in filters:

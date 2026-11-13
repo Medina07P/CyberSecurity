@@ -692,13 +692,9 @@ def check_integrity(run_dir: Path) -> bool:
     return okay
 
 
-def record_step(run_dir, name, rc, state, coverage, artifacts, *, tool='internal', signal=None):
-    run = _path(run_dir)
-    data = read_run(run)
-    _require(data['finished'] is None and not data['dependents_blocked'])
+def _make_step(run, roots, name, rc, state, coverage, artifacts, tool, signal):
     _require(type(artifacts) is list)
     references = []
-    roots = _artifact_roots(run, data)
     for value in artifacts:
         path = _private(_path(value))
         matches = [(name, root) for name, root in roots.items() if root in path.parents]
@@ -710,6 +706,14 @@ def record_step(run_dir, name, rc, state, coverage, artifacts, *, tool='internal
     step = dict(name=name, tool=tool, rc=rc, signal=signal, state=state,
                 coverage=coverage, artifacts=references)
     _validate_step(step, run, True, roots)
+    return step
+
+
+def record_step(run_dir, name, rc, state, coverage, artifacts, *, tool='internal', signal=None):
+    run = _path(run_dir)
+    data = read_run(run)
+    _require(data['finished'] is None and not data['dependents_blocked'])
+    step = _make_step(run, _artifact_roots(run, data), name, rc, state, coverage, artifacts, tool, signal)
     _require(name not in [s['name'] for s in data['steps']])
     sidecar = run / 'steps' / f'{len(data["steps"]):04d}-{name}.json'
     _require(not sidecar.exists())
@@ -717,6 +721,72 @@ def record_step(run_dir, name, rc, state, coverage, artifacts, *, tool='internal
     data['steps'].append(step)
     _atomic(run / 'run.json', data)
     return step
+
+
+def _cleanup_owner(run):
+    run = _private(run, True)
+    _require(RUN_ID.fullmatch(run.name) is not None)
+    info = run.stat()
+    _require(info.st_uid == os.geteuid())
+    return dict(run=str(run), dev=info.st_dev, ino=info.st_ino, uid=info.st_uid)
+
+
+def init_cleanup(run_dir):
+    """Opt-in independent resource journal, created BEFORE resource allocation.
+
+    This journal is NOT a valid analysis run and cannot repair/certify one.
+    It remains writable through the explicit cleanup API if run.json is corrupt.
+    """
+    run = _path(run_dir)
+    data = read_run(run)
+    _require(data['finished'] is None and not data['steps'])
+    _require(not (run / 'cleanup.json').exists())
+    receipt = dict(version=1, owner=_cleanup_owner(run), finished=None, steps=[])
+    _atomic(run / 'cleanup.json', receipt)
+    return receipt
+
+
+def read_cleanup(run_dir):
+    """Validate resource receipts only, without reading run.json/work/originals."""
+    run = _path(run_dir)
+    receipt = _load(run / 'cleanup.json')
+    _keys(receipt, 'version owner finished steps')
+    _require(type(receipt['version']) is int and receipt['version'] == 1)
+    _require(_encoded(receipt['owner']) == _encoded(_cleanup_owner(run)))
+    if receipt['finished'] is not None:
+        _time(receipt['finished'])
+    _require(type(receipt['steps']) is list)
+    names = set()
+    _private(run / 'analysis', True)
+    for step in receipt['steps']:
+        _validate_step(step, run, True)
+        _require(step['name'] in ('cleanup_umount', 'cleanup_detach', 'disk_resources') and
+                 step['name'] not in names)
+        names.add(step['name'])
+        _require(step['coverage']['code'] in ('cleanup_command', 'resource_ownership'))
+    return receipt
+
+
+def record_cleanup_step(run_dir, name, rc, state, coverage, artifacts, *, tool='internal', signal=None):
+    run = _path(run_dir)
+    receipt = read_cleanup(run)
+    _require(receipt['finished'] is None)
+    step = _make_step(run, {'analysis': run / 'analysis'}, name, rc, state, coverage, artifacts, tool, signal)
+    _require(name in ('cleanup_umount', 'cleanup_detach', 'disk_resources') and
+             name not in [s['name'] for s in receipt['steps']] and
+             coverage['code'] in ('cleanup_command', 'resource_ownership'))
+    receipt['steps'].append(step)
+    _atomic(run / 'cleanup.json', receipt)
+    return step
+
+
+def finish_cleanup(run_dir):
+    run = _path(run_dir)
+    receipt = read_cleanup(run)
+    if receipt['finished'] is None:
+        receipt['finished'] = _now()
+        _atomic(run / 'cleanup.json', receipt)
+    return receipt
 
 
 def finish_run(run_dir) -> dict:
@@ -883,6 +953,10 @@ if permission != b'G':
 for name in ('SIGPIPE', 'SIGXFZ', 'SIGXFSZ'):
     if hasattr(signal, name):
         signal.signal(getattr(signal, name), signal.SIG_DFL)
+if sys.argv[2] == '--leaf':
+    # The pidfd must refer to the leaf shell itself, not an intermediary shell
+    # whose optimization/fork policy might defer parent-only cancellation.
+    os.execvp('bash', ['bash', *sys.argv[3:]])
 os.execvp('bash', ['bash', '-c', 'set -o pipefail; "$@"', 'forensics', *sys.argv[2:]])
 '''
 
@@ -934,7 +1008,24 @@ def _supervise_preflight(kind, tool, arguments):
         libc.prctl(36, previous.value, 0, 0, 0)
 
 
-def _supervise_owned(streams, tool, arguments, *, preflight_kind=None):
+def _supervise_leaf(log, leaf, input_fd, arguments, interactive=False):
+    """Workflow leaf: concrete pidfd cancellation, wait for its own cleanup.
+
+    No operational deadline, no kill of a recyclable identifier. The common
+    anchor still contains descendants after the leaf has returned.
+    """
+    leaf = _path(leaf)
+    module = Path(__file__).resolve().parents[2] / '08_Forensics'
+    _require(leaf in [module / name for name in (
+        'memory/memory_dump.sh', 'memory/strings_analysis.sh', 'logs/log_analyzer.sh',
+        'pcaps/pcap_analyzer.sh', 'disk/disk_forensics.sh', 'timeline/timeline_creator.sh')])
+    _require(leaf.is_file())
+    return _supervise_owned([_private(log), _private(log)], 'bash', [str(leaf), *arguments],
+                            workflow_input=input_fd, interactive=interactive)
+
+
+def _supervise_owned(streams, tool, arguments, *, preflight_kind=None,
+                     workflow_input=None, interactive=False):
     """One engine for capture and whitelisted preflight; same gate/ownership.
     Only compatibility preflight has a fixed ten-second monotonic deadline.
     """
@@ -947,6 +1038,7 @@ def _supervise_owned(streams, tool, arguments, *, preflight_kind=None):
     authorized = False
     deadline = None
     timed_out = False
+    cancellation_sent = False
     buffered = b''
     wake_read, wake_write = os.pipe2(os.O_NONBLOCK | os.O_CLOEXEC)
     previous_wakeup = process_signal.set_wakeup_fd(wake_write)
@@ -989,7 +1081,16 @@ def _supervise_owned(streams, tool, arguments, *, preflight_kind=None):
                     elif key.data == 'signal':
                         os.read(wake_read, 4096)
                 if cancelled:
-                    break
+                    if workflow_input is None or backend is None:
+                        break
+                    if not cancellation_sent:
+                        # A graceful leaf owns cleanup; do not kill its group
+                        # while it is releasing authenticated resources.
+                        try:
+                            process_signal.pidfd_send_signal(pid_fd, cancelled)
+                        except ProcessLookupError:
+                            pass
+                        cancellation_sent = True
                 if deadline is not None and time.monotonic() >= deadline:
                     timed_out = True
                     break
@@ -1006,10 +1107,13 @@ def _supervise_owned(streams, tool, arguments, *, preflight_kind=None):
                         break
                     gate_read, gate_write = os.pipe()
                     try:
-                        with streams[0].open('wb') as out, streams[1].open('wb') as err:
+                        with streams[0].open('ab' if workflow_input is not None else 'wb') as out, \
+                             streams[1].open('ab' if workflow_input is not None else 'wb') as err:
+                            gate_arguments = ['--leaf', *arguments] if workflow_input is not None else [tool, *arguments]
                             backend = subprocess.Popen(
-                                [sys.executable, '-B', '-c', _EXEC_GATE, str(gate_read), tool, *arguments],
-                                stdin=subprocess.DEVNULL, stdout=out, stderr=err,
+                                [sys.executable, '-B', '-c', _EXEC_GATE, str(gate_read), *gate_arguments],
+                                stdin=subprocess.DEVNULL if workflow_input is None else workflow_input,
+                                stdout=out, stderr=None if interactive else err,
                                 pass_fds=(gate_read,), process_group=group.pid)
                     finally:
                         os.close(gate_read)
@@ -1037,7 +1141,7 @@ def _supervise_owned(streams, tool, arguments, *, preflight_kind=None):
                     os.close(pid_fd)
                     pid_fd = None
                     break
-            if (cancelled or timed_out) and group is not None:
+            if (cancelled or timed_out) and group is not None and workflow_input is None:
                 group.stop()  # anchor is still live or an unreaped zombie
             actual_rc = backend.wait() if backend is not None else 0
             terminating_signal = -actual_rc if actual_rc < 0 else None
@@ -1083,6 +1187,27 @@ def _supervise_owned(streams, tool, arguments, *, preflight_kind=None):
         os.close(wake_write)
 
 
+def reconcile_current(rows):
+    """Conservative attribution, shared by selector and multi-root viewer.
+
+    An offline attempt without a usable input has no trustworthy source identity.
+    It blocks current attribution, NOT joins the identities of other evidence.
+    Legacy/unfinished attempts are deliberately subject to the same rule.
+    """
+    rows.sort(key=lambda row: (_time(row['started']) if row['started'] else
+              datetime.min.replace(tzinfo=timezone.utc), row['run_id']), reverse=True)
+    blocked = any(row['invalid'] or (row['mode'] == 'offline' and row['identity'] is None and
+                  row['operation'] not in ('dependencies', 'workflow')) for row in rows)
+    seen = set()
+    for row in rows:
+        if row['invalid']:
+            continue
+        group = (row['operation'], row['mode'], row['identity'])
+        row['current'] = not blocked and group not in seen
+        seen.add(group)
+    return rows
+
+
 def select_runs(root, filters) -> list[dict]:
     """Newest-first summaries. Any unreadable run blocks current attribution.
 
@@ -1109,7 +1234,7 @@ def select_runs(root, filters) -> list[dict]:
     for candidate in candidates:
         try:
             data = read_run(candidate)
-            if any(data[k] != v for k, v in filters.items()):
+            if any(data[k] != v for k, v in filters.items() if k != 'identity'):
                 continue
             row = {k: data[k] for k in ('run_id', 'operation', 'mode', 'identity', 'started',
                                        'finished', 'state', 'complete', 'rc')}
@@ -1125,15 +1250,9 @@ def select_runs(root, filters) -> list[dict]:
             rows.append(dict(run_id=candidate.name, invalid=True, current=False,
                              state='NO_EVALUABLE', rc=1, started=None,
                              diagnostic='Manifiesto inválido; vigencia bloqueada conservadoramente'))
-    rows.sort(key=lambda row: (_time(row['started']) if row['started'] else datetime.min.replace(tzinfo=timezone.utc),
-                               row['run_id']), reverse=True)
-    seen = set()
-    for row in rows:
-        if row['invalid']:
-            continue
-        group = (row['operation'], row['mode'], row['identity'])
-        row['current'] = not invalid and group not in seen
-        seen.add(group)
+    reconcile_current(rows)
+    if 'identity' in filters:
+        rows = [row for row in rows if row['invalid'] or row['identity'] == filters['identity']]
     return rows
 
 
@@ -1164,7 +1283,7 @@ def main(argv=None):
     probe = subs.add_parser('probe-source')
     probe.add_argument('--source', required=True, type=Path)
     probe.add_argument('--kind', required=True, choices=('file', 'device'))
-    step = subs.add_parser('step')
+    step = subs.add_parser('step', aliases=['cleanup-step'])
     step.add_argument('--run', required=True, type=Path)
     step.add_argument('--name', required=True)
     step.add_argument('--tool', default='internal')
@@ -1175,7 +1294,7 @@ def main(argv=None):
     step.add_argument('--complete', action='store_true')
     step.add_argument('--not-requested', action='store_true')
     step.add_argument('--artifact', action='append', default=[], type=Path)
-    for name in ('finish', 'validate', 'integrity'):
+    for name in ('finish', 'validate', 'integrity', 'init-cleanup', 'validate-cleanup', 'finish-cleanup'):
         subs.add_parser(name).add_argument('--run', required=True, type=Path)
     subs.add_parser('block').add_argument('--run', required=True, type=Path)
     prepare = subs.add_parser('prepare-capture')
@@ -1202,6 +1321,12 @@ def main(argv=None):
     preflight.add_argument('--kind', required=True, choices=('compatibility', 'privilege'))
     preflight.add_argument('--tool', required=True)
     preflight.add_argument('arguments', nargs=argparse.REMAINDER)
+    leaf = subs.add_parser('supervise-leaf')
+    leaf.add_argument('--log', required=True, type=Path)
+    leaf.add_argument('--leaf', required=True, type=Path)
+    leaf.add_argument('--stdin-fd', required=True, type=int)
+    leaf.add_argument('--interactive', action='store_true')
+    leaf.add_argument('arguments', nargs=argparse.REMAINDER)
     listing = subs.add_parser('list')
     listing.add_argument('--root', required=True, type=Path)
     for flag in ('run-id', 'operation', 'identity'):
@@ -1221,6 +1346,15 @@ def main(argv=None):
             result = observe_device(args.run, args.source)
         elif command == 'probe-source':
             result = probe_source(args.source, args.kind)
+        elif command in ('init-cleanup', 'validate-cleanup', 'finish-cleanup'):
+            result = {'init-cleanup': init_cleanup, 'validate-cleanup': read_cleanup,
+                      'finish-cleanup': finish_cleanup}[command](args.run)
+        elif command == 'cleanup-step':
+            result = record_cleanup_step(args.run, args.name, args.rc, args.state,
+                                 dict(code=args.coverage_code, complete=args.complete,
+                                      requested=not args.not_requested), args.artifact,
+                                 tool=args.tool, signal=args.signal)
+            rc = 0 if result['state'] == 'COMPLETADO' else 1
         elif command == 'step':
             result = record_step(args.run, args.name, args.rc, args.state,
                                  dict(code=args.coverage_code, complete=args.complete,
@@ -1247,6 +1381,10 @@ def main(argv=None):
         elif command == 'supervise-preflight':
             arguments = args.arguments[1:] if args.arguments[:1] == ['--'] else args.arguments
             _supervise_preflight(args.kind, args.tool, arguments)
+            return 0
+        elif command == 'supervise-leaf':
+            arguments = args.arguments[1:] if args.arguments[:1] == ['--'] else args.arguments
+            _supervise_leaf(args.log, args.leaf, args.stdin_fd, arguments, args.interactive)
             return 0
         elif command == 'validate':
             result = read_run(args.run)
