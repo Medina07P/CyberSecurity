@@ -8,10 +8,12 @@ if __package__ in (None, ''):
     from evidence.model import EvidenceError, UsageError
     from evidence.storage import PUBLIC_ROOTS, add, safe_text
     from evidence.inventory import scan, verify
+    from evidence.package import create
 else:
     from .model import EvidenceError, UsageError
     from .storage import PUBLIC_ROOTS, add, safe_text
     from .inventory import scan, verify
+    from .package import create
 
 
 class Parser(argparse.ArgumentParser):
@@ -34,17 +36,25 @@ def main(argv: list[str] | None = None) -> int:
     manage.add_argument('--target', action='append', metavar='ETIQUETA', help='Etiqueta explícita opcional')
     manage.add_argument('--list', action='count', default=0, help='Listar sin verificar contenido')
     manage.add_argument('--verify', action='count', default=0, help='Verificar integridad')
+    manage.add_argument('--package', action='append', nargs='?', const=None, metavar='NOMBRE',
+                        help='Exportar evidencia confidencial sin cifrar; requiere custodia privada')
     args_list = list(sys.argv[1:] if argv is None else argv)
     try:
         args = parser.parse_args(args_list)
         if args.help:
-            if args.add is not None or args.target is not None or args.list or args.verify:
+            if args.add is not None or args.target is not None or args.list or args.verify or args.package:
                 raise UsageError('--help no admite una operación')
             manage.print_help()
             return 0
-        if bool(args.add) + args.list + args.verify != 1:
+        if bool(args.add) + args.list + args.verify + (len(args.package) if args.package else 0) != 1:
             manage.print_help(file=sys.stderr)
-            raise UsageError('Seleccione una operación: --add, --list o --verify')
+            raise UsageError('Seleccione una operación: --add, --list, --verify o --package')
+        if args.package:
+            if args.target is not None:
+                raise UsageError('--target requiere --add')
+            archive = create(args.root, args.package[0])
+            print(safe_text(f'PAQUETE CREADO (confidencial, sin cifrar): {archive}'))
+            return 0
         if args.list or args.verify:
             if args.target is not None:
                 raise UsageError('--target requiere --add')
