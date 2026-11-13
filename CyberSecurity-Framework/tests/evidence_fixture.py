@@ -33,6 +33,10 @@ SOURCES = (
     'tests/test_evidence_capture.py',
     'tests/test_evidence_cli.py',
     'tests/run_evidence.sh',
+    'tests/test_evidence_runner.py',
+    '10_Evidence/README.md',
+    '10_Evidence/USE.md',
+    '10_Evidence/FLUJO.md',
 )
 
 
@@ -44,21 +48,45 @@ def sandbox():
         yield root
 
 
-def copy_sources(root):
-    source = Path(__file__).absolute().parents[1]
-    framework = root / 'CyberSecurity-Framework'
+def source_manifest(source=None):
+    """Hash only fixed sources; lstat their layout, never traverse data/config."""
+    source = Path(source) if source is not None else Path(__file__).absolute().parents[1]
+    result = {}
     for relative in SOURCES:
         original = source / relative
-        # Missing product sources are allowed during RED, links never are.
         for ancestor in (original, *original.parents):
             if ancestor.is_symlink():
                 raise ValueError(f'symlink source: {ancestor}')
         if not original.exists():
-            continue
+            raise ValueError(f'missing source: {original}')
         if not stat.S_ISREG(original.lstat().st_mode):
             raise ValueError(f'nonregular source: {original}')
+        for path in (original, *original.parents):
+            info = path.lstat()
+            if path == original:
+                value = (stat.S_IMODE(info.st_mode), stat.S_IFMT(info.st_mode),
+                         hashlib.sha256(path.read_bytes()).hexdigest())
+            else:
+                value = (stat.S_IMODE(info.st_mode), stat.S_IFMT(info.st_mode))
+            result[str(path.relative_to(source))] = value
+            if path == source:
+                break
+    return result
+
+
+def copy_sources(root):
+    source = Path(__file__).absolute().parents[1]
+    before = source_manifest(source)
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    framework = root / 'CyberSecurity-Framework'
+    framework.mkdir(mode=0o700)
+    for relative in SOURCES:
+        original = source / relative
         dest = framework / relative
-        dest.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        parent = framework
+        for part in Path(relative).parts[:-1]:
+            parent = parent / part
+            parent.mkdir(exist_ok=True, mode=0o700)
         shutil.copyfile(original, dest)
         dest.chmod(0o600)
     config = framework / '00_Config'
@@ -66,6 +94,10 @@ def copy_sources(root):
     (config / 'scope.yaml').write_text('targets: {ips: [], domains: []}\n')
     (config / 'targets.txt').write_text('# synthetic only\n')
     (config / '.session').write_text('')
+    for name in ('scope.yaml', 'targets.txt', '.session'):
+        (config / name).chmod(0o600)
+    if source_manifest(source) != before:
+        raise ValueError('las fuentes de origen cambiaron durante la copia')
     return framework
 
 

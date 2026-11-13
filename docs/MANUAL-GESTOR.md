@@ -332,6 +332,55 @@ Se crea la primera vez que usas `R` o puedes editarlo manualmente. Enter conserv
 
 ---
 
+## Evidencias: módulo 10
+
+`10` abre un menú sin adquisición/red ni cambio de TARGET: disponibilidad mediante
+`command -v`, importación explícita, listado, verificación, empaquetado, captura,
+coordinación offline y lista fija de las tres hojas originales. EOF/cancelar
+retorna 0 sin acciones. Nunca ejecuta código recuperado/importado; el modo
+preparado tampoco evita confirmaciones sensibles. `done` en fase 10 significa
+presencia de evidencia reconocible, **no integridad**.
+
+`evidence_manager.sh --add TIPO ARCHIVO [DESCRIPCION] [--target ETIQUETA]`
+acepta `screenshot`, `pcap`, `credential`, `finding` y `proof`. Las rutas relativas
+son del llamador y los espacios deben entrecomillarse. Solo archivos regulares,
+por copia sin ejecutar ni reemplazar el original; directorios nuevos 700,
+archivos 600. No hay atribución por sesión: la etiqueta es explícita y no cambia
+scope/targets. Registros nuevos SHA-256, históricos `.meta` MD5 de solo lectura,
+sin migración ni elevación automática de confianza.
+
+`--list` no verifica cuerpos y vacío es informativo (0); `--verify` vacío,
+huérfanos, corrupción o errores da 1. `--package [NOMBRE]` bloquea ante cualquier
+problema y publica datos/metadatos/manifiesto en `11_Reports/evidence/`, sin
+scripts/configuración/diagnósticos ni reemplazar salidas. **No hay cifrado** y
+puede incluir credenciales: confirme exportación en menú y custodie el resultado.
+No certifica autenticidad, firma ni custodia legal.
+
+`auto_capture.sh` exige acciones explícitas: `--web URL` (HTTP/HTTPS sin
+credenciales/fragmentos), `--traffic HOST --interface IFACE`,
+`--scan HOST --scan-profile basic|full` o `--system` (solo contexto OPERADOR).
+Red requiere `--authorize-network`; no es una barrera de alcance. Los subrecursos
+y redirecciones web también deben estar autorizados. No hay sudo/instalaciones.
+Tráfico: 10 s/100 paquetes por defecto, límites 1–300 s y 1–10000;
+web: deadline 60 s; Nmap basic: 100 TCP connect sin NSE/versionado, 120 s;
+full: `-sV -p-`, 1800 s, mayor intrusividad. Validaciones PNG/PCAP/finalización
+Nmap limitadas, no certifican contenido visual/protocolos/hallazgos.
+PCAP válido sin paquetes es `SIN TRÁFICO`. Diagnósticos privados en `logs/runs/`
+excluidos de exportación. Supervisión Linux de procesos propios, INT/TERM
+130/143, sin éxito del paso interrumpido; no aislamiento de backends hostiles.
+
+`run_all_evidence.sh --offline` lista/verifica; `--capture` coordina selecciones
+explícitas. La antigua llamada `<TARGET>` ahora devuelve 2 sin adquirir: bloquea
+la captura implícita de 10 desde 99, **no arregla el flujo 99 global**.
+Ayuda explícita 0, CLI inválida 2, fallo/parcial 1, éxito solicitado 0.
+
+Guías completas y ejemplos offline sintéticos:
+[`10_Evidence/README.md`](../CyberSecurity-Framework/10_Evidence/README.md),
+[`USE.md`](../CyberSecurity-Framework/10_Evidence/USE.md) y
+[`FLUJO.md`](../CyberSecurity-Framework/10_Evidence/FLUJO.md).
+Implementación pendiente de revisión global e integración; stubs no acreditan
+compatibilidad operacional.
+
 ## Cómo leer los veredictos
 
 ### Resultados OSINT
