@@ -20,6 +20,12 @@ source "$LIB_DIR/phase_status.bash"
 source "$LIB_DIR/prompt.bash"
 source "$LIB_DIR/report_profile.bash"
 source "$LIB_DIR/scans.bash"
+source "$LIB_DIR/scanners_menu.bash"
+source "$LIB_DIR/exploitation_menu.bash"
+source "$LIB_DIR/enumeration_menu.bash"
+source "$LIB_DIR/postexploitation_menu.bash"
+source "$LIB_DIR/wireless_menu.bash"
+source "$LIB_DIR/forensics_menu.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -191,11 +197,36 @@ change_target() {
 # ─── FUNCIÓN PARA EJECUTAR SCRIPTS ─────────────────────────
 
 execute_script() {
+    # 08 has file identities, never session targets or example defaults. This
+    # also protects the original listing, not just the new guided menu.
+    case "$1" in
+        08_Forensics/*) forensics_execute_script "$@"; return $? ;;
+    esac
     local script_path="$1"   # ruta relativa al framework
     local module_dir="$2"
     local original_dir="$PWD"
     local rel_path values rc rc_run
     local -a argv=()
+    # Solo llamadas internas del menú guiado, con datos ya validados y confirmados.
+    local prepared=0 basic_scanner=0
+    if [[ "${3:-}" == --prepared ]]; then
+        prepared=1
+        argv=("${@:4}")
+        if [[ "$script_path" == '03_Scanners/network_scanners/nmap/nmap_smart.sh' &&
+              ${#argv[@]} -eq 2 && "${argv[1]}" == basico ]]; then
+            basic_scanner=1
+        fi
+    fi
+
+    # Es una CLI con subcomandos, no una herramienta que funcione vacía.
+    # Reutilizar K evita pedir comandos manuales o claves por argv. El subshell
+    # permite llamarlo también desde otro cwd sin alterar el del llamador.
+    case "$script_path" in
+        "00_Config/scripts/api_keys.py"|"$FRAMEWORK_DIR/00_Config/scripts/api_keys.py")
+            (cd "$FRAMEWORK_DIR" && keys_menu "módulo de configuración")
+            return $?
+            ;;
+    esac
 
     cd "$module_dir" || {
         echo -e "${RED}❌ Error: No se pudo acceder a $module_dir${NC}"
@@ -213,8 +244,8 @@ execute_script() {
         echo -e "${YELLOW}ℹ️  Es un GENERADOR: escribe otro script, no escanea nada.${NC}"
     fi
 
-    if params_is_dangerous "$script_path"; then
-        echo -e "${RED}⚠️  Herramienta intrusiva (fuerza bruta / explotación / persistencia).${NC}"
+    if (( ! basic_scanner )) && params_is_dangerous "$script_path"; then
+        echo -e "${RED}⚠️  Herramienta intrusiva (escaneo intensivo / fuerza bruta / explotación / persistencia).${NC}"
         if ! ask_confirm "¿Confirmas que el objetivo está dentro de tu alcance autorizado?"; then
             echo -e "${YELLOW}Cancelado${NC}"
             cd "$original_dir" || exit 1
@@ -223,8 +254,11 @@ execute_script() {
     fi
 
     # Los datos que pide el script salen de su propia línea Uso:
-    values=$(prompt_for_slots "$rel_path" "$script_path")
-    rc=$?
+    rc=0
+    if (( ! prepared )); then
+        values=$(prompt_for_slots "$rel_path" "$script_path")
+        rc=$?
+    fi
 
     if [[ $rc -ne 0 ]]; then
         case "$rc" in
@@ -235,12 +269,19 @@ execute_script() {
         return 0
     fi
 
-    [[ -n "$values" ]] && mapfile -t argv <<< "$values"
+    if (( ! prepared )) && [[ -n "$values" ]]; then
+        mapfile -t argv <<< "$values"
+    fi
 
     if [[ ${#argv[@]} -gt 0 ]]; then
-        echo -e "${DIM}Argumentos: ${argv[*]}${NC}"
+        case "$script_path" in
+            06_PostExploitation/lateral_movement/ps_exec.sh)
+                echo -e "${DIM}Argumentos: [ocultos: contienen credenciales]${NC}"
+                ;;
+            *) echo -e "${DIM}Argumentos: ${argv[*]}${NC}" ;;
+        esac
     else
-        echo -e "${DIM}Sin argumentos${NC}"
+        echo -e "${DIM}Ejecución directa; sigue las indicaciones de la herramienta.${NC}"
     fi
     echo ""
 
@@ -287,6 +328,16 @@ run_module_scripts() {
         local -a scripts=() categories=()
         local script rel_path choice
 
+        if [[ "$module_dir" == 08_Forensics ]]; then
+            # Do not recursively discover executable-looking recovered evidence.
+            while IFS= read -r rel_path; do
+                script="$module_dir/$rel_path"
+                [[ -f "$script" && ! -L "$script" ]] || continue
+                scripts+=("$script")
+                if [[ $rel_path == run_all_forensics.sh ]]; then categories+=(run_all)
+                else categories+=(script); fi
+            done < <(forensics_original_entries)
+        else
         while IFS= read -r script; do
             [[ -f "$script" ]] || continue
             scripts+=("$script"); categories+=("run_all")
@@ -307,6 +358,7 @@ run_module_scripts() {
             [[ -f "$script" ]] || continue
             scripts+=("$script"); categories+=("powershell")
         done < <(find "$module_dir" -name "*.ps1" -type f -not -path "*/lib/*" -not -path "*/tests/*" 2>/dev/null | sort)
+        fi
 
         if [[ ${#scripts[@]} -eq 0 ]]; then
             echo -e "${YELLOW}⚠️  No se encontraron scripts ejecutables en este módulo${NC}"
@@ -356,7 +408,11 @@ run_module_scripts() {
             continue
         elif [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#scripts[@]} )); then
             local idx=$((choice - 1))
-            if [[ "${categories[$idx]}" == "run_all" ]]; then
+            if [[ "$module_dir" == 08_Forensics ]]; then
+                # Its coordinator only runs selected sources; original-list
+                # calls use the same file prompts and dangerous gate as 08.
+                execute_script "${scripts[$idx]}" "$module_dir"
+            elif [[ "${categories[$idx]}" == "run_all" ]]; then
                 echo ""
                 echo -e "${YELLOW}⚠️  Este script ejecuta TODOS los scripts del módulo${NC}"
                 if ask_confirm "¿Deseas continuar?"; then
@@ -390,27 +446,27 @@ module_recon() {
 }
 
 module_scanners() {
-    run_module_scripts "03_Scanners" "03_Scanners"
+    scanners_menu
 }
 
 module_enumeration() {
-    run_module_scripts "04_Enumeration" "04_Enumeration"
+    enumeration_menu
 }
 
 module_exploitation() {
-    run_module_scripts "05_Exploitation" "05_Exploitation"
+    exploitation_menu
 }
 
 module_postexploitation() {
-    run_module_scripts "06_PostExploitation" "06_PostExploitation"
+    postexploitation_menu
 }
 
 module_wireless() {
-    run_module_scripts "07_Wireless" "07_Wireless"
+    wireless_menu
 }
 
 module_forensics() {
-    run_module_scripts "08_Forensics" "08_Forensics"
+    forensics_menu
 }
 
 module_automation() {
@@ -689,6 +745,7 @@ show_help() {
     echo -e "${YELLOW}⌨️  ATAJOS:${NC}"
     echo -e "  ${GREEN}T${NC}   Cambiar objetivo"
     echo -e "  ${GREEN}R${NC}   Informe rápido (técnico, cliente o ambos)"
+    echo -e "  ${GREEN}K${NC}   Claves de API (pide y guarda las que falten)"
     echo -e "  ${GREEN}0${NC}   Volver al menú principal"
     echo -e "  ${GREEN}Q${NC}   Salir"
     echo ""
@@ -739,6 +796,7 @@ main_menu() {
     echo -e "  ${CYAN}99${NC}  ${WHITE}🚀 Ejecutar Flujo Completo${NC}"
     echo -e "  ${CYAN}R ${NC}  ${WHITE}📊 Informe rápido${NC}"
     echo -e "  ${CYAN}T ${NC}  ${WHITE}🎯 Cambiar objetivo${NC} ${DIM}(actual: ${target:-sin definir})${NC}"
+    echo -e "  ${CYAN}K ${NC}  ${WHITE}🔑 Claves de API${NC} ${DIM}($(keys_resumen_line))${NC}"
     echo -e "  ${CYAN}? ${NC}  ${WHITE}📖 Ayuda y Comandos Útiles${NC}"
     echo -e "  ${CYAN}Q ${NC}  ${RED}Salir${NC}"
     echo ""
@@ -748,7 +806,113 @@ main_menu() {
         echo -e "  ${DIM}Siguiente paso sugerido:${NC} ${YELLOW}${next}${NC}"
     fi
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, R, T, ?, Q]: ${NC}"
+    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, R, T, K, ?, Q]: ${NC}"
+}
+
+# ─── Claves de API ───────────────────────────────────────────
+
+keys_helper() {
+    python3 00_Config/scripts/api_keys.py "$@"
+}
+
+# Resumen de una línea para el menú principal (nunca muestra valores)
+keys_resumen_line() {
+    keys_helper estado --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    datos = json.load(sys.stdin)["herramientas"]
+except Exception:
+    print("registro no disponible")
+    raise SystemExit
+con_claves = sum(1 for h in datos if h["puestas"] > 0)
+sin_claves = len(datos) - con_claves
+print(f"{len(datos)} herramientas · {con_claves} con claves · {sin_claves} sin claves")
+'
+}
+
+# Lista numerada; el nombre elegido queda en KEYS_ELECCION (vacío si no hay)
+keys_elegir_herramienta() {
+    local -a herramientas=(theharvester shodan h8mail amass recon-ng spiderfoot)
+    local i numero
+    KEYS_ELECCION=""
+    for i in "${!herramientas[@]}"; do
+        numero=$((i + 1))
+        echo -e "  ${GREEN}${numero}${NC}) ${herramientas[$i]}"
+    done
+    echo ""
+    echo -ne "${BOLD}➜ Herramienta [1-${#herramientas[@]}, 0 = volver]: ${NC}"
+    if ! IFS= read -r numero; then
+        return 0
+    fi
+    case "$numero" in
+        0|"") return 0 ;;
+    esac
+    if [[ "$numero" =~ ^[0-9]+$ ]] && (( numero >= 1 && numero <= ${#herramientas[@]} )); then
+        KEYS_ELECCION="${herramientas[$((numero - 1))]}"
+    fi
+    return 0
+}
+
+keys_menu() {
+    local eleccion herramienta
+    local volver_a="${1:-menú principal}"
+
+    clear_screen
+    echo -e "${CYAN}${BOLD}━━━ CLAVES DE API ━━━${NC}"
+    echo ""
+    keys_helper estado | sed 's/^/  /'
+    echo ""
+    echo -e "  ${GREEN}1${NC}) Pedir las claves que falten en cada herramienta"
+    echo -e "  ${GREEN}2${NC}) Pedir las claves de una herramienta"
+    echo -e "  ${GREEN}3${NC}) Ver el estado detallado"
+    echo -e "  ${GREEN}4${NC}) Sincronizar el registro con las herramientas"
+    echo -e "  ${GREEN}5${NC}) Importar lo que ya tienen las herramientas"
+    echo -e "  ${GREEN}0${NC}) Volver al ${volver_a}"
+    echo ""
+    echo -e "  ${DIM}Enter deja la clave como está; '-' la borra.${NC}"
+    echo ""
+    echo -ne "${BOLD}➜ Elige una opción [0-5]: ${NC}"
+    if ! IFS= read -r eleccion; then
+        return 0
+    fi
+
+    case "$eleccion" in
+        0) return 0 ;;
+        1)
+            local t
+            for t in theharvester shodan h8mail amass recon-ng spiderfoot; do
+                echo ""
+                echo -e "${BOLD}▶ ${t}${NC}"
+                keys_helper pedir "$t"
+            done
+            ;;
+        2)
+            echo ""
+            keys_elegir_herramienta
+            herramienta="$KEYS_ELECCION"
+            if [[ -z "$herramienta" ]]; then
+                pause
+                return 0
+            fi
+            keys_helper pedir "$herramienta"
+            ;;
+        3) keys_helper estado ;;
+        4) keys_helper sincronizar ;;
+        5)
+            echo ""
+            keys_elegir_herramienta
+            herramienta="$KEYS_ELECCION"
+            if [[ -z "$herramienta" ]]; then
+                pause
+                return 0
+            fi
+            keys_helper importar "$herramienta"
+            ;;
+        *)
+            echo -e "${RED}❌ Opción inválida${NC}"
+            ;;
+    esac
+    pause
 }
 
 # ─── Bucle Principal ─────────────────────────────────────────
@@ -787,6 +951,7 @@ main() {
             99) full_workflow ;;
             R|r) quick_report ;;
             T|t) change_target ;;
+            K|k) keys_menu ;;
             \?|\?\?|help|HELP|H|h) show_help ;;
             Q|q|salir|exit)
                 echo -e "\n${GREEN}👋 ¡Hasta luego!${NC}"
@@ -795,7 +960,7 @@ main() {
             "") : ;;
             *)
                 echo -e "\n${RED}❌ Opción inválida: '$choice'${NC}"
-                echo -e "${YELLOW}Prueba con 00-13, 99, R, T, ? o Q.${NC}"
+                echo -e "${YELLOW}Prueba con 00-13, 99, R, T, K, ? o Q.${NC}"
                 pause
                 ;;
         esac

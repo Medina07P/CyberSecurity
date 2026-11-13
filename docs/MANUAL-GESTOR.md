@@ -70,6 +70,27 @@ El objetivo se guarda en `00_Config/.session` (git-ignored) y se usa para:
 2. **Valor por defecto**: los scripts que piden un host lo proponen automáticamente.
 3. **Filtrado**: evita mezclar resultados de distintos objetivos o laboratorios.
 
+Al fijar el objetivo (`T` o el que escribes al arrancar), el gestor lo **registra solo** en dos sitios:
+
+- `00_Config/scope.yaml`: el host en `targets.ips`, o el dominio **y** su comodín `*.dominio`
+  en `targets.domains`. Se crea `scope.yaml.bak` y se valida el YAML; si algo falla, se avisa y
+  el objetivo de la sesión sigue valiendo.
+- `00_Config/targets.txt`: una línea `<host>|—|—|Registrado al fijar el objetivo|B` bajo una
+  cabecera fechada. El `—` significa "puerto y protocolo desconocidos" y es lo que entiende
+  `parse_targets.py`; `B` es prioridad baja.
+
+Con eso el objetivo aparece en la lista de `T` la próxima vez y el flujo completo ya no te
+dirá que está fuera de alcance. Para deshacerlo no hay comando: borra a mano las líneas de
+`scope.yaml` y `targets.txt` (o restaura `scope.yaml.bak`).
+
+> Ojo: como el gestor registra lo que fijas, la comprobación de alcance pasa a ser un
+> **registro** de lo que has usado, no una barrera. La autorización real es el documento de
+> `authorization.document` en `scope.yaml`.
+>
+> Y ojo también con git: `scope.yaml` y `targets.txt` **están versionados**, así que el dominio
+> real de un cliente aparecerá en `git status` en cuanto lo fijes. No hagas `git add -A` a
+> ciegas en este repo.
+
 Si defines varios objetivos en `00_Config/targets.txt`, el gestor te los ofrece como lista. Puedes cambiarlo en cualquier momento con `T`.
 
 ### Sin objetivo
@@ -85,12 +106,12 @@ Si no defines un objetivo de sesión, el motor de informes:
 El orden recomendado es:
 
 1. **00_Config**: valida el alcance (`scope.yaml`) y los objetivos (`targets.txt`)
-2. **01_OSINT**: inteligencia de fuentes abiertas (solo dominios)
+2. **01_OSINT**: inteligencia de fuentes abiertas (dominios, empresas y archivos locales)
 3. **02_Recon**: descubrimiento de hosts vivos
 4. **03_Scanners**: escaneo de puertos y vulnerabilidades
 5. **04_Enumeration**: enumeración de servicios
 6. **05_Exploitation** y **06_PostExploitation**: solo si tienes autorización explícita
-7. **07_Wireless**: auditoría inalámbrica (requiere adaptador)
+7. **07_Wireless**: menú de mantenimiento local; no acredita auditoría inalámbrica
 8. **08_Forensics**: análisis forense
 9. **09_Automation**: automatización y workflows
 10. **10_Evidence**: gestión de evidencias
@@ -109,11 +130,113 @@ El flujo completo comprueba el alcance de `scope.yaml` y pide confirmación ante
 
 ---
 
+## Módulo 03: escáneres guiados
+
+Al entrar en **03** aparece un menú específico:
+
+1. **Comprobar herramientas**: consulta disponibilidad local; no escanea,
+   instala ni actualiza nada.
+2. **Puertos y servicios básicos**: 100 puertos TCP con Nmap y detección ligera
+   de servicios, sin NSE ni detección de SO. Propone el objetivo de sesión;
+   sin sesión no usa una IP de ejemplo.
+3. **Analizar una URL**: elige Nikto o Nuclei e introduce una URL HTTP(S)
+   completa con esquema, puerto y ruta. No se adivina el esquema desde la sesión.
+4. **Burp manual**: abre el lanzador y explica la captura; Community no escanea
+   ni guarda proyectos.
+5. **Avanzado**: conserva los diez scripts. Smart completo, NSE, Nmap agresivo,
+   Masscan, RustScan y run_all son intensivos y piden confirmación adicional.
+
+Antes del análisis básico o web se muestra herramienta, objetivo e intensidad.
+Solo una confirmación afirmativa ejecuta. `0` o `!` cancela la pregunta de
+objetivo; EOF no inicia herramientas. El menú nunca eleva privilegios.
+
+Los fallos de herramientas son **NO DETERMINADO**, no «sin vulnerabilidades».
+El orquestador resume ejecutadas, fallidas y omitidas; los logs conservan el
+historial fechado. Una omisión no equivale a una evaluación limpia.
+
+Nuclei se limita a plantillas HTTP con tasa 10/s y concurrencia 2, sin
+Interactsh ni comprobaciones de actualización. El flujo web no reemplaza una
+prueba autenticada con petición capturada en Burp.
+
+Detalles y verificación aislada en `CyberSecurity-Framework/03_Scanners/README.md`.
+
+## Módulo 04: enumeración guiada sin perder capacidades
+
+`04` permite comprobar herramientas, elegir SSH/FTP/SMB/LDAP/bases de datos/web/API,
+ejecutar el flujo completo original, ver resultados del objetivo y acceder a
+las **16 entradas**, incluidos auxiliares y ambos generadores.
+
+El menú muestra las operaciones y pide confirmación. Se conservan accesos
+anónimos, credenciales por defecto, usuarios, todos los métodos HTTP y fuzzing:
+**no son comprobaciones pasivas**. En particular POST/PUT/DELETE/PATCH pueden
+modificar datos, NSE `ftp-*` puede ser intrusivo y Redis `KEYS *` puede ser costoso.
+
+Web/API pide URL completa; conserva esquema, puerto, ruta y query. El visor no
+atribuye archivos antiguos a la sesión por suposición. Los nuevos resultados
+llevan host/puerto y metadata; un fallo no se presenta como «sin hallazgos» ni
+reutiliza un resultado previo como actual. Los diagnósticos se conservan fechados.
+
+`0`/`!` cancela la pregunta de objetivo/puerto; EOF o confirmación negativa no
+ejecuta herramientas. La CLI histórica sigue disponible y no añade prompts
+interactivos nuevos. No se instala nada ni se eleva privilegios automáticamente.
+
+Detalles, riesgos y ejemplos: `CyberSecurity-Framework/04_Enumeration/README.md`.
+
+## Módulo 05: explotación guiada
+
+`05` ofrece un menú guiado con las capacidades de explotación ya disponibles:
+
+1. **Herramientas**: fuerza bruta SSH/FTP, Kerberos, CVE, WiFi, payloads y shells.
+2. **Web capturada**: `http_inject.sh`, `sqlmap_request.sh`, `rate_limit_probe.sh` sobre una petición capturada en Burp.
+3. **Web por URL/host**: `xss.sh`, `sql_injection.sh`, `web_attack.sh` (fuzzing).
+4. **SSH/FTP**: fuerza bruta con hydra.
+5. **Bases de datos**: MySQL, PostgreSQL, Redis.
+6. **Kerberos**: ataque con kinit aislado.
+7. **CVE**: sonda de versión (sin payload).
+8. **Payload/shell**: generación de reverse shells.
+9. **WiFi**: escaneo con iwlist (requiere interfaz).
+10. **Plantillas**: plantillas de explotación.
+11. **Flujos completos**: `run_all_attacks.sh`, `run_all_exploits.sh`.
+12. **Resultados**: visor de evidencia (`show_results.sh`).
+13. **Lista completa**: todas las entradas (reutiliza `run_module_scripts`).
+14. **Volver**.
+
+Todas las opciones piden confirmación antes de ejecutar y no elevan privilegios automáticamente. Las hojas capturadas mantienen sus contratos y permisos independientes (`SQLMAP_SI`, `SQLMAP_ENUMERAR`, `SQLMAP_TABLA`).
+
+Detalles, riesgos y ejemplos: `CyberSecurity-Framework/05_Exploitation/README.md` y `docs/EXPLOTACION-2026-11-10.md`.
+
+## Módulo 07: mantenimiento inalámbrico
+
+Al entrar en **07** aparece un menú específico:
+
+- **1 — Comprobar herramientas**: consulta `command -v` sin ejecutar binarios.
+  Informa presencia o ausencia de sudo, ip, iw, airodump-ng, aireplay-ng,
+  aircrack-ng, hcitool, bluetoothctl, sdptool y gatttool. No instala nada.
+- **2 — Guía y límites**: texto local, sin leer capturas ni validar evidencia.
+- **11 — Lista original**: conserva las diez entradas y las confirmaciones del
+  listado genérico; abrirlo no ejecuta automáticamente hojas o flujos.
+- **0 — Volver**: regresa al menú principal. EOF vuelve sin despachar acciones;
+  una opción inválida muestra aviso. Las opciones 1 y 2 pausan al terminar.
+
+La comprobación no eleva privilegios, cambia interfaces/servicios ni transmite
+por radio. Presencia en PATH no acredita adaptador compatible, permisos,
+funcionamiento operacional o auditoría realizada. El acceso a las operaciones
+originales no las convierte en pasivas ni sustituye autorización y revisión
+específica; no ejecutar el flujo completo como smoke test.
+
+`wifi_handshake.sh` imprime una guía: **no captura ni verifica automáticamente
+un handshake**. El mantenimiento no modifica ni valida operacionalmente las
+diez hojas/flujo, y no implementa el plan operacional integral de 07.
+
+Detalles e inventario: `CyberSecurity-Framework/07_Wireless/README.md` y
+`USE.md` en ese módulo. Regresión aislada y límites:
+`docs/WIRELESS-MANTENIMIENTO-2026-11-11.md`.
+
 ## Marcas en la lista de scripts
 
 Las marcas avisan antes de ejecutar:
 
-- **`[intrusiva]`** — fuerza bruta, explotación, persistencia o limpieza: pide confirmación aparte. Ejemplos: `hydra_brute.sh`, `reverse_shell_php.sh`, `rate_limit_probe.sh`.
+- **`[intrusiva]`** — escaneo intensivo, fuerza bruta, explotación, persistencia o limpieza: pide confirmación aparte. Ejemplos: `nmap_aggressive.sh`, `hydra_brute.sh`, `rate_limit_probe.sh`.
 - **`[manual]`** — usa banderas o subcomandos: escribes la línea de argumentos completa. Ejemplos: `nmap_smart.sh` (si tiene `--flags`), `interface_manager.sh`.
 - **`[generador]`** — escribe otro script, no escanea nada. Ejemplos: `enum_smb.sh`, `deepseeenum_web.sh` (escriben el script real en su primera ejecución; `ps_exec.sh` y `linpeas.sh` hacen lo propio).
 
@@ -188,6 +311,37 @@ Se crea la primera vez que usas `R` o puedes editarlo manualmente. Enter conserv
 
 ## Cómo leer los veredictos
 
+### Resultados OSINT
+
+`01_OSINT` no inventa perfiles a partir de un usuario: consulta enlaces del sitio
+de referencia, búsquedas de cuentas GitHub y APIs compatibles configuradas en
+`K` (Brave para redes, GitHub y Hunter para correos). Sin Brave no hay búsqueda
+web general de redes; las fuentes omitidas, bloqueadas o fallidas quedan visibles.
+Un candidato no prueba pertenencia y un enlace desde el sitio tampoco acredita
+propiedad. No se confunden cuentas GitHub con emails ni certificados con hosts activos.
+
+`run_all_osint.sh <dominio> [archivo] [empresa]` comparte las consultas en una
+sesión. Deja archivo vacío para dar empresa sin extraer metadatos. Las rutas de
+archivo relativas se resuelven desde el directorio del llamador. En redes puedes
+dar empresa, directorio de salida opcional y dominio de referencia opcional.
+
+La fuerza bruta **DNS de subdominios** solo se activa al dar un diccionario local
+en el tercer campo de `subdomain_finder.sh` y confirmar `DNS_SI`; el cuarto campo
+es la IP de resolver opcional. Nunca se activa en run_all. Máximo 1.000 nombres,
+5 consultas DNS/s agregadas y 120 s; controles wildcard previos y resultados
+ambiguos separados de los resueltos. No incluye AXFR ni ataques de contraseñas.
+
+Cada ejecución guarda `resultados.json`, `resumen.txt` y `errores.log` en una
+carpeta única bajo los directorios ignorados de `01_OSINT` (run_all usa
+`domains/`). No usa `scans/` para estos artefactos. Código 0 significa fuentes
+intentadas completadas, no cobertura exhaustiva; 1 es parcial/fallo, 2 es entrada
+o configuración inválida. El resumen muestra omisiones y límites.
+
+Consulta [el README de OSINT](../CyberSecurity-Framework/01_OSINT/README.md) para
+ejemplos, claves compatibles y las limitaciones de theHarvester (omitido en esta
+entrega por reintentos/errores opacos). Estos datos no son vulnerabilidades ni
+se integran automáticamente en los informes de vulnerabilidades.
+
 ### Estados de confianza
 
 - **`confirmado`**: la herramienta demostró explotación o un diferencial concluyente. Ejemplos: `sqlmap` inyectable, `http_inject` confirmado, `SIN FRENO`, CVE de nuclei.
@@ -222,7 +376,7 @@ El motor de informes **no parsea** `scope.yaml` en v1 (evita depender de PyYAML)
 
 ### Seguridad
 
-- Los resultados van siempre a `scans/<herramienta>/` en la raíz del repositorio, se lance el script desde donde se lance.
+- Los escaneos van a `scans/<herramienta>/` en la raíz del repositorio, se lance el script desde donde se lance. Los artefactos OSINT quedan en los directorios ignorados de `01_OSINT` descritos arriba.
 - `scans/` está en `.gitignore`: contiene IPs y hallazgos de cada sesión, no se sube al repositorio.
 - Los scripts intrusivos (`[intrusiva]`) piden confirmación aparte.
 - Nunca ejecutes `99` como prueba de humo: ejecuta fuerza bruta, explotación y limpieza contra todos los objetivos configurados.
@@ -232,6 +386,36 @@ El motor de informes **no parsea** `scope.yaml` en v1 (evita depender de PyYAML)
 Si una herramienta no está instalada, el script avisa y continúa (o sale con error, según el caso). Los resultados parciales se guardan en `scans/` y los errores en `scans/<herramienta>/errores.log`.
 
 ---
+
+## Forense: módulo 08
+
+`08` abre un menú específico sin lanzar herramientas ni usar la IP de sesión
+como archivo/identidad: dependencias, strings/logs/PCAP/Volatility offline,
+disco/recuperación, timeline, adquisición local explícita, flujo y visor.
+`11` conserva las diez entradas originales más el visor; `0`, `!` o EOF salen
+sin completar una selección ni activar defaults sensibles.
+
+Selecciona archivos explícitos. Cada analizador obtiene copia independiente,
+hash y permisos privados (700/600); prever coste de espacio/lectura y atime.
+Disco no monta por defecto; solo copia confirmada con opciones específicas de
+filesystem. Físico/ddrescue es modo explícito sin hash exhaustivo del original.
+Windows Volatility v2/v3 offline requiere perfil/símbolos según backend; RAM Linux
+adquirida no es Windows. No descargas de símbolos o adquisición offline implícita.
+
+Requirements sin flags solo comprueba PATH; instalar/adquirir/montar y consultar
+fuentes locales exige confirmaciones directas independientes, además del gestor.
+Flujo local denegado/fallido bloquea dependientes, sin capturas históricas por glob.
+CLI hojas0=completo,1=parcial/fallo/cancelación,2=uso/precondición. COMPLETADO no
+prueba ausencia de incidentes ni memoria íntegra. El visor muestra resúmenes,
+no cuerpos, y no revive resultados antiguos como vigentes. No atribuye evidencia
+a IP ni añade un parser al motor11. Salidas externas requieren privacidad y
+exclusión git propias. El verificador solo acredita coherencia de metadata y
+artefactos privados, no integridad actual del original/custodia legal.
+
+Guía detallada, CLI, tokens, sistemas soportados y límites:
+[`08_Forensics/USE.md`](../CyberSecurity-Framework/08_Forensics/USE.md).
+Estado de entrega/pruebas/revisión:
+[`FORENSE-INTEGRAL-2026-11-11.md`](FORENSE-INTEGRAL-2026-11-11.md).
 
 ## Problemas frecuentes
 
@@ -282,6 +466,68 @@ Si una herramienta no está instalada, el script avisa y continúa (o sale con e
 
 ---
 
+## Claves de API
+
+Las herramientas de OSINT y de reconocimiento leen sus claves de API de ficheros y bases
+de datos distintos, y cuando falta una clave casi ninguna lo dice: theHarvester y h8mail
+siguen arrancando y devuelven menos resultados. El framework centraliza las claves en un
+único registro (`00_Config/credentials/api-keys.yaml`, ignorado por git) y escribe desde
+ahí los ficheros de cada herramienta.
+
+Entra con `K` en el menú principal, o con **`00 → 5. scripts/api_keys.py`**.
+Ambas entradas abren el mismo menú guiado: no debes escribir subcomandos ni
+pegar claves en una línea de argumentos. Desde `00`, la opción `0` vuelve al
+módulo de configuración; desde `K`, vuelve al menú principal.
+
+```
+  K) 🔑 Claves de API  (6 herramientas · N con claves · M vacías)
+     1) Pedir las claves que falten en cada herramienta
+     2) Pedir las claves de una herramienta
+     3) Ver el estado detallado
+     4) Sincronizar el registro con las herramientas
+     5) Importar lo que ya tienen las herramientas
+     0) Volver al menú principal
+```
+
+- **Pedir** (`2` o la CLI `pedir <herramienta> [--campo X]`): sin `--campo` pregunta solo
+  los campos vacíos. Enter deja el campo como está; `-` lo borra también del fichero de la
+  herramienta. Con terminal no se ve lo que tecleas; por tubería avisa de que el eco es
+  visible. No acepta valores con espacios: parece texto, no una clave. Si la clave tiene
+  menos de 8 caracteres avisa (no bloquea): puede ser un error de tecleo.
+- **Estado** (`3`): tabla con las claves puestas y el estado de cada herramienta.
+  - `puesta (sin verificar)` — hay valor, no se ha probado contra el servicio.
+  - `puesta (h8mail necesita -c)` — h8mail solo lee su INI si lo llamas con `-c`.
+  - `vacía` — la herramienta está inicializada y no hay ningún valor.
+  - `sin inicializar` — la herramienta no tiene todavía su fichero o base de datos.
+  - `no instalada` — ni binario ni fichero.
+  - `diverge` — la herramienta guarda un valor que el registro no explica; `5` lo importa.
+- **Sincronizar** (`4`): vuelca el registro en todas las herramientas que ya tengan fichero
+  o valores; no crea ficheros vacíos.
+- **Importar** (`5`): trae al registro lo que la herramienta ya tenía.
+
+Ninguna salida muestra el valor de una clave: solo presencia y longitud. El registro no
+sustituye a las herramientas: si borras `api-keys.yaml`, las claves que ya estaban en sus
+ficheros siguen ahí (`sincronizar`/`importar` las recuperan).
+
+### Las otras opciones de configuración
+
+- **`00 → 1`** ejecuta cuatro comprobaciones de solo lectura (validación,
+  verificación, resumen de objetivos y estado de claves). No abre asistentes ni
+  importa/sincroniza claves. Si un paso falla, continúa y termina con código 1,
+  sin anunciar éxito global; los errores de herramientas quedan visibles.
+- **`00 → 2`** abre el asistente de objetivos y pide confirmar antes de escribir.
+- **`00 → 3/4`** comprueban archivos y estructura; devuelven 1 si falta algo.
+- **`00 → 6`** muestra el resumen actual de objetivos, sin modificarlos. La CLI
+  permite exportar JSON/CSV; un archivo ausente, ilegible o una salida no
+  escribible produce error claro y código 1, no un traceback ni éxito silencioso.
+
+«Ejecución directa» significa que no hacen falta argumentos externos. El
+asistente muestra sus preguntas y las comprobaciones muestran sus resultados.
+La CLI directa de api_keys sigue requiriendo un subcomando; el gestor evita
+invocarla vacía al abrir el menú guiado.
+
+---
+
 ## Referencia rápida de comandos
 
 ### Arranque y navegación
@@ -289,6 +535,7 @@ Si una herramienta no está instalada, el script avisa y continúa (o sale con e
 ```bash
 ./cyber_framework.sh          # Arrancar el gestor
 T                              # Cambiar objetivo
+K                              # Claves de API
 R                              # Generar informes
 99                             # Flujo completo
 ?                              # Ayuda
@@ -315,6 +562,19 @@ python3 11_Reports/report_engine.py --desde-json 11_Reports/generated/127.0.0.1/
 nano 00_Config/scope.yaml      # Editar alcance
 nano 00_Config/targets.txt     # Editar objetivos
 nano 11_Reports/.report_profile # Editar perfil de cliente
+```
+
+### Claves de API
+
+```bash
+H=00_Config/scripts/api_keys.py
+python3 $H estado                     # Tabla de estado
+python3 $H estado --json              # Lo mismo, para scripts
+python3 $H estado --faltan shodan     # 0 = completa, 1 = faltan, 2 = no existe
+python3 $H pedir theharvester         # Pide las vacías, una por una
+python3 $H pedir shodan --campo key   # Una concreta (Enter conserva, '-' borra)
+python3 $H sincronizar                # Registro → ficheros de herramienta
+python3 $H importar amass             # Fichero de herramienta → registro
 ```
 
 ### Verificación
@@ -356,4 +616,4 @@ cat scans/<herramienta>/errores.log  # Ver errores de una herramienta
 
 ---
 
-**Última actualización:** 2026-11-06
+**Última actualización:** 2026-11-10

@@ -16,6 +16,22 @@ source "$FW/00_Config/lib/phase_status.bash"
 TMPD="$(mktemp -d)"
 export SESSION_FILE="$TMPD/.session"
 export SESSION_TARGETS_FILE="$TMPD/targets.txt"
+export SESSION_SCOPE_FILE="$TMPD/scope.yaml"
+# Fixture de scope.yaml: ni el fichero real ni el de targets.txt se tocan.
+cat > "$SESSION_SCOPE_FILE" <<'EOS'
+# ─── AUTORIZACIÓN ──────────────────────────────────────────
+project:
+  name: "Fixture"
+targets:
+  ips:
+    - "192.168.1.0/24"
+  domains:
+    - "base.com"
+  excluded:
+    - "192.168.1.1"
+EOS
+MD5_SCOPE_REAL=$(md5sum "$FW/00_Config/scope.yaml" 2>/dev/null | cut -d' ' -f1)
+MD5_TARGETS_REAL=$(md5sum "$FW/00_Config/targets.txt" 2>/dev/null | cut -d' ' -f1)
 source "$FW/00_Config/lib/session.bash"
 source "$FW/00_Config/lib/prompt.bash"
 
@@ -31,14 +47,15 @@ section() { printf '\n── %s\n' "$1"; }
 section "Regresión: el prompt no se cuela en el valor"
 # El bug original: el gestor capturaba el texto del prompt como parámetro.
 S="$FW/04_Enumeration/web/enum_web.sh"
-out=$(printf '192.168.1.50\n80\n' | prompt_for_slots "$S" "04_Enumeration/web/enum_web.sh" 2>/dev/null)
+out=$(printf '192.168.1.50\n80\nhttp\n' | prompt_for_slots "$S" "04_Enumeration/web/enum_web.sh" 2>/dev/null)
 eq "stdout son solo los valores" "$out" "192.168.1.50
-80"
+80
+http"
 case "$out" in
     *"➜"*|*"Uso:"*|*"necesita datos"*) bad "stdout no contiene interfaz" "obtenido: $out" ;;
     *) ok "stdout no contiene interfaz" ;;
 esac
-err=$(printf '192.168.1.50\n80\n' | prompt_for_slots "$S" "04_Enumeration/web/enum_web.sh" 2>&1 >/dev/null)
+err=$(printf '192.168.1.50\n80\nhttp\n' | prompt_for_slots "$S" "04_Enumeration/web/enum_web.sh" 2>&1 >/dev/null)
 case "$err" in
     *"➜"*) ok "la interfaz sí va a stderr" ;;
     *) bad "la interfaz sí va a stderr" "stderr: $err" ;;
@@ -59,13 +76,15 @@ for f in $(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | sort); do
     o=$(params_slots "$f" | awk -F'|' '$3=="obligatorio"' | wc -l | tr -d ' ')
     [ "$o" -ge 2 ] && oblig=$((oblig + 1))
 done
-eq "39 scripts con 2+ huecos" "$dos" "39"
-eq "8 scripts con 2+ obligatorios" "$oblig" "8"
+# OSINT declara ahora el directorio de salida antes oculto en email, metadata,
+# social y subdomains: cuatro scripts pasan de uno a varios huecos.
+eq "45 scripts con 2+ huecos (incluido perfil Smart)" "$dos" "45"
+eq "7 scripts con 2+ obligatorios (puertos Masscan opcionales)" "$oblig" "7"
 
 # ──────────────────────────────────────────────────────────
 section "Parser: casos concretos"
 eq "ps_exec.sh tiene 5 huecos" "$(params_slot_count 06_PostExploitation/lateral_movement/ps_exec.sh)" "5"
-eq "enum_web.sh tiene 2 huecos" "$(params_slot_count 04_Enumeration/web/enum_web.sh)" "2"
+eq "enum_web.sh tiene 3 huecos (esquema opcional)" "$(params_slot_count 04_Enumeration/web/enum_web.sh)" "3"
 eq "reverse_shell_php.sh tiene 2 obligatorios" \
    "$(params_slots 05_Exploitation/web/reverse_shell_php.sh | awk -F'|' '$3=="obligatorio"' | wc -l | tr -d ' ')" "2"
 eq "ssh_backdoor.sh tiene 1 opcional" \
@@ -97,7 +116,7 @@ section "D3: el ejemplo solo se usa si cuadra"
 eq "search_kb.sh descarta su ejemplo" \
    "$(params_example_values 12_Knowledge_Base/search_kb.sh >/dev/null 2>&1; echo $?)" "1"
 eq "enum_web.sh sí usa su ejemplo" \
-   "$(params_example_values 04_Enumeration/web/enum_web.sh | tr '\n' ' ')" "192.168.1.10 80 "
+   "$(params_example_values 04_Enumeration/web/enum_web.sh | tr '\n' ' ')" "192.0.2.1 80 http "
 
 # ──────────────────────────────────────────────────────────
 section "Validación del objetivo"
@@ -107,6 +126,119 @@ done
 for no in '' '1.2.3.4; rm -rf /' '1.2.3.4 5' 'con espacio' '999.1.1.1' 'http://x.com' 'a/b' '$HOME'; do
     if validate_target "$no"; then bad "rechaza [$no]"; else ok "rechaza [$no]"; fi
 done
+
+# ──────────────────────────────────────────────────────────
+section "El objetivo se registra en scope.yaml"
+scope_add_target example.com;        eq "añade el dominio"            "$?" "0"
+eq "añade el dominio pelado"         "$(grep -c '^ *- "example\.com"$' "$SESSION_SCOPE_FILE")" "1"
+eq "añade el comodín"                "$(grep -c '^ *- "\*\.example\.com"$' "$SESSION_SCOPE_FILE")" "1"
+antes=$(wc -l < "$SESSION_SCOPE_FILE")
+scope_add_target example.com
+eq "no duplica"                      "$(wc -l < "$SESSION_SCOPE_FILE")" "$antes"
+scope_add_target Example.com
+eq "no duplica por mayúsculas"       "$(grep -ic '^ *- "example\.com"$' "$SESSION_SCOPE_FILE")" "1"
+scope_add_target 10.1.2.3;           eq "añade la IP"                 "$?" "0"
+eq "la IP va a ips"                  "$(sed -n '/^  ips:/,/^  [a-z]/p' "$SESSION_SCOPE_FILE" | grep -c '10.1.2.3')" "1"
+eq "la IP no va a domains"           "$(sed -n '/^  domains:/,/^  [a-z]/p' "$SESSION_SCOPE_FILE" | grep -c '10.1.2.3')" "0"
+eq "crea la copia .bak"              "$([[ -f "$SESSION_SCOPE_FILE.bak" ]] && echo si)" "si"
+eq "el YAML sigue parseando"         "$(python3 -c 'import yaml,sys;yaml.safe_load(open(sys.argv[1]))' "$SESSION_SCOPE_FILE" >/dev/null 2>&1; echo $?)" "0"
+eq "conserva los comentarios"        "$(grep -c 'AUTORIZACIÓN' "$SESSION_SCOPE_FILE")" "1"
+scope_add_target "malo con espacios"; eq "rechaza un valor inválido" "$?" "1"
+printf 'targets:\n  ips:\n    - "1.2.3.4"\n' > "$TMPD/sin_domains.yaml"
+SESSION_SCOPE_FILE="$TMPD/sin_domains.yaml" scope_add_target otra.com
+eq "sin la clave domains no inventa" "$?" "2"
+eq "y no toca el fichero"            "$(md5sum < "$TMPD/sin_domains.yaml" | cut -d' ' -f1)" \
+                                     "$(printf 'targets:\n  ips:\n    - "1.2.3.4"\n' | md5sum | cut -d' ' -f1)"
+printf 'targets:\n  domains:\n    - "solo.com"\n' > "$TMPD/exacto.yaml"
+SESSION_SCOPE_FILE="$TMPD/exacto.yaml" scope_allows solo.com
+eq "scope_allows acepta el dominio pelado" "$?" "0"
+printf 'targets:\n  domains:\n    - "a.com"\n  excluded:\n    - "b.com"\n' > "$TMPD/dos_claves.yaml"
+SESSION_SCOPE_FILE="$TMPD/dos_claves.yaml" scope_add_target c.com
+eq "inserta solo en targets.domains" "$(sed -n '/^  excluded:/,$p' "$TMPD/dos_claves.yaml" | grep -c 'c\.com')" "0"
+printf 'targets:\r\n  domains:\r\n    - "crlf.com"\r\n' > "$TMPD/crlf.yaml"
+SESSION_SCOPE_FILE="$TMPD/crlf.yaml" scope_add_target crlf.com
+eq "no duplica con CRLF"             "$(grep -c '^ *- "crlf\.com"' "$TMPD/crlf.yaml")" "1"
+eq "y añade el comodín"              "$(grep -c '^ *- "\*\.crlf\.com"' "$TMPD/crlf.yaml")" "1"
+
+# Revisión: clave domains: anidada y sangrías distintas de la de la plantilla
+cat > "$TMPD/anidado.yaml" <<'EOS'
+targets:
+  domains:
+    - "a.com"
+  excluded:
+    domains:
+      - "intranet.a.com"
+EOS
+SESSION_SCOPE_FILE="$TMPD/anidado.yaml" scope_add_target c.com
+eq "inserta con domains: anidada"    "$?" "0"
+eq "no toca el bloque anidado"       "$(sed -n '/^  excluded:/,$p' "$TMPD/anidado.yaml" | grep -c 'c\.com')" "0"
+eq "la anidada sigue parseando"      "$(python3 -c 'import yaml,sys;yaml.safe_load(open(sys.argv[1]))' "$TMPD/anidado.yaml" >/dev/null 2>&1; echo $?)" "0"
+printf 'targets:\n    ips:\n        - "10.0.0.0/8"\n    domains:\n        - "a.com"\n' > "$TMPD/sangria.yaml"
+SESSION_SCOPE_FILE="$TMPD/sangria.yaml" scope_add_target d.com
+eq "inserta con sangría de 4"        "$?" "0"
+eq "respeta la sangría existente"    "$(grep -c '^ *- "d\.com"$' "$TMPD/sangria.yaml")" "1"
+eq "la sangría sigue parseando"      "$(python3 -c 'import yaml,sys;yaml.safe_load(open(sys.argv[1]))' "$TMPD/sangria.yaml" >/dev/null 2>&1; echo $?)" "0"
+
+# Revisión: scope_allows no debe leer excluded ni el email de contacto
+cat > "$TMPD/reglas.yaml" <<'EOS'
+targets:
+  domains:
+    - "ok.com"
+  excluded:
+    - "malo.com"
+contact:
+  email: "x@contacto.com"
+EOS
+eq "acepta el dominio de targets"    "$(SESSION_SCOPE_FILE="$TMPD/reglas.yaml" scope_allows ok.com; echo $?)" "0"
+eq "rechaza el dominio excluido"     "$(SESSION_SCOPE_FILE="$TMPD/reglas.yaml" scope_allows malo.com; echo $?)" "1"
+eq "rechaza el dominio del contacto" "$(SESSION_SCOPE_FILE="$TMPD/reglas.yaml" scope_allows contacto.com; echo $?)" "1"
+
+# Revisión: sin PyYAML se escribe y se avisa, no se falla en silencio
+mkdir -p "$TMPD/nopy"
+printf '#!/bin/bash\nexit 1\n' > "$TMPD/nopy/python3"
+chmod +x "$TMPD/nopy/python3"
+printf 'targets:\n  domains:\n    - "w.com"\n' > "$TMPD/sinvalidador.yaml"
+PATH="$TMPD/nopy:$PATH" SESSION_SCOPE_FILE="$TMPD/sinvalidador.yaml" scope_add_target x.com
+eq "sin PyYAML escribe igualmente"   "$?" "0"
+eq "y añade las dos entradas"        "$(grep -c 'x\.com' "$TMPD/sinvalidador.yaml")" "2"
+
+# Revisión: el fichero no debe perder sus permisos al reescribirlo
+printf 'targets:\n  domains:\n    - "p.com"\n' > "$TMPD/perm.yaml"
+chmod 640 "$TMPD/perm.yaml"
+SESSION_SCOPE_FILE="$TMPD/perm.yaml" scope_add_target q.com
+eq "conserva los permisos"           "$(stat -c '%a' "$TMPD/perm.yaml")" "640"
+export SESSION_SCOPE_FILE="$TMPD/scope.yaml"
+
+# ──────────────────────────────────────────────────────────
+section "El objetivo se registra en targets.txt"
+printf '192.168.1.10|22|SSH|Servidor|C\n' > "$SESSION_TARGETS_FILE"
+targets_add_entry example.com;  eq "añade el objetivo"    "$?" "0"
+eq "usa el formato de 5 campos" \
+   "$(grep -cE '^example\.com\|—\|—\|Registrado al fijar el objetivo\|B$' "$SESSION_TARGETS_FILE")" "1"
+eq "pone cabecera fechada" \
+   "$(grep -cE '^# ─── AÑADIDOS POR EL GESTOR \([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}\) ───$' "$SESSION_TARGETS_FILE")" "1"
+antes=$(wc -l < "$SESSION_TARGETS_FILE")
+targets_add_entry example.com
+eq "no duplica"                "$(wc -l < "$SESSION_TARGETS_FILE")" "$antes"
+printf 'sin-salto|80|HTTP|x|B' > "$TMPD/sin_salto.txt"
+SESSION_TARGETS_FILE="$TMPD/sin_salto.txt" targets_add_entry ejemplo.org
+eq "no pega la línea a la anterior" "$(grep -c '^sin-salto|80|HTTP|x|B$' "$TMPD/sin_salto.txt")" "1"
+targets_add_entry "malo con espacios"; eq "rechaza un valor inválido" "$?" "1"
+rm -f "$TMPD/nuevo.txt"
+SESSION_TARGETS_FILE="$TMPD/nuevo.txt" targets_add_entry ejemplo.net
+eq "crea el fichero si no existe" "$(grep -c '^#  LISTA DE OBJETIVOS$' "$TMPD/nuevo.txt")" "1"
+python3 "$FW/00_Config/scripts/parse_targets.py" --input "$SESSION_TARGETS_FILE" --json "$TMPD/t.json" >/dev/null 2>&1
+eq "parse_targets.py lo entiende" \
+   "$(python3 -c "import json;d=json.load(open('$TMPD/t.json'));print([t['port'] for t in d if t['ip']=='example.com'][0])")" "None"
+
+# ──────────────────────────────────────────────────────────
+section "session_set_target registra en los dos ficheros"
+printf 'targets:\n  ips:\n    - "192.168.1.0/24"\n  domains:\n    - "base.com"\n' > "$TMPD/scope2.yaml"
+: > "$TMPD/targets2.txt"
+SESSION_SCOPE_FILE="$TMPD/scope2.yaml" SESSION_TARGETS_FILE="$TMPD/targets2.txt" \
+    session_set_target integra.com
+eq "scope.yaml recibe el dominio"  "$(grep -c 'integra.com' "$TMPD/scope2.yaml")" "2"
+eq "targets.txt recibe el dominio" "$(grep -c '^integra\.com|' "$TMPD/targets2.txt")" "1"
 
 # ──────────────────────────────────────────────────────────
 section "Sesión"
@@ -162,7 +294,7 @@ while IFS= read -r rel; do
 done < "$FW/00_Config/lib/dangerous.txt"
 eq "todas las rutas de dangerous.txt existen" "$faltan" "0"
 if params_is_dangerous "05_Exploitation/network/ssh_bruteforce.sh"; then ok "ssh_bruteforce es peligrosa"; else bad "ssh_bruteforce es peligrosa"; fi
-if params_is_dangerous "04_Enumeration/web/enum_web.sh"; then bad "enum_web NO es peligrosa"; else ok "enum_web NO es peligrosa"; fi
+if params_is_dangerous "04_Enumeration/web/enum_web.sh"; then ok "enum_web con fuzzing requiere confirmación"; else bad "enum_web con fuzzing requiere confirmación"; fi
 
 # En una peligrosa no se propone el ejemplo como defecto
 out=$(printf '\n\n' | prompt_for_slots "$FW/05_Exploitation/network/ssh_bruteforce.sh" "05_Exploitation/network/ssh_bruteforce.sh" 2>/dev/null)
@@ -239,7 +371,10 @@ if command -v zsh >/dev/null 2>&1; then
     SESS_BAK=""
     if [ -f "$SESS_REAL" ]; then SESS_BAK="$TMPD/session.bak"; cp "$SESS_REAL" "$SESS_BAK"; fi
     rm -f "$FW/../.session" "$SESS_REAL"
-    zsh -c "cd '$FW'; unset SESSION_FILE SESSION_TARGETS_FILE; source '00_Config/lib/session.bash' >/dev/null 2>&1; session_set_target prueba.example >/dev/null 2>&1" 2>/dev/null
+    # Se deja sin SESSION_FILE a propósito (así se comprueba dónde resuelve
+    # el .session), pero los otros dos sí se heredan: si no, este test
+    # escribiría en el targets.txt y el scope.yaml reales.
+    zsh -c "cd '$FW'; unset SESSION_FILE; source '00_Config/lib/session.bash' >/dev/null 2>&1; session_set_target prueba.example >/dev/null 2>&1" 2>/dev/null
     [ -f "$FW/../.session" ] && bad "zsh: .session no debe acabar en la raíz del repo" || ok "zsh: .session no acaba en la raíz del repo"
     [ -f "$SESS_REAL" ] && ok "zsh: .session aterriza en 00_Config" || bad "zsh: .session no llegó a 00_Config"
     rm -f "$FW/../.session" "$SESS_REAL"
@@ -272,12 +407,38 @@ eq "run_all_recon: declara su hueco en Uso:"         "$(params_mode "$FW/02_Reco
 eq "run_all_recon: funciona desde cualquier cwd"      "$(grep -c '192.0.2.97' "$RMP_LOG")" "1"
 
 # ──────────────────────────────────────────────────────────
+section "run_all_osint coordina dominio, archivo y empresa"
+# Los hijos ya no se invocan por separado: comparten núcleo y caché de sesión.
+# tests/run_osint.sh prueba el flujo completo con transporte local controlado.
+eq "run_all_osint: declara sus huecos en Uso:"  "$(params_mode "$FW/01_OSINT/run_all_osint.sh")" "slots"
+eq "run_all_osint: 3 huecos (dominio + archivo + empresa)" "$(params_slot_count "$FW/01_OSINT/run_all_osint.sh")" "3"
+eq "run_all_osint: el archivo es opcional y FICHERO" \
+   "$(params_slots "$FW/01_OSINT/run_all_osint.sh" | awk -F'|' 'NR==2{print $3" "$4}')" "opcional FICHERO"
+# Un Ejemplo: de un token no debe rellenar el hueco opcional con un
+# archivo que quizá no existe: se descarta.
+eq "run_all_osint: descarta el ejemplo incompleto" \
+   "$(params_example_values "$FW/01_OSINT/run_all_osint.sh" >/dev/null 2>&1; echo $?)" "1"
+
+eq "run_all_osint: empresa opcional de texto" \
+   "$(params_slots "$FW/01_OSINT/run_all_osint.sh" | awk -F'|' 'NR==3{print $3" "$4}')" "opcional TEXTO"
+eq "redes: empresa, salida y dominio de referencia" "$(params_slot_count "$FW/01_OSINT/scripts/social_media_search.sh")" "3"
+eq "emails: dominio y directorio de salida" "$(params_slot_count "$FW/01_OSINT/scripts/email_harvester.sh")" "2"
+eq "metadatos: archivo y directorio de salida" "$(params_slot_count "$FW/01_OSINT/scripts/metadata_extractor.sh")" "2"
+eq "subdominios: cuatro slots sin pasar a modo manual" "$(params_slot_count "$FW/01_OSINT/scripts/subdomain_finder.sh") $(params_mode "$FW/01_OSINT/scripts/subdomain_finder.sh")" "4 slots"
+bash "$FW/01_OSINT/run_all_osint.sh" >/dev/null 2>&1
+eq "run_all_osint: sin dominio sale 2" "$?" "2"
+bash "$FW/01_OSINT/run_all_osint.sh" example.com "$TMPD/no-existe.pdf" >/dev/null 2>&1
+eq "run_all_osint: archivo inexistente sale 2" "$?" "2"
+
+# ──────────────────────────────────────────────────────────
 section "enum_web: nombres con objetivo y línea base de ffuf"
 WOUT="$FW/../scans/web"
 mkdir -p "$WOUT"
 rm -f "$WOUT"/headers_192.0.2.1_443.txt "$WOUT"/headers_192.0.2.2_443.txt "$WOUT"/headers_443.txt
 WSTUB="$(mktemp -d)"
-printf '#!/bin/bash\necho "200:433"\n' > "$WSTUB/curl"
+cp "$FW/tests/fixtures/enumeration_tools.py" "$WSTUB/curl"
+export ENUM_CALLS="$WSTUB/calls.jsonl"
+export CURL_MODE=catchall
 printf '#!/bin/bash\necho "whatweb stub"\n' > "$WSTUB/whatweb"
 cat > "$WSTUB/ffuf" <<'EOS'
 #!/bin/bash
@@ -285,6 +446,7 @@ printf '%s\n' "$*" >> "$WSTUB_ARGS"
 out=""; prev=""
 for a in "$@"; do [[ "$prev" == "-o" ]] && out="$a"; prev="$a"; done
 [[ -n "$out" ]] && printf '%s' '{"commandline":"x","results":[],"config":{"url":"http://x/FUZZ"}}' > "$out"
+printf '%s\n' '{"url":"http://fixture/FUZZ","status":200,"length":13,"position":1}'
 exit 0
 EOS
 chmod +x "$WSTUB/curl" "$WSTUB/whatweb" "$WSTUB/ffuf"
@@ -295,12 +457,18 @@ PATH="$WSTUB:$PATH" bash "$FW/04_Enumeration/web/enum_web.sh" 192.0.2.1 443 >/de
 PATH="$WSTUB:$PATH" bash "$FW/04_Enumeration/web/enum_web.sh" 192.0.2.2 443 >/dev/null 2>&1
 WOUT_TXT=$(PATH="$WSTUB:$PATH" bash "$FW/04_Enumeration/web/enum_web.sh" 192.0.2.3 443 2>&1)
 
-eq "enum_web: dos objetivos no se pisan"    "$(ls "$WOUT" | grep -c '^headers_192\.0\.2\.')" "3"
-eq "enum_web: el nombre lleva el objetivo"  "$(ls "$WOUT" | grep -c '^headers_192\.0\.2\.1_443')" "1"
-eq "enum_web: cada ejecución filtra por tamaño base"  "$(grep -c -- '-fs 433' "$WSTUB_ARGS")" "3"
+eq "enum_web: dos objetivos no se pisan"    "$(ls "$WOUT" | grep -c '^headers_192\.0\.2\..*\.txt$')" "3"
+eq "enum_web: el nombre lleva el objetivo"  "$(ls "$WOUT" | grep -c '^headers_192\.0\.2\.1_443.*\.txt$')" "1"
+eq "enum_web: cada ejecución filtra catch-all sin ocultar frenos" "$(python3 - "$WOUT" <<'PY'
+import json,sys
+from pathlib import Path
+files=[p for p in Path(sys.argv[1]).glob('ffuf_192.0.2.*.json') if not p.name.endswith(('.meta.json','.attempt.json'))]
+print(sum(json.loads(p.read_text()).get('results') == [] for p in files))
+PY
+)" "3"
 # Un catch-all con results vacío debe decir 0, no 1 por la "url" de la config.
 eq "enum_web: cero hallazgos se informa como cero" \
-   "$(printf '%s' "$WOUT_TXT" | grep -c ' 0 directorios encontrados')" "1"
+   "$(printf '%s' "$WOUT_TXT" | grep -c 'Fuzzing completado: 0 candidatos')" "1"
 
 # Un catch-all contesta al robots.txt con el relleno de la app: 200 y cuerpo,
 # así que "no vacío" no significa "existe".
@@ -315,11 +483,12 @@ EOS
 chmod +x "$WSTUB/curl"
 : > "$WSTUB_ARGS"
 WOUT_DOWN=$(PATH="$WSTUB:$PATH" bash "$FW/04_Enumeration/web/enum_web.sh" 192.0.2.8 443 2>&1)
-eq "enum_web: sin conexión avisa"    "$(printf '%s' "$WOUT_DOWN" | grep -c 'No se pudo conectar')" "1"
+eq "enum_web: sin conexión avisa"    "$(printf '%s' "$WOUT_DOWN" | grep -c 'NO_DETERMINADO:')" "1"
 eq "enum_web: sin conexión no fuzzea" "$(grep -c . "$WSTUB_ARGS")" "0"
 
 rm -f "$WOUT"/*_192.0.2.*
 rm -rf "$WSTUB"
+unset ENUM_CALLS CURL_MODE
 
 # ──────────────────────────────────────────────────────────
 section "Escáneres: nombres con objetivo"
@@ -433,20 +602,26 @@ grep -q "errores.log" "$TMPD/salida_scan" && ok "scanner: avisa de la ruta del l
 rm -f "$FW/../scans/nmap/errores.log"
 rm -rf "$ESTUB"
 
-# El log es de este run: uno heredado convierte cualquier ejecución futura en
-# "⚠️ Errores registrados" permanente, y atribuye fallos viejos al objetivo actual.
+# Conservar historial sin atribuir errores viejos a la ejecución actual.
 TSTUB="$(mktemp -d)"
-printf '#!/bin/bash\nexit 0\n' > "$TSTUB/nmap"
+cat > "$TSTUB/nmap" <<'EOS'
+#!/bin/bash
+while [[ $# -gt 0 ]]; do
+    [[ "$1" != -oA ]] || : > "$2.nmap"
+    shift
+done
+exit 0
+EOS
 chmod +x "$TSTUB/nmap"
 echo "error de una ejecución anterior" > "$FW/../scans/nmap/errores.log"
 TOUT=$(PATH="$TSTUB:$PATH" bash "$FW/03_Scanners/network_scanners/nmap/nmap_smart.sh" 192.0.2.6 2>&1)
-eq "scanner: el log se trunca en cada ejecución" "$([ -s "$FW/../scans/nmap/errores.log" ] && echo con-contenido || echo vacio)" "vacio"
+eq "scanner: conserva el historial del log" "$(cat "$FW/../scans/nmap/errores.log")" "error de una ejecución anterior"
 eq "scanner: sin errores nuevos no avisa" "$(printf '%s' "$TOUT" | grep -c 'errores.log')" "0"
 rm -f "$FW/../scans/nmap/errores.log"
 rm -rf "$TSTUB"
 
 # ──────────────────────────────────────────────────────────
-section "run_all_scanners: resumen de logs con errores"
+section "run_all_scanners: no atribuye logs históricos ajenos"
 RSTUB="$(mktemp -d)"
 for t in nmap masscan nikto nuclei rustscan whatweb ffuf; do
     printf '#!/bin/bash\nexit 0\n' > "$RSTUB/$t"
@@ -466,9 +641,8 @@ echo "fallo simulado de nikto" > "$FW/../scans/nikto/errores.log"
 : > "$FW/../scans/masscan/errores.log"
 
 PATH="$RSTUB:$PATH" bash "$FW/03_Scanners/run_all_scanners.sh" prueba.example > "$TMPD/scan_all" 2>&1
-# El hijo ya anuncia su propio log con "⚠️  Errores registrados en:", así que el
-# aserto no puede ser "la ruta aparece": tiene que ser la línea del resumen.
-eq "run_all_scanners: resume el log con contenido" "$(grep -cE '^  ⚠️  .*/scans/nikto/errores\.log \([0-9]+ líneas?\)' "$TMPD/scan_all")" "1"
+# Nikto no ha corrido: su log antiguo no debe aparecer como diagnóstico actual.
+eq "run_all_scanners: no resume un log histórico ajeno" "$(grep -c 'scans/nikto/errores.log' "$TMPD/scan_all")" "0"
 eq "run_all_scanners: no resume un log vacío"     "$(grep -cE '/scans/masscan/errores\.log \(' "$TMPD/scan_all")" "0"
 
 rm -f "$FW/../scans/nmap/errores.log" "$FW/../scans/nikto/errores.log" "$FW/../scans/masscan/errores.log"
@@ -488,7 +662,7 @@ EOS
 chmod +x "$WSTUB2/nmap"
 WOUT2=$(PATH="$WSTUB2:$PATH" bash "$FW/03_Scanners/run_all_scanners.sh" prueba.example 2>&1)
 eq "run_all_scanners: distingue fallo de descubrimiento de 'sin puertos'" \
-   "$(printf '%s' "$WOUT2" | grep -c 'No se pudo descubrir')" "1"
+   "$(printf '%s' "$WOUT2" | grep -c 'Descubrimiento web fallido')" "1"
 eq "run_all_scanners: no anuncia 'sin puertos web' cuando el sondeo falló" \
    "$(printf '%s' "$WOUT2" | grep -c 'No se encontraron puertos web abiertos')" "0"
 rm -f "$FW/../scans/nmap/errores.log"
@@ -633,6 +807,7 @@ if HPORT=$(iniciar_servidor_http); then
 
     printf 'GET /echo?q=hola HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_echo.txt"
     OUT=$(SESSION_CONFIG_DIR="$TMPD/conf" SESSION_FILE="$TMPD/.session" \
+          SESSION_SCOPE_FILE="$TMPD/conf/scope.yaml" \
           bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_echo.txt" 127.0.0.1 2>&1)
     eq "http_inject: sale 0 con petición válida" "$?" "0"
     eq "http_inject: informa del objetivo" "$(printf '%s' "$OUT" | grep -q '127.0.0.1' && echo si || echo no)" "si"
@@ -1271,7 +1446,8 @@ if command -v python3 >/dev/null 2>&1; then
     # «sin regla aplicable», y el aviso tiene que decirlo así.
     mkdir -p "$TMPD/conf_dominios"
     printf 'scope:\n  domains:\n    - example.com\n' > "$TMPD/conf_dominios/scope.yaml"
-    OUT=$(SESSION_CONFIG_DIR="$TMPD/conf_dominios" RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno.req" 1 2>&1)
+    OUT=$(SESSION_CONFIG_DIR="$TMPD/conf_dominios" SESSION_SCOPE_FILE="$TMPD/conf_dominios/scope.yaml" \
+          RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno.req" 1 2>&1)
     eq "sonda: el aviso de alcance habla de regla, no de fichero ilegible" "$(printf '%s' "$OUT" | grep -c 'no tiene una regla aplicable')" "1"
     eq "sonda: el aviso ya no dice ilegible" "$(printf '%s' "$OUT" | grep -ci 'ilegible')" "0"
 
@@ -1379,6 +1555,15 @@ if command -v python3 >/dev/null 2>&1; then
 else
     echo "  SKIP     python3 no instalado"
 fi
+
+eq "el scope.yaml real no cambió" \
+   "$(md5sum "$FW/00_Config/scope.yaml" 2>/dev/null | cut -d' ' -f1)" "$MD5_SCOPE_REAL"
+eq "el targets.txt real no cambió" \
+   "$(md5sum "$FW/00_Config/targets.txt" 2>/dev/null | cut -d' ' -f1)" "$MD5_TARGETS_REAL"
+
+# El gestor ofrece las claves de API como opción de primer nivel
+grep -q 'K|k) keys_menu' "$FW/cyber_framework.sh" && ok "menú: opción K" || bad "menú: opción K" "no aparece"
+grep -q 'api_keys.py' "$FW/cyber_framework.sh" && ok "menú: llama al helper" || bad "menú: llama al helper" "no aparece"
 
 rm -rf "$TMPD"
 printf '\n────────────────────────────────────────\n'
