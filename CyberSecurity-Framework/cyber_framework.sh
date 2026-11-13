@@ -25,6 +25,7 @@ source "$LIB_DIR/exploitation_menu.bash"
 source "$LIB_DIR/enumeration_menu.bash"
 source "$LIB_DIR/postexploitation_menu.bash"
 source "$LIB_DIR/wireless_menu.bash"
+source "$LIB_DIR/forensics_menu.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -196,6 +197,11 @@ change_target() {
 # ─── FUNCIÓN PARA EJECUTAR SCRIPTS ─────────────────────────
 
 execute_script() {
+    # 08 has file identities, never session targets or example defaults. This
+    # also protects the original listing, not just the new guided menu.
+    case "$1" in
+        08_Forensics/*) forensics_execute_script "$@"; return $? ;;
+    esac
     local script_path="$1"   # ruta relativa al framework
     local module_dir="$2"
     local original_dir="$PWD"
@@ -322,6 +328,16 @@ run_module_scripts() {
         local -a scripts=() categories=()
         local script rel_path choice
 
+        if [[ "$module_dir" == 08_Forensics ]]; then
+            # Do not recursively discover executable-looking recovered evidence.
+            while IFS= read -r rel_path; do
+                script="$module_dir/$rel_path"
+                [[ -f "$script" && ! -L "$script" ]] || continue
+                scripts+=("$script")
+                if [[ $rel_path == run_all_forensics.sh ]]; then categories+=(run_all)
+                else categories+=(script); fi
+            done < <(forensics_original_entries)
+        else
         while IFS= read -r script; do
             [[ -f "$script" ]] || continue
             scripts+=("$script"); categories+=("run_all")
@@ -342,6 +358,7 @@ run_module_scripts() {
             [[ -f "$script" ]] || continue
             scripts+=("$script"); categories+=("powershell")
         done < <(find "$module_dir" -name "*.ps1" -type f -not -path "*/lib/*" -not -path "*/tests/*" 2>/dev/null | sort)
+        fi
 
         if [[ ${#scripts[@]} -eq 0 ]]; then
             echo -e "${YELLOW}⚠️  No se encontraron scripts ejecutables en este módulo${NC}"
@@ -391,7 +408,11 @@ run_module_scripts() {
             continue
         elif [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#scripts[@]} )); then
             local idx=$((choice - 1))
-            if [[ "${categories[$idx]}" == "run_all" ]]; then
+            if [[ "$module_dir" == 08_Forensics ]]; then
+                # Its coordinator only runs selected sources; original-list
+                # calls use the same file prompts and dangerous gate as 08.
+                execute_script "${scripts[$idx]}" "$module_dir"
+            elif [[ "${categories[$idx]}" == "run_all" ]]; then
                 echo ""
                 echo -e "${YELLOW}⚠️  Este script ejecuta TODOS los scripts del módulo${NC}"
                 if ask_confirm "¿Deseas continuar?"; then
@@ -445,7 +466,7 @@ module_wireless() {
 }
 
 module_forensics() {
-    run_module_scripts "08_Forensics" "08_Forensics"
+    forensics_menu
 }
 
 module_automation() {
