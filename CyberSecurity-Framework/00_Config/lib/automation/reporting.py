@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import stat
 import sys
+from uuid import uuid4
 
 from .model import Command, Plan, PlanError, PreflightError, RuntimeContext, Step
 from .planner import validate_plan
@@ -80,25 +81,61 @@ def check_report_destination(destination: Path) -> tuple[int, int]:
     raise PlanError('Seleccione un directorio de salida nuevo; no se sobrescriben informes')
 
 
+def _rename_noreplace(source_fd, source_name, destination_fd, destination_name):
+    """Linux atomic publication; never fall back to replacing rename()."""
+    import ctypes
+    import errno
+    libc = ctypes.CDLL(None, use_errno=True)
+    rename = getattr(libc, 'renameat2', None)
+    if rename is None:
+        raise PreflightError('Publicación segura requiere renameat2 sin reemplazo')
+    rename.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
+    rename.restype = ctypes.c_int
+    if rename(source_fd, os.fsencode(source_name), destination_fd, os.fsencode(destination_name), 1):
+        code = ctypes.get_errno()
+        if code == errno.EXDEV:
+            raise PreflightError('Publicación segura requiere destino en el mismo sistema de archivos del run')
+        raise OSError(code, os.strerror(code))
+
+
 def publish_reports(source: Path, destination: Path, parent_identity: tuple[int, int]) -> None:
-    """Publish only fixed engine artifacts, exclusively into a new private dir."""
-    from .adapters import _directory, _regular, _DIR
+    """Pin a private stage BEFORE exposing it; publish atomically, no replacement."""
+    from .adapters import _directory, _regular, _private_root, _DIR
     with _directory(destination.parent) as parent:
         info = os.fstat(parent)
         if (info.st_dev, info.st_ino) != parent_identity:
             raise PreflightError('Ancestro de salida sustituido desde preflight')
-        os.mkdir(destination.name, 0o700, dir_fd=parent)
-        fd = os.open(destination.name, _DIR, dir_fd=parent)
-        try:
-            for name in REPORT_FILES:
-                with _regular(source / name) as incoming:
-                    out = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                                  0o600, dir_fd=fd)
-                    with os.fdopen(out, 'wb') as stream:
-                        while data := incoming.read(65536):
-                            stream.write(data)
-            current, pinned = os.stat(destination.name, dir_fd=parent, follow_symlinks=False), os.fstat(fd)
-            if (current.st_dev, current.st_ino) != (pinned.st_dev, pinned.st_ino):
-                raise PreflightError('Destino de informes sustituido')
-        finally:
-            os.close(fd)
+        with _directory(source) as private:
+            _private_root(private)
+            stage = '.report-publication-' + uuid4().hex
+            os.mkdir(stage, 0o700, dir_fd=private)
+            fd = os.open(stage, _DIR, dir_fd=private)
+            published = False
+            try:
+                _private_root(fd)
+                pinned = os.fstat(fd)
+                for name in REPORT_FILES:
+                    with _regular(source / name) as incoming:
+                        out = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                      0o600, dir_fd=fd)
+                        with os.fdopen(out, 'wb') as stream:
+                            while data := incoming.read(65536):
+                                stream.write(data)
+                _rename_noreplace(private, stage, parent, destination.name)
+                published = True
+                current = os.stat(destination.name, dir_fd=parent, follow_symlinks=False)
+                if (current.st_dev, current.st_ino) != (pinned.st_dev, pinned.st_ino):
+                    raise PreflightError('Destino de informes sustituido')
+            finally:
+                try:
+                    if not published:
+                        # Only our fixed artifacts in the pinned private stage;
+                        # never clean up or open a competing external directory.
+                        for name in REPORT_FILES:
+                            try:
+                                os.unlink(name, dir_fd=fd)
+                            except FileNotFoundError:
+                                pass
+                        os.rmdir(stage, dir_fd=private)
+                finally:
+                    os.close(fd)
