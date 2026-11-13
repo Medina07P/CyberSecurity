@@ -10,6 +10,10 @@ import tempfile
 
 
 SOURCES = (
+    'cyber_framework.sh',
+    '00_Config/lib/evidence_menu.bash',
+    '00_Config/lib/phase_status.bash',
+    'tests/test_evidence_menu.py',
     '10_Evidence/evidence_manager.sh',
     '10_Evidence/auto_capture.sh',
     '10_Evidence/run_all_evidence.sh',
@@ -68,7 +72,8 @@ def copy_sources(root):
 def closed_env(root, stubs=None):
     bindir = root / 'bin'
     bindir.mkdir(exist_ok=True, mode=0o700)
-    for name, executable in [('python3', sys.executable), ('bash', '/bin/bash')]:
+    for name, executable in [('python3', sys.executable), ('bash', '/bin/bash'),
+                             ('dirname', '/usr/bin/dirname')]:
         path = bindir / name
         if not path.exists():
             path.symlink_to(executable)

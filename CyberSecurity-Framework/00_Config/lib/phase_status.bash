@@ -16,6 +16,51 @@ _has_files() {
     [[ -n "$(find "$1" -type f ! -name '.gitkeep' 2>/dev/null | head -1)" ]]
 }
 
+# Presence only. No JSON/schema validation, hashing or payload reads.
+_evidence_record_tree() {
+    local dir=$1 item name line file
+    [[ -d $dir && ! -L $dir ]] || return 1
+    name=${dir##*/}
+    if [[ $name =~ ^[0-9a-f]{32}$ && -f $dir/evidence.json && ! -L $dir/evidence.json &&
+          -f $dir/artifact && ! -L $dir/artifact ]]; then return 0; fi
+    for item in "$dir"/* "$dir"/.[!.]* "$dir"/..?*; do
+        [[ ! -L $item ]] || continue
+        if [[ -d $item ]]; then
+            _evidence_record_tree "$item" && return 0
+        elif [[ -f $item && $item = *.meta && ! -e $item.meta && ! -L $item.meta ]]; then
+            # Only sidecar metadata; FILE must be the exact paired basename.
+            file=
+            while IFS= read -r line || [[ -n $line ]]; do
+                case $line in FILE=*) file=${line#FILE=}; break ;; esac
+            done < "$item"
+            [[ -n $file && $file != . && $file != .. && $file != .gitkeep &&
+               $file != */* && $file != *\\* &&
+               $file != *[$'\001'-$'\037'$'\177']* ]] || continue
+            [[ $item = "$dir/$file.meta" && -f $dir/$file && ! -L $dir/$file ]] && return 0
+        fi
+    done
+    return 1
+}
+
+_evidence_has_records() {
+    local root=$1 category parent
+    [[ $root = /* ]] || root=$PWD/$root
+    # Reject symlink ancestors, not just the leaf/pair.
+    parent=$root
+    while [[ $parent != / && -n $parent ]]; do
+        [[ -d $parent && ! -L $parent ]] || return 1
+        parent=${parent%/*}
+    done
+    for category in screenshots pcaps credentials findings proofs; do
+        _evidence_record_tree "$root/$category" && return 0
+    done
+    [[ -d $root/logs && ! -L $root/logs ]] || return 1
+    for category in results audit; do
+        _evidence_record_tree "$root/logs/$category" && return 0
+    done
+    return 1
+}
+
 # phase_state <fase> → done | pending | na
 phase_state() {
     case "$1" in
@@ -52,8 +97,7 @@ phase_state() {
             fi
             ;;
         10_Evidence)
-            if _has_files "$PHASE_FW_DIR/10_Evidence/proofs" ||
-               _has_files "$PHASE_FW_DIR/10_Evidence/screenshots"; then
+            if _evidence_has_records "$PHASE_FW_DIR/10_Evidence"; then
                 printf 'done\n'
             else
                 printf 'pending\n'

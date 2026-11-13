@@ -94,9 +94,9 @@ module_intro() {
         10_Evidence)
             printf '%s\n' \
                 'Para qué sirve: Gestionar y capturar evidencia del trabajo autorizado.' \
-                'Entrada: Tipo y archivo para añadir evidencia; objetivo para captura automática.' \
+                'Entrada: Tipo y archivo local; capturas explícitas por URL/host/interfaz/perfil, no objetivo de sesión.' \
                 'Incluye: Copias, metadatos, hashes, listado, empaquetado y capturas web/de red.' \
-                'Precauciones: Algunas acciones también escanean o capturan tráfico; requieren autorización y permisos. Protege los datos; hashes no equivalen a custodia legal.'
+                'Precauciones: Acciones explícitas escanean o capturan tráfico con autorización y permisos. Asterisco 10: presencia, no integridad; hashes no equivalen a custodia legal. Paquetes sin cifrar.'
             ;;
         # 11_Reports/report_generator.sh; 09_Automation/python/report_generator.py;
         # docs/MANUAL-GESTOR.md (informes desde scans existentes).
