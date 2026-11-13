@@ -811,6 +811,106 @@ forensics_finish
 
 
 class CaptureApiTests(unittest.TestCase):
+    def workflow_cancel_at_inert_worker(self, signum):
+        """Break caught: workflow wait before retiring its unauthorized gate.
+
+        Only the copied helper's pidfd-open boundary is instrumented. The real
+        gate, fork/Popen, pidfd, anchored group and wait all run on own harmless
+        children; the alarm is a test watchdog, never an operational deadline.
+        """
+        import shutil
+        with sandbox() as root:
+            helper = root / 'forensics_evidence.py'
+            shutil.copyfile(RUNTIME.with_name('forensics_evidence.py'), helper)
+            env = runtime_environment(root)
+            env['CANCEL_SIGNAL'] = str(signum)
+            driver = r'''
+import json, os, select, signal, subprocess, sys, types
+from pathlib import Path
+root=Path(os.environ['ROOT'])
+e=types.ModuleType('copied_evidence'); e.__file__=str(root/'forensics_evidence.py')
+exec(compile(Path(e.__file__).read_bytes(),e.__file__,'exec'),e.__dict__)
+log=root/'outputs/workflow.log'; log.touch(mode=0o600)
+leaf=root/'sources/innocuous-leaf.sh'
+leaf.write_text('printf forbidden > "$ROOT/leaf-started"\n')
+read_fd,write_fd=os.pipe()
+os.write(write_fd,b'GO\n'); os.dup2(read_fd,0); os.close(read_fd)
+real_open=os.pidfd_open; held_fd=None; workers=[]
+def inject(pid,*args):
+    global held_fd
+    fd=real_open(pid,*args)
+    held_fd=os.dup(fd)
+    os.write(write_fd,('CANCEL '+os.environ['CANCEL_SIGNAL']+'\n').encode())
+    return fd
+e.os.pidfd_open=inject
+real_popen=subprocess.Popen
+def created(*args,**kwargs):
+    worker=real_popen(*args,**kwargs); workers.append(worker); return worker
+e.subprocess.Popen=created
+real_group=e._OwnedProcessGroup
+class Group(real_group):
+    def close(self):
+        owned=self.pid is not None
+        super().close()
+        # RELEASE is queued only after group cleanup, beyond control()'s drain.
+        if owned: os.write(write_fd,b'RELEASE\n')
+e._OwnedProcessGroup=Group
+def watchdog(*args): raise TimeoutError('test watchdog: wait on inert pre-exec gate')
+signal.signal(signal.SIGALRM,watchdog)
+input_fd=os.open(root/'sources/innocuous-leaf.sh',os.O_RDONLY)
+signal.alarm(2)
+try:
+    result=e._supervise_owned([log,log],'bash',[str(leaf)],workflow_input=input_fd)
+    outcome=dict(timeout=False,result=result,actual_wait=workers[0].returncode)
+except TimeoutError as exc:
+    outcome=dict(timeout=True,error=str(exc))
+finally:
+    signal.alarm(0); os.close(input_fd); os.close(write_fd)
+outcome['worker_exited']=bool(select.select([held_fd],[],[],0)[0])
+os.close(held_fd)
+try:
+    os.waitpid(-1,os.WNOHANG)
+    outcome['all_children_reaped']=False
+except ChildProcessError:
+    outcome['all_children_reaped']=True
+outcome['leaf_started']=(root/'leaf-started').exists()
+print('OUTCOME '+json.dumps(outcome,sort_keys=True),flush=True)
+'''
+            sentinel = subprocess.Popen([sys.executable, '-B', '-c',
+                                         'import signal; signal.pause()'], env=env,
+                                        start_new_session=True)
+            sentinel_fd = os.pidfd_open(sentinel.pid)
+            try:
+                probe = subprocess.run([sys.executable, '-B', '-c', driver], env=env,
+                                       capture_output=True, text=True, timeout=8)
+                self.assertEqual((probe.returncode, probe.stderr), (0, ''), probe.stdout)
+                self.assertIsNone(sentinel.poll(), 'unrelated sentinel was signaled')
+                lines = probe.stdout.splitlines()
+                self.assertEqual(lines[0], 'READY')
+                outcome = json.loads(next(line[8:] for line in lines if line.startswith('OUTCOME ')))
+                self.assertFalse(outcome['leaf_started'], 'unauthorized leaf executed')
+                self.assertTrue(outcome['worker_exited'])
+                self.assertTrue(outcome['all_children_reaped'])
+                self.assertFalse(outcome['timeout'], probe.stdout)
+                result = outcome['result']
+                self.assertFalse(result['started'])
+                self.assertTrue(result['worker_created'])
+                self.assertEqual(result['cancellation_wrapper_signal'], signum)
+                actual = outcome['actual_wait']  # observed wait, not wrapper signal inferred from rc
+                self.assertEqual(result['rc'], 128-actual if actual < 0 else actual)
+                self.assertEqual(result['terminating_signal'], -actual if actual < 0 else None)
+                self.assertTrue(any(line.startswith('RESULT ') for line in lines))
+            finally:
+                signal.pidfd_send_signal(sentinel_fd, signal.SIGKILL)
+                sentinel.wait(timeout=5)
+                os.close(sentinel_fd)
+
+    def test_workflow_cancel_2_after_pidfd_before_exec_gate_reaps_without_launch(self):
+        self.workflow_cancel_at_inert_worker(2)
+
+    def test_workflow_cancel_15_after_pidfd_before_exec_gate_reaps_without_launch(self):
+        self.workflow_cancel_at_inert_worker(15)
+
     def start(self, api, root):
         with contextlib.redirect_stderr(io.StringIO()):
             return api.start_run(root / 'outputs', 'strings', 'offline', [])
