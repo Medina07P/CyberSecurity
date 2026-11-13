@@ -19,6 +19,8 @@ import stat
 import struct
 import subprocess
 import sys
+import tempfile
+import time
 import uuid
 
 
@@ -897,12 +899,54 @@ def _supervise_capture(run_dir, name, tool, arguments):
     _identifier(tool)
     _require(sys.version_info >= (3, 11) and hasattr(os, 'pidfd_open'))
     streams = [_private(p) for p in _capture_paths(run, name)]
+    return _supervise_owned(streams, tool, arguments)
+
+
+def _supervise_preflight(kind, tool, arguments):
+    """Dedicated pre-run CLI only. No manifests, arbitrary commands or deadlines
+    on acquisition/analysis. Subreaper is confined to this supervisor process.
+    """
+    _require((kind == 'compatibility' and tool in ('avml', 'lime') and arguments == ['--help']) or
+             (kind == 'privilege' and tool == 'sudo' and arguments == ['-n', 'true']))
+    import ctypes
+    libc = ctypes.CDLL(None, use_errno=True)
+    previous = ctypes.c_int()
+    _require(libc.prctl(37, ctypes.byref(previous), 0, 0, 0) == 0)
+    _require(libc.prctl(36, 1, 0, 0, 0) == 0)
+    try:
+        with tempfile.TemporaryDirectory(prefix='forensics-preflight-', dir=Path.home()) as directory:
+            streams = [Path(directory) / name for name in ('stdout', 'stderr')]
+            for stream in streams:
+                fd = os.open(stream, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                os.close(fd)
+            return _supervise_owned(streams, tool, arguments, preflight_kind=kind)
+    finally:
+        # This CLI owns no unrelated children. The common engine has stopped
+        # the anchored group, waited its worker and released the anchor first.
+        # Reap adopted grandchildren too; never signal after anchor release.
+        while True:
+            try:
+                os.waitpid(-1, 0)
+            except InterruptedError:
+                continue
+            except ChildProcessError:
+                break
+        libc.prctl(36, previous.value, 0, 0, 0)
+
+
+def _supervise_owned(streams, tool, arguments, *, preflight_kind=None):
+    """One engine for capture and whitelisted preflight; same gate/ownership.
+    Only compatibility preflight has a fixed ten-second monotonic deadline.
+    """
+    _require(sys.version_info >= (3, 11) and hasattr(os, 'pidfd_open'))
     group = backend = None
     pid_fd = None
     gate_write = None
     tool_authorized = False
     cancelled = 0
     authorized = False
+    deadline = None
+    timed_out = False
     buffered = b''
     wake_read, wake_write = os.pipe2(os.O_NONBLOCK | os.O_CLOEXEC)
     previous_wakeup = process_signal.set_wakeup_fd(wake_write)
@@ -916,7 +960,7 @@ def _supervise_capture(run_dir, name, tool, arguments):
         previous_handlers[sig] = process_signal.signal(sig, cancellation)
 
     def control():
-        nonlocal buffered, authorized, cancelled
+        nonlocal buffered, authorized, cancelled, deadline
         chunk = os.read(0, 256)
         _require(bool(chunk))
         buffered += chunk
@@ -926,6 +970,8 @@ def _supervise_capture(run_dir, name, tool, arguments):
             if line == b'GO':
                 _require(not authorized)
                 authorized = True
+                if preflight_kind == 'compatibility':
+                    deadline = time.monotonic() + 10
             else:
                 _require(line in (b'CANCEL 2', b'CANCEL 15'))
                 cancelled = cancelled or int(line.split()[1])
@@ -936,12 +982,16 @@ def _supervise_capture(run_dir, name, tool, arguments):
             selector.register(wake_read, selectors.EVENT_READ, 'signal')
             print('READY', flush=True)
             while True:
-                for key, _ in selector.select():
+                remaining = max(0, deadline - time.monotonic()) if deadline is not None else None
+                for key, _ in selector.select(remaining):
                     if key.data == 'control':
                         control()
                     elif key.data == 'signal':
                         os.read(wake_read, 4096)
                 if cancelled:
+                    break
+                if deadline is not None and time.monotonic() >= deadline:
+                    timed_out = True
                     break
                 if authorized and backend is None:
                     group = _OwnedProcessGroup()
@@ -975,6 +1025,9 @@ def _supervise_capture(run_dir, name, tool, arguments):
                             os.read(wake_read, 4096)
                     if cancelled:
                         break
+                    if deadline is not None and time.monotonic() >= deadline:
+                        timed_out = True
+                        break
                     os.write(gate_write, b'G')
                     tool_authorized = True
                     os.close(gate_write)
@@ -984,7 +1037,7 @@ def _supervise_capture(run_dir, name, tool, arguments):
                     os.close(pid_fd)
                     pid_fd = None
                     break
-            if cancelled and group is not None:
+            if (cancelled or timed_out) and group is not None:
                 group.stop()  # anchor is still live or an unreaped zombie
             actual_rc = backend.wait() if backend is not None else 0
             terminating_signal = -actual_rc if actual_rc < 0 else None
@@ -994,6 +1047,17 @@ def _supervise_capture(run_dir, name, tool, arguments):
                           started=tool_authorized, worker_created=backend is not None)
             if group is not None:
                 group.close()
+            if preflight_kind is not None:
+                # Never emit backend bodies on the console. RESULT travels only
+                # over the owner's private control pipe, before temp cleanup.
+                bodies = []
+                limited = False
+                for stream in streams:
+                    with stream.open('rb') as source:
+                        body = source.read(1048577)
+                    limited = limited or len(body) > 1048576
+                    bodies.append(body[:1048576].decode('utf-8', errors='replace'))
+                result.update(timed_out=timed_out, output=''.join(bodies), output_limited=limited)
             print('RESULT ' + json.dumps(result, sort_keys=True), flush=True)
             # A late cancellation can no longer signal a group: ownership has
             # ended. Keep the pipe alive until the owner releases the channel.
@@ -1134,6 +1198,10 @@ def main(argv=None):
     supervise.add_argument('--name', required=True)
     supervise.add_argument('--tool', required=True)
     supervise.add_argument('arguments', nargs=argparse.REMAINDER)
+    preflight = subs.add_parser('supervise-preflight')
+    preflight.add_argument('--kind', required=True, choices=('compatibility', 'privilege'))
+    preflight.add_argument('--tool', required=True)
+    preflight.add_argument('arguments', nargs=argparse.REMAINDER)
     listing = subs.add_parser('list')
     listing.add_argument('--root', required=True, type=Path)
     for flag in ('run-id', 'operation', 'identity'):
@@ -1175,6 +1243,10 @@ def main(argv=None):
         elif command == 'supervise':
             arguments = args.arguments[1:] if args.arguments[:1] == ['--'] else args.arguments
             _supervise_capture(args.run, args.name, args.tool, arguments)
+            return 0
+        elif command == 'supervise-preflight':
+            arguments = args.arguments[1:] if args.arguments[:1] == ['--'] else args.arguments
+            _supervise_preflight(args.kind, args.tool, arguments)
             return 0
         elif command == 'validate':
             result = read_run(args.run)

@@ -25,8 +25,11 @@ IFS= read -r answer && [[ $answer = ADQUIRIR_MEMORIA ]] || exit 2
 # password interactivo, instalación, carga de módulo ni escalada alternativa.
 privileged=()
 if ! (( EUID == 0 )); then
-    command -v sudo >/dev/null 2>&1 && sudo -n true || {
-        printf 'NO_EVALUABLE: faltan privilegios preparados.\n' >&2; exit 2;
+    forensics_preflight privilege sudo -n true
+    probe_status=$?
+    (( ${FORENSICS_PREFLIGHT_CANCELLED:-0} == 0 )) || exit 1
+    (( probe_status == 0 )) || {
+        printf 'NO_EVALUABLE: faltan privilegios preparados.\n' >&2; exit "$probe_status";
     }
     privileged=(sudo -n)
 fi
@@ -36,7 +39,14 @@ fi
 recognize_memory_backend() {
     local help
     command -v "$1" >/dev/null 2>&1 || return 2
-    help=$("$1" --help 2>&1) || return 2
+    forensics_preflight compatibility "$1" --help
+    probe_status=$?
+    # Cancellation/timeout/control failure are terminal, never auto-fallback.
+    (( ${FORENSICS_PREFLIGHT_CANCELLED:-0} == 0 )) || exit 1
+    (( ${FORENSICS_PREFLIGHT_TIMED_OUT:-0} == 0 )) || exit 2
+    (( probe_status != 1 )) || exit 1
+    (( probe_status == 0 )) || return 2
+    help=$FORENSICS_PREFLIGHT_OUTPUT
     case "$1" in
         avml) [[ ${help,,} = *avml* && ${help,,} = *usage:* &&
                   ( $help = *'<FILENAME>'* || $help = *'<OUTPUT>'* ) ]] ;;

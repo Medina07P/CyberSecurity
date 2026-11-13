@@ -6,6 +6,10 @@ import shutil
 import subprocess
 import sys
 import unittest
+import ctypes
+import signal
+import socket
+import time
 from forensics_fixture import sandbox, runtime_environment
 
 FRAMEWORK=Path(__file__).resolve().parents[1]
@@ -13,6 +17,19 @@ BACKEND=r'''#!PYTHON
 import json, os, pathlib, sys
 p=pathlib.Path; root=p(os.environ['ROOT']); name=p(sys.argv[0]).name; a=sys.argv[1:]
 with (root/'calls').open('a') as f: f.write(json.dumps([name,a])+'\n')
+if os.environ.get('BLOCK_PREFLIGHT')==name:
+ import signal, socket
+ child=os.fork()
+ if child==0:
+  signal.signal(signal.SIGTERM,signal.SIG_IGN)
+  signal.signal(signal.SIGINT,signal.SIG_IGN)
+  while True: signal.pause()
+ signal.signal(signal.SIGTERM,signal.SIG_IGN)
+ signal.signal(signal.SIGINT,signal.SIG_IGN)
+ with socket.socket(socket.AF_UNIX) as ready:
+  ready.connect(str(root/'ready.sock'))
+  ready.sendall(json.dumps([os.getpid(),child]).encode())
+ while True: signal.pause()
 if name=='sudo':
  if os.environ.get('NO_PRIVILEGE'): sys.exit(1)
  if a and a[0]=='-n': a=a[1:]
@@ -77,6 +94,61 @@ class AcquisitionTests(unittest.TestCase):
   for answer in ('','no\n'):
    r=self.ram(input=answer); self.assertEqual(r.returncode,2,r.stderr)
    self.assertEqual(self.calls(),[]); self.assertEqual(list((self.root/'outputs').iterdir()),[])
+ def blocked_preflight_cancel(self,backend,signum):
+  """Signals go only to the leaf; cleanup uses pinned pidfds of fixture children."""
+  libc=ctypes.CDLL(None,use_errno=True)
+  previous=ctypes.c_int()
+  self.assertEqual(libc.prctl(37,ctypes.byref(previous),0,0,0),0) # GET_CHILD_SUBREAPER
+  self.assertEqual(libc.prctl(36,1,0,0,0),0)
+  handles=[]; pids=[]; leaf=None
+  sentinel=subprocess.Popen([sys.executable,'-B','-c','import signal; signal.pause()'],env=self.env)
+  sentinel_fd=os.pidfd_open(sentinel.pid)
+  try:
+   with socket.socket(socket.AF_UNIX) as ready:
+    ready.bind(str(self.root/'ready.sock')); ready.listen(1); ready.settimeout(8)
+    with (self.root/'wrapper.stdout').open('w') as out,(self.root/'wrapper.stderr').open('w') as err:
+     leaf=subprocess.Popen(['/bin/bash',str(self.fw/'08_Forensics/memory/memory_dump.sh')],
+       env={**self.env,'BLOCK_PREFLIGHT':backend,'FIXTURE_ROOT':'1' if backend=='avml' else '0'},
+       stdin=subprocess.PIPE,stdout=out,stderr=err,text=True)
+     leaf.stdin.write('ADQUIRIR_MEMORIA\n'); leaf.stdin.close()
+     connection,_=ready.accept()
+     with connection: pids=json.loads(connection.recv(4096))
+     handles=[os.pidfd_open(pid) for pid in pids]
+     started=time.monotonic()
+     if signum is not None: leaf.send_signal(signum)
+     try: leaf.wait(timeout=2 if signum is not None else 12); completed=True
+     except subprocess.TimeoutExpired: completed=False
+     self.assertIsNone(sentinel.poll(),'unrelated sentinel was signaled')
+     self.assertTrue(completed,'leaf remained blocked after cancellation or compatibility deadline')
+     self.assertFalse(any(Path('/proc',str(pid)).exists() for pid in pids),
+                      'preflight child/descendant survived or was not reaped')
+     self.assertEqual(leaf.returncode,1 if signum is not None else 2)
+     if signum is None: self.assertGreaterEqual(time.monotonic()-started,9.5)
+     self.assertEqual(self.runs(),[])
+     self.assertFalse(any(n in ('dd','uname','cat') or n=='avml' and a!=['--help'] for n,a in self.calls()))
+  finally:
+   for fd in handles:
+    try: signal.pidfd_send_signal(fd,signal.SIGKILL)
+    except ProcessLookupError: pass
+    os.close(fd)
+   if leaf is not None:
+    if leaf.poll() is None: leaf.kill()
+    leaf.wait(timeout=5)
+   for pid in pids:
+    try: os.waitpid(pid,0)
+    except ChildProcessError: pass
+   signal.pidfd_send_signal(sentinel_fd,signal.SIGKILL); sentinel.wait(timeout=5); os.close(sentinel_fd)
+   self.assertEqual(libc.prctl(36,previous.value,0,0,0),0)
+ def test_preflight_help_cancel_sigterm_reaps_child_and_descendant(self):
+  self.blocked_preflight_cancel('avml',signal.SIGTERM)
+ def test_preflight_help_cancel_sigint_reaps_child_and_descendant(self):
+  self.blocked_preflight_cancel('avml',signal.SIGINT)
+ def test_preflight_sudo_cancel_sigterm_reaps_child_and_descendant(self):
+  self.blocked_preflight_cancel('sudo',signal.SIGTERM)
+ def test_preflight_sudo_cancel_sigint_reaps_child_and_descendant(self):
+  self.blocked_preflight_cancel('sudo',signal.SIGINT)
+ def test_preflight_help_deadline_ten_seconds_without_acquisition(self):
+  self.blocked_preflight_cancel('avml',None)
  def test_auto_never_falls_back_to_dd_or_unrecognized_lime(self):
   (self.root/'bin/avml').unlink()
   r=self.ram(input='ADQUIRIR_MEMORIA\n',UNKNOWN_LIME='1')

@@ -17,6 +17,126 @@ from forensics_fixture import sandbox, runtime_environment, load_evidence, inven
 RUNTIME = Path(__file__).resolve().parents[1] / '00_Config/lib/forensics_runtime.bash'
 
 
+class PreflightTests(unittest.TestCase):
+    def environment(self, root):
+        import shutil
+        env=runtime_environment(root)
+        library=root/'code/00_Config/lib'; library.mkdir(parents=True)
+        for source in RUNTIME.parent.glob('forensics_*'):
+            if source.is_file(): shutil.copyfile(source,library/source.name)
+        env['RUNTIME']=str(library/'forensics_runtime.bash')
+        avml=root/'bin/avml'; avml.write_text('#!/bin/bash\nprintf PRIVATE-HELP; printf PRIVATE-ERROR >&2; exit "${PROBE_RC:-0}"\n'); avml.chmod(0o700)
+        return env
+
+    def shell(self,root,body,env):
+        return subprocess.run(['/bin/bash','-c','source "$RUNTIME" || exit 90\n'+body],
+                              env=env,text=True,capture_output=True,timeout=20)
+
+    def test_preflight_private_output_real_rc_no_run_and_no_generic_execution(self):
+        with sandbox() as root:
+            env=self.environment(root); env['PROBE_RC']='7'
+            result=self.shell(root, r'''
+forensics_preflight compatibility avml --help
+status=$?
+[[ $status = 2 && $FORENSICS_PREFLIGHT_RC = 7 && $FORENSICS_PREFLIGHT_CANCELLED = 0 && $FORENSICS_PREFLIGHT_TIMED_OUT = 0 ]] || exit 81
+[[ $FORENSICS_PREFLIGHT_OUTPUT = *PRIVATE-HELP*PRIVATE-ERROR* ]] || exit 82
+forensics_preflight compatibility bash -c 'printf forbidden > "$ROOT/forbidden"'
+[[ $? = 2 ]] || exit 83
+''',env)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(result.stdout,'')
+            self.assertNotIn('PRIVATE',result.stderr)
+            self.assertFalse((root/'forbidden').exists())
+            self.assertEqual(list((root/'outputs').iterdir()),[])
+            self.assertEqual(list((root/'home').iterdir()),[])
+
+    def test_preflight_cancel_before_go_never_executes_and_remains_sticky(self):
+        with sandbox() as root:
+            env=self.environment(root)
+            avml=root/'bin/avml'; avml.write_text('#!/bin/bash\nprintf forbidden > "$ROOT/forbidden"\n'); avml.chmod(0o700)
+            result=self.shell(root,r'''
+injected=0
+inject() {
+ [[ $BASHPID = $$ && $injected = 0 && $BASH_COMMAND = _forensics_start_preflight* ]] || return 0
+ injected=1; kill -TERM "$$"
+}
+set -T; trap inject DEBUG
+forensics_preflight compatibility avml --help
+status=$?
+trap - DEBUG
+[[ $status = 1 && $FORENSICS_PREFLIGHT_CANCELLED = 15 ]] || exit 81
+forensics_preflight compatibility avml --help
+[[ $? = 1 ]] || exit 82
+''',env)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertFalse((root/'forbidden').exists())
+            self.assertEqual(list((root/'home').iterdir()),[])
+
+    def test_preflight_pidfd_failure_never_executes_or_falls_back(self):
+        with sandbox() as root:
+            env=self.environment(root)
+            helper=Path(env['RUNTIME']).with_name('forensics_evidence.py')
+            helper.write_text(helper.read_text().replace("if __name__ == '__main__':", "def _fixture_pidfd(pid, *args):\n    raise PermissionError('synthetic pidfd denial')\nos.pidfd_open = _fixture_pidfd\nif __name__ == '__main__':"))
+            avml=root/'bin/avml'; avml.write_text('#!/bin/bash\nprintf forbidden > "$ROOT/forbidden"\n'); avml.chmod(0o700)
+            result=self.shell(root, 'forensics_preflight compatibility avml --help',env)
+            self.assertEqual(result.returncode,1,result.stderr)
+            self.assertFalse((root/'forbidden').exists())
+            self.assertEqual(list((root/'home').iterdir()),[])
+
+    def test_preflight_no_deadline_on_privilege_or_capture(self):
+        with sandbox() as root:
+            env=self.environment(root)
+            sudo=root/'bin/sudo'; sudo.write_text('#!'+sys.executable+'\nimport time\ntime.sleep(10.25)\n'); sudo.chmod(0o700)
+            result=self.shell(root,r'''
+forensics_preflight privilege sudo -n true || exit 81
+[[ $FORENSICS_PREFLIGHT_RC = 0 && $FORENSICS_PREFLIGHT_TIMED_OUT = 0 ]] || exit 82
+''',env)
+            self.assertEqual(result.returncode,0,result.stderr)
+            result=self.shell(root,r'''
+forensics_begin memory local "$ROOT/outputs" || exit
+forensics_capture long_capture python3 -B -c 'import time; time.sleep(10.25)' || exit
+forensics_complete_step long_capture COMPLETADO checked || exit
+forensics_finish
+''',env)
+            self.assertEqual(result.returncode,0,result.stderr)
+
+    def test_preflight_deadline_keeps_real_wait_rc_separate_from_timeout(self):
+        with sandbox() as root:
+            env=self.environment(root)
+            avml=root/'bin/avml'; avml.write_text('#!'+sys.executable+'\nimport time\ntime.sleep(30)\n'); avml.chmod(0o700)
+            result=self.shell(root,r'''
+forensics_preflight compatibility avml --help
+[[ $? = 2 && $FORENSICS_PREFLIGHT_RC = 137 && $FORENSICS_PREFLIGHT_TIMED_OUT = 1 && $FORENSICS_PREFLIGHT_CANCELLED = 0 ]] || exit 81
+''',env)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(result.stdout,'')
+            self.assertEqual(list((root/'home').iterdir()),[])
+
+    def test_preflight_cancel_at_registration_and_go_boundaries(self):
+        for boundary in ('register','go'):
+            with self.subTest(boundary=boundary), sandbox() as root:
+                env=self.environment(root); env['BOUNDARY']=boundary
+                avml=root/'bin/avml'; avml.write_text('#!/bin/bash\nprintf forbidden > "$ROOT/forbidden"\n'); avml.chmod(0o700)
+                result=self.shell(root,r'''
+injected=0
+inject() {
+ [[ $BASHPID = $$ && $injected = 0 ]] || return 0
+ if { [[ $BOUNDARY = register && $BASH_COMMAND = '_FORENSICS_ACTIVE_PID=$!' ]]; } ||
+    { [[ $BOUNDARY = go && $BASH_COMMAND = '_forensics_send GO'* ]]; }; then
+    injected=1; kill -TERM "$$"; kill -TERM "$$"
+ fi
+}
+set -T; trap inject DEBUG
+forensics_preflight compatibility avml --help
+status=$?
+trap - DEBUG
+[[ $injected = 1 && $status = 1 && $FORENSICS_PREFLIGHT_CANCELLED = 15 ]] || exit 81
+''',env)
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertFalse((root/'forbidden').exists())
+                self.assertEqual(list((root/'home').iterdir()),[])
+
+
 class RuntimeTests(unittest.TestCase):
     def environment(self, root):
         env = runtime_environment(root)
