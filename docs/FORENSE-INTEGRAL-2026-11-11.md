@@ -2,8 +2,14 @@
 
 Diseño aprobado el 2026-11-11; continuación el 2026-11-12. Tasks1–8 tienen gates
 aprobados hasta `38196e0`; `0913b0e` integra diseño/plan. La revisión GLOBAL
-encontró cuatro Important I1–I4 y bloqueó el cierre. Esta única ola de fixes está
-en verificación; la re-review global corresponde al controlador, NO está aprobada.
+encontró cuatro Important I1–I4, resueltos en `25912ef`. La re-review confirmó
+esos fixes y detectó N1 pre-GO; el usuario autorizó su corrección adicional.
+N1 quedó resuelto en `278ec1b` y aprobado por revisión independiente. Cierre de
+implementación/revisión confirmado el 2026-11-13: controlador296tests/rc0 y
+Bash/AST sin incidencias sobre `278ec1b`; implementador296unittest/296runner
+rc0/GUARD OK. Ocho regresiones rc0 sobre `25912ef`, sin repetirlas por el último
+diff acotado al helper y sus pruebas. No hay bloqueantes abiertos. Los dos
+menores siguen diferidos y no se declara validación operacional ni rama verde.
 La nota de pausa de `RETOMAR-FORENSE-2026-11-12.md` es histórica, no un mandato
 de repetir Tasks1–3. No se ejecutó operación forense real ni se usaron datos reales.
 
@@ -27,6 +33,7 @@ de repetir Tasks1–3. No se ejecutó operación forense real ni se usaron datos
 | I2 Scalpel leía rutas desde bytes de imagen | Imagen posicional para Scalpel; Foremost conserva -i. Stub estricto modela -i como lista y demuestra que no se lee un segundo archivo no elegido |
 | I3 señal solo al PID coordinador no llegaba a hoja | Supervisor común/gate/pidfd entrega INT/TERM a hoja concreta y espera cleanup sin deadline; sticky bloquea hojas y prompts posteriores, rc1/130/143 no implica señal |
 | I4 staging fallido sin identidad revivía ACTUAL anterior | Selector y visor comparten reconciliación conservadora: intento offline no atribuible bloquea vigencia incluso filtrando digest, sin unir identidades ni inventar copia usable |
+| N1 cancelar worker inerte antes de GO bloqueaba wait | Retirar/cerrar gate antes de esperar y cosechar grupo propio no autorizado; post-GO conserva cancelación por pidfd y cleanup cooperativo sin deadline |
 
 Los diez puntos originales y métodos permanecen en
 [`README08`](../CyberSecurity-Framework/08_Forensics/README.md). CLI completa,
