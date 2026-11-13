@@ -4,6 +4,20 @@
 No es aprobación futura, rama completa verde, compatibilidad operacional,
 autenticidad ni custodia legal. No se ha hecho push ni tocado el checkout original.
 
+## Ola de fixes tras revisión global
+
+La revisión global de `093b6b4` pidió cambios I1/I2; **re-review aún pendiente**.
+I1 (`5a02c8c`) acredita ownership antes de entregar señales en copia, metadata,
+reserva y publicación; conserva 130/143 aun si cleanup encuentra material ajeno.
+No bloquea la copia larga ni borra reemplazos sin identidad propia.
+I2 (`ebc19fb`) alinea fase con `FILE:` legacy, incluidos espacios y pares en raíz
+o subdirectorios de las seis categorías; excluye específicamente `logs/runs`.
+Fixtures compartidos con inventario; sondeo sin lectura de cuerpos ni hashes.
+Evidencia RED/GREEN, regresiones sintéticas y self-review en
+`.superpowers/sdd/2026-11-13-evidence-integral/final-fix-report.md`;
+logs conservados en `/tmp/opencode/evidence-final-fix-logs/`.
+No se modifica el ledger ni se aprueba integración mediante esta nota.
+
 ## Alcance
 
 Conservadas `evidence_manager.sh`, `auto_capture.sh`, `run_all_evidence.sh`;
