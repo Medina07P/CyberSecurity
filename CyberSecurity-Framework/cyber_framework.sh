@@ -26,6 +26,7 @@ source "$LIB_DIR/enumeration_menu.bash"
 source "$LIB_DIR/postexploitation_menu.bash"
 source "$LIB_DIR/wireless_menu.bash"
 source "$LIB_DIR/forensics_menu.bash"
+source "$LIB_DIR/automation_menu.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -470,7 +471,7 @@ module_forensics() {
 }
 
 module_automation() {
-    run_module_scripts "09_Automation" "09_Automation"
+    automation_menu
 }
 
 module_evidence() {
