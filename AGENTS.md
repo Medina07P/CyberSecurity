@@ -1,5 +1,9 @@
 # AGENTS.md
 
+**Próxima sesión, 2026-11-13:** usuario pide continuar con `09_Automation`;
+leer `docs/RETOMAR-09-2026-11-13.md`. No iniciar09 ahora ni asumir diseño
+aprobado. 08 cerrado según bloque siguiente; preservar ledger/logs y pendientes.
+
 **Cierre integral08, 2026-11-13:** Tasks1–8 y correcciones globales aprobadas.
 I1–I4 resueltos en `25912ef`; N1 pre-GO resuelto en `278ec1b`, con revisión
 independiente aprobada y verificación del controlador:296tests/rc0, Bash/AST
