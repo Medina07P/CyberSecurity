@@ -45,3 +45,9 @@
 06_PostExploitation/lateral_movement/ssh_jump.sh
 06_PostExploitation/persistence/cron_persistence.sh
 06_PostExploitation/persistence/ssh_backdoor.sh
+08_Forensics/memory/memory_dump.sh
+08_Forensics/requirements.sh
+08_Forensics/disk/disk_forensics.sh
+08_Forensics/disk/file_carving.sh
+08_Forensics/timeline/timeline_creator.sh
+08_Forensics/run_all_forensics.sh
