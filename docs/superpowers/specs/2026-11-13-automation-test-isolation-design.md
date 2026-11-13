@@ -1,13 +1,14 @@
 # Aislador exclusivo de pruebas de 09
 
-Estado: BORRADOR, pendiente de aprobación del documento. Fecha: 2026-11-13.
+Estado: APROBADO por el usuario para preparar el plan. Fecha: 2026-11-13.
 
 ## Intención y acuerdos
 
 Cerrar I1 de Task9 sin limitar la auditoría operacional. El usuario eligió separar
 pruebas de desarrollo de ejecución operacional y exige no borrar nada ni retirar
-funcionalidades. Esta elección autoriza redactar/revisar el diseño, no implementarlo
-ni ejecutar pruebas, probes, auditorías, instalaciones o consultas reales.
+funcionalidades. El usuario aprobó después el documento con «Si, aprobado».
+Se prepara el plan; no se ha autorizado por ello ninguna auditoría, instalación,
+consulta real ni ejecución fuera de la barrera revisada.
 
 El incidente de Nmap de Task9 y sus evidencias permanecen registrados. No se
 reinterpreta la sesión como exclusivamente sintética. Tasks1–8 no se repiten;
@@ -158,8 +159,8 @@ contrato sin instalaciones, se declara BLOCKED y se consulta antes de cambiarlo.
 - [x] Usuario elige aislador exclusivo de pruebas, preservando operación autorizada.
 - [x] Redacción basada en fixture/runner/guard actuales, sin ejecución.
 - [x] Revisión independiente de diseño.
-- [ ] Aprobación del documento por usuario.
-- [ ] Plan de implementación, no producto antes de aprobación.
+- [x] Aprobación del documento por usuario.
+- [x] Invocar writing-plans; preparar plan sin implementar producto.
 
 Builder check sesión `ses_e299e727effeh3EF2ziFJszxnX`: `nothing important left`.
 Revisión solo de diseño, no evidencia de sandbox implementado o verificado.
