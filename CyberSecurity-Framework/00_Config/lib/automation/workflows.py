@@ -41,14 +41,16 @@ def _load(text):
                 result[key] = self.construct_object(value_node, deep=deep)
             return result
 
-    loader = LimitedLoader(text)
-    loader.depth = 0
+    loader = None
     try:
+        loader = LimitedLoader(text)
+        loader.depth = 0
         return loader.get_single_data()
     except yaml.YAMLError as error:
         raise PlanError('YAML inválido') from error
     finally:
-        loader.dispose()
+        if loader is not None:
+            loader.dispose()
 
 
 def load_workflow(path: Path, defaults: Mapping[str, object]) -> Plan:

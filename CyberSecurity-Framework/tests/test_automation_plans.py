@@ -78,6 +78,11 @@ class PlanTests(unittest.TestCase):
                 self.workflow(text)
         self.assertEqual(self.workflow(base).steps[0].inputs['target'], '192.0.2.1')
 
+    def test_literal_nul_is_plan_error(self):
+        text = 'name: t\x00\nversion: 1\ntimeout: 600\nsteps: [{id: a, action: ping}]\n'
+        with self.assertRaisesRegex(PlanError, 'YAML inválido'):
+            self.workflow(text)
+
     def test_stable_topology_and_defaults(self):
         plan = self.workflow('''name: test
 version: 1
