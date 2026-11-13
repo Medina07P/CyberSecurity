@@ -280,6 +280,73 @@ class CaptureTests(unittest.TestCase):
             self.assertEqual([a['status'] for a in run['actions']], ['interrupted', 'not-run'])
             self.assertEqual(self.inv.scan(self.root).records, [])
 
+    def test_real_signals_at_storage_ownership_boundaries_cancel_without_orphans(self):
+        storage = importlib.import_module('evidence.storage')
+        process = importlib.import_module('evidence.process')
+        for boundary in ('copy-return', 'copy-stream', 'artifact-open', 'metadata-open', 'publish', 'reservation', 'foreign-replacement'):
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                with self.subTest(boundary=boundary, signal=sig):
+                    self.root = self.base / f'{boundary}-{sig}'
+                    history = self.root / 'proofs/access'
+                    history.mkdir(parents=True)
+                    (history / 'foreign').write_bytes(b'preserve foreign bytes')
+                    before = snapshot(history)
+                    fired = False
+                    operation = {'copy-return': 'copy_regular', 'artifact-open': 'open',
+                                 'metadata-open': 'open', 'publish': 'link',
+                                 'reservation': 'mkdir', 'foreign-replacement': 'copy_regular',
+                                 'copy-stream': 'write'}[boundary]
+                    owner = storage if operation == 'copy_regular' else storage.os
+                    original = getattr(owner, operation)
+                    def inject(*args, **kwargs):
+                        nonlocal fired
+                        result = original(*args, **kwargs)
+                        name = str(args[0])
+                        match = (boundary in ('copy-return', 'foreign-replacement') or
+                                 boundary == 'copy-stream' or
+                                 boundary == 'artifact-open' and name == 'artifact' or
+                                 boundary == 'metadata-open' and name == '.metadata.tmp' or
+                                 boundary == 'publish' or
+                                 boundary == 'reservation' and len(name) == 32 and
+                                 'screenshots/web' in os.readlink(f'/proc/self/fd/{kwargs["dir_fd"]}'))
+                        if match and not fired:
+                            fired = True
+                            if boundary == 'foreign-replacement':
+                                # Keep the original inode alive so replacement cannot
+                                # accidentally reuse it. Neither foreign file is ours.
+                                Path(args[1]).rename(self.base / f'saved-{sig}')
+                                Path(args[1]).write_bytes(b'foreign replacement')
+                            os.kill(os.getpid(), sig)
+                        return result
+                    def backend(argv, *args, **kwargs):
+                        out = next((a[6:] for a in argv if a.startswith('--out=')), None)
+                        if out is not None:
+                            Path(out).write_bytes(b'\x89PNG\r\n\x1a\nx')
+                        else:
+                            Path(argv[argv.index('-oN') + 1]).write_bytes(self.nmap_data())
+                        return process.ProcessResult(0, False, None)
+                    descriptors = len(list(Path('/proc/self/fd').iterdir()))
+                    with mock.patch.object(owner, operation, side_effect=inject), mock.patch.object(self.c, 'run_child', side_effect=backend) as child:
+                        rc = self.run_plan(web='https://localhost', scan='localhost', scan_profile='basic', system=True)
+                    self.assertEqual(len(list(Path('/proc/self/fd').iterdir())), descriptors)
+                    self.assertTrue(fired)
+                    self.assertEqual(rc, 128 + sig)
+                    self.assertEqual(child.call_count, 1)
+                    self.assertEqual([a['status'] for a in self.ledger()[0]['actions']],
+                                     ['interrupted', 'not-run', 'not-run'])
+                    self.assertEqual(snapshot(history), before)
+                    tree = self.root / 'screenshots/web'
+                    if boundary == 'foreign-replacement':
+                        # ENOTEMPTY on reservation cleanup must not replace signal.
+                        self.assertEqual([p.name for p in tree.rglob('*') if p.is_file()], ['artifact'])
+                        self.assertEqual(next(tree.rglob('artifact')).read_bytes(), b'foreign replacement')
+                        continue
+                    self.assertEqual(list(tree.iterdir()), [])
+                    inventory = self.inv.scan(self.root)
+                    self.assertEqual(inventory.records, [])
+                    self.assertEqual([(i.code, i.path.name) for i in inventory.issues],
+                                     [('MISSING_METADATA', 'foreign')])
+
     def test_real_parent_only_signals_reap_active_stub_and_return_signal_rc(self):
         path = self.base / 'bin/cutycapt'
         for sig in (signal.SIGINT, signal.SIGTERM):

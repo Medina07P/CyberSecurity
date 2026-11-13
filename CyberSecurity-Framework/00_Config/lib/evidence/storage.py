@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import signal
 import stat
 import unicodedata
 import uuid
@@ -96,23 +97,59 @@ def _unlink_owned(directory_fd, name, identity):
 
 
 @contextmanager
+def _ownership_transition():
+    """Defer INT/TERM only across syscall/identity handoffs, never streaming I/O."""
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM})
+    try:
+        yield
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+
+
+def _cleanup_owned(directory_fd, owned):
+    # Preserve the original exception, including interruption, if cleanup fails.
+    for name, identity in owned.items():
+        try:
+            _unlink_owned(directory_fd, name, identity)
+        except OSError:
+            pass
+
+
+@contextmanager
+def _created_file(parent_fd, name, owned):
+    fd = None
+    try:
+        with _ownership_transition():
+            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                         os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=parent_fd)
+            owned[name] = _identity(os.fstat(fd))
+        yield fd
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+@contextmanager
 def _reservation(parent_fd, name):
     # mkdir is the no-replace reservation; collision is a hard failure.
-    os.mkdir(name, 0o700, dir_fd=parent_fd)
-    identity = _identity(os.stat(name, dir_fd=parent_fd, follow_symlinks=False))
+    identity = None
     try:
+        with _ownership_transition():
+            os.mkdir(name, 0o700, dir_fd=parent_fd)
+            identity = _identity(os.stat(name, dir_fd=parent_fd, follow_symlinks=False))
         os.chmod(name, 0o700, dir_fd=parent_fd, follow_symlinks=False)
         yield identity
     except BaseException:
         try:
-            if _identity(os.stat(name, dir_fd=parent_fd, follow_symlinks=False)) == identity:
-                os.rmdir(name, dir_fd=parent_fd)
-        except FileNotFoundError:
+            with _ownership_transition():
+                if identity is not None and _identity(os.stat(name, dir_fd=parent_fd, follow_symlinks=False)) == identity:
+                    os.rmdir(name, dir_fd=parent_fd)
+        except OSError:
             pass
         raise
 
 
-def copy_regular(source: Path, destination: Path) -> tuple[int, str]:
+def copy_regular(source: Path, destination: Path, *, _owned=None) -> tuple[int, str]:
     """Copy via descriptors; reject unstable/nonregular sources and existing dests.
 
     The parent destination must already exist. On failure only our own newly
@@ -127,38 +164,36 @@ def copy_regular(source: Path, destination: Path) -> tuple[int, str]:
                 before = os.fstat(src_fd)
                 if not stat.S_ISREG(before.st_mode):
                     raise EvidenceError(f'ORIGEN NO REGULAR: {source}')
-                dst_fd = os.open(destination.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
-                                 os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=dst_parent)
-                owned = _identity(os.fstat(dst_fd))
+                owned = {} if _owned is None else _owned
                 try:
-                    os.fchmod(dst_fd, 0o600)
-                    total, digest = 0, hashlib.sha256()
-                    while True:
-                        chunk = os.read(src_fd, 1024 * 1024)
-                        if not chunk:
-                            break
-                        digest.update(chunk)
-                        total += len(chunk)
-                        remaining = memoryview(chunk)
-                        while remaining:
-                            written = os.write(dst_fd, remaining)
-                            if written <= 0:
-                                raise EvidenceError('COPIA FALLIDA: escritura incompleta')
-                            remaining = remaining[written:]
-                    os.fsync(dst_fd)
-                    after = os.fstat(src_fd)
-                    # Rewalk ancestors: the original path must still name this file.
-                    with _directory(source.parent) as current_parent:
-                        current = os.stat(source.name, dir_fd=current_parent, follow_symlinks=False)
-                    if (_version(before) != _version(after) or _version(before) != _version(current)
-                            or not stat.S_ISREG(current.st_mode) or total != before.st_size):
-                        raise EvidenceError(f'ORIGEN MODIFICADO: {source}')
-                    return total, digest.hexdigest()
+                    with _created_file(dst_parent, destination.name, owned) as dst_fd:
+                        os.fchmod(dst_fd, 0o600)
+                        total, digest = 0, hashlib.sha256()
+                        while True:
+                            chunk = os.read(src_fd, 1024 * 1024)
+                            if not chunk:
+                                break
+                            digest.update(chunk)
+                            total += len(chunk)
+                            remaining = memoryview(chunk)
+                            while remaining:
+                                written = os.write(dst_fd, remaining)
+                                if written <= 0:
+                                    raise EvidenceError('COPIA FALLIDA: escritura incompleta')
+                                remaining = remaining[written:]
+                        os.fsync(dst_fd)
+                        after = os.fstat(src_fd)
+                        # Rewalk ancestors: the original path must still name this file.
+                        with _directory(source.parent) as current_parent:
+                            current = os.stat(source.name, dir_fd=current_parent, follow_symlinks=False)
+                        if (_version(before) != _version(after) or _version(before) != _version(current)
+                                or not stat.S_ISREG(current.st_mode) or total != before.st_size):
+                            raise EvidenceError(f'ORIGEN MODIFICADO: {source}')
+                        return total, digest.hexdigest()
                 except BaseException:
-                    _unlink_owned(dst_parent, destination.name, owned)
+                    with _ownership_transition():
+                        _cleanup_owned(dst_parent, owned)
                     raise
-                finally:
-                    os.close(dst_fd)
             finally:
                 os.close(src_fd)
     except OSError as exc:
@@ -188,8 +223,7 @@ def add(root: Path, kind: str, source: Path, description: str = '', target: str 
                 owned = {}
                 try:
                     os.fchmod(record_fd, 0o700)
-                    size, digest = copy_regular(source, record_dir / 'artifact')
-                    owned['artifact'] = _identity(os.stat('artifact', dir_fd=record_fd, follow_symlinks=False))
+                    size, digest = copy_regular(source, record_dir / 'artifact', _owned=owned)
                     metadata = {
                         'schema_version': 1, 'id': record_id, 'type': kind,
                         'original_name': source.name, 'stored_name': 'artifact',
@@ -198,10 +232,7 @@ def add(root: Path, kind: str, source: Path, description: str = '', target: str 
                         'description': description, 'origin': origin, 'target': target,
                         'run_id': run_id, 'method': method,
                     }
-                    fd = os.open('.metadata.tmp', os.O_WRONLY | os.O_CREAT | os.O_EXCL |
-                                 os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=record_fd)
-                    owned['.metadata.tmp'] = _identity(os.fstat(fd))
-                    with os.fdopen(fd, 'w', encoding='utf-8') as output:
+                    with _created_file(record_fd, '.metadata.tmp', owned) as fd, os.fdopen(fd, 'w', encoding='utf-8', closefd=False) as output:
                         os.fchmod(output.fileno(), 0o600)
                         json.dump(metadata, output, ensure_ascii=True, allow_nan=False, sort_keys=True)
                         output.write('\n')
@@ -209,14 +240,15 @@ def add(root: Path, kind: str, source: Path, description: str = '', target: str 
                         os.fsync(output.fileno())
                     if _identity(os.stat(record_id, dir_fd=parent_fd, follow_symlinks=False)) != reservation:
                         raise EvidenceError('RESERVA MODIFICADA')
-                    os.link('.metadata.tmp', 'evidence.json', src_dir_fd=record_fd,
-                            dst_dir_fd=record_fd, follow_symlinks=False)
-                    owned['evidence.json'] = owned['.metadata.tmp']
+                    with _ownership_transition():
+                        os.link('.metadata.tmp', 'evidence.json', src_dir_fd=record_fd,
+                                dst_dir_fd=record_fd, follow_symlinks=False)
+                        owned['evidence.json'] = owned['.metadata.tmp']
                     os.unlink('.metadata.tmp', dir_fd=record_fd)
                     os.fsync(record_fd)
                 except BaseException:
-                    for name, identity in owned.items():
-                        _unlink_owned(record_fd, name, identity)
+                    with _ownership_transition():
+                        _cleanup_owned(record_fd, owned)
                     raise
         return Record(record_id, kind, 'sha256-v1', record_dir / 'artifact',
                       record_dir / 'evidence.json', target)
