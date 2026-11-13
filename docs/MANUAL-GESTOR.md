@@ -387,6 +387,36 @@ Si una herramienta no está instalada, el script avisa y continúa (o sale con e
 
 ---
 
+## Forense: módulo 08
+
+`08` abre un menú específico sin lanzar herramientas ni usar la IP de sesión
+como archivo/identidad: dependencias, strings/logs/PCAP/Volatility offline,
+disco/recuperación, timeline, adquisición local explícita, flujo y visor.
+`11` conserva las diez entradas originales más el visor; `0`, `!` o EOF salen
+sin completar una selección ni activar defaults sensibles.
+
+Selecciona archivos explícitos. Cada analizador obtiene copia independiente,
+hash y permisos privados (700/600); prever coste de espacio/lectura y atime.
+Disco no monta por defecto; solo copia confirmada con opciones específicas de
+filesystem. Físico/ddrescue es modo explícito sin hash exhaustivo del original.
+Windows Volatility v2/v3 offline requiere perfil/símbolos según backend; RAM Linux
+adquirida no es Windows. No descargas de símbolos o adquisición offline implícita.
+
+Requirements sin flags solo comprueba PATH; instalar/adquirir/montar y consultar
+fuentes locales exige confirmaciones directas independientes, además del gestor.
+Flujo local denegado/fallido bloquea dependientes, sin capturas históricas por glob.
+CLI hojas0=completo,1=parcial/fallo/cancelación,2=uso/precondición. COMPLETADO no
+prueba ausencia de incidentes ni memoria íntegra. El visor muestra resúmenes,
+no cuerpos, y no revive resultados antiguos como vigentes. No atribuye evidencia
+a IP ni añade un parser al motor11. Salidas externas requieren privacidad y
+exclusión git propias. El verificador solo acredita coherencia de metadata y
+artefactos privados, no integridad actual del original/custodia legal.
+
+Guía detallada, CLI, tokens, sistemas soportados y límites:
+[`08_Forensics/USE.md`](../CyberSecurity-Framework/08_Forensics/USE.md).
+Estado de entrega/pruebas/revisión:
+[`FORENSE-INTEGRAL-2026-11-11.md`](FORENSE-INTEGRAL-2026-11-11.md).
+
 ## Problemas frecuentes
 
 ### Herramienta no instalada

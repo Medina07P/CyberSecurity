@@ -1,5 +1,31 @@
 # AGENTS.md
 
+**Actualización 08_Forensics, 2026-11-12:** Tasks1–7 aprobadas tras sus fixes,
+base Task8 `d8967b2`; no repetir implementación. Task8 añade verificador/suite
+aislada y documentación; su revisión y la revisión global corresponden al
+controlador y NO se declaran terminadas. Guías vigentes: `08_Forensics/USE.md`
+bajo el framework y `docs/FORENSE-INTEGRAL-2026-11-11.md`; ledger en
+`.superpowers/sdd/2026-11-11-forensics-integral/progress.md`.
+08 abre menú por fuentes explícitas, sin IP de sesión ni adquisición/instalación/
+montaje por entrar. Diez entradas y métodos originales conservados; defaults
+sensibles cambiaron por aprobación expresa, ver USE. Copias por analizador y
+raíces privadas; verificador solo lectura no relee originales ni certifica
+custodia legal o compatibilidad operacional. Pruebas solo sintéticas/stubs y
+regresiones antiguas solo en copia limpia; nunca evidencia real/flujo99.
+Task5 M1 logs históricos perdidos no recreados y Task7 M1 seis avisos fixture
+siguen diferidos a revisión global, sin pulido fuera alcance. run_tests heredada
+374/11 (SSTI intermitente sin causa determinada), no declarar rama verde.
+Conservar scope/tres pendientes06, sin push ni instalaciones reales.
+
+**Pausa histórica, superada por la reanudación — 2026-11-12 — 08_Forensics:** leer
+`docs/RETOMAR-FORENSE-2026-11-12.md`. Tasks1–3 aprobadas hasta `3d3eeab`,
+97 pruebas independientes rc0; Task4 PCAP/Volatility con cuatro rutas de trabajo
+sin commit ni revisión aprobada al guardar. Subagente confirmó PAUSED, sin procesos
+propios en curso; consultar su reporte antes de reanudar. Faltan Tasks4–8 y revisión global.
+Ledger: `.superpowers/sdd/2026-11-11-forensics-integral/progress.md`.
+No repetir Tasks1–3, no descartar parciales ni los cuatro pendientes ajenos,
+no usar evidencia real ni suites antiguas sobre este checkout; sin push.
+
 **Actualización mantenimiento 07, 2026-11-11:** Task 1 está en `045d2c8`.
 `07` abre un menú de mantenimiento: 1 disponibilidad mediante `command -v`
 (no ejecuta binarios), 2 guía local, 11 listado original de diez entradas y
