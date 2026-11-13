@@ -79,8 +79,8 @@ def check_archive(path: Path) -> None:
             before = os.fstat(source.fileno())
             if _version(before) != _version(inventory._regular_stat(path)):
                 raise EvidenceError('PAQUETE MODIFICADO')
-            # tarfile's built-in streaming gzip reader does not validate CRC or
-            # a missing trailer. GzipFile does, provided we drain it to EOF.
+            # GzipFile validates CRC/trailer. Tar iteration alone does not cover
+            # bytes after its first end marker, including prefetched bytes.
             with gzip.GzipFile(fileobj=source, mode='rb') as decoded, \
                     tarfile.open(fileobj=decoded, mode='r|') as archive:
                 first = archive.next()
@@ -91,6 +91,7 @@ def check_archive(path: Path) -> None:
                                      parse_constant=inventory._constant)
                 expected = _manifest(data)
                 seen = {'manifest.json'}
+                end = first.offset_data + ((first.size + 511) // 512) * 512
                 for member in archive:
                     # Streaming TarFile iteration includes its cached first entry.
                     if member is first:
@@ -112,10 +113,32 @@ def check_archive(path: Path) -> None:
                             digest.update(chunk)
                     if size != entry['size'] or digest.hexdigest() != entry['sha256']:
                         raise EvidenceError('HASH DE MIEMBRO NO COINCIDE')
+                    end = member.offset_data + ((member.size + 511) // 512) * 512
                 if seen != set(expected) | {'manifest.json'}:
                     raise EvidenceError('FALTAN MIEMBROS')
-                while decoded.read(1024 * 1024):
-                    pass
+            # Reread the same descriptor streaming rather than relying on
+            # tarfile's private read-ahead buffers. Start at the last declared
+            # member's block boundary and inspect *all* physical decoded bytes,
+            # across concatenated gzip members too. Only complete zero blocks
+            # (at least the two tar end blocks) may follow the declared members.
+            source.seek(0)
+            with gzip.GzipFile(fileobj=source, mode='rb') as decoded:
+                remaining = end
+                while remaining:
+                    chunk = decoded.read(min(remaining, 1024 * 1024))
+                    if not chunk:
+                        raise EvidenceError('TAR TRUNCADO')
+                    remaining -= len(chunk)
+                padding = 0
+                while True:
+                    chunk = decoded.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    if chunk.strip(b'\x00'):
+                        raise EvidenceError('CONTENIDO NO DECLARADO TRAS FIN DEL TAR')
+                    padding += len(chunk)
+                if padding < 1024 or padding % 512:
+                    raise EvidenceError('PADDING FINAL DEL TAR INVÁLIDO')
             if (_version(before) != _version(os.fstat(source.fileno())) or
                     _version(before) != _version(inventory._regular_stat(path))):
                 raise EvidenceError('PAQUETE MODIFICADO DURANTE LECTURA')
