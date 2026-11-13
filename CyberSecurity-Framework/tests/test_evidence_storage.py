@@ -293,8 +293,10 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(list(parent.iterdir()), [])
 
     def test_cli_help_invalid_and_missing_dependencies(self):
-        for args, rc in [(('--help',), 0), ((), 2), (('--list',), 2),
-                         (('--verify',), 2), (('--package',), 2),
+        # Task 2 implements listing and verification; empty verification is an
+        # operational failure, no longer an unknown CLI operation.
+        for args, rc in [(('--help',), 0), ((), 2), (('--list',), 0),
+                         (('--verify',), 1), (('--package',), 2),
                          (('--add', 'proof'), 2),
                          (('--help', 'extra'), 2),
                          (('--ad', 'proof', str(self.source)), 2),
