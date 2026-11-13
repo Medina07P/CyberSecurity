@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 SOURCE_FILES = tuple(
     '00_Config/lib/automation/' + name + '.py'
     for name in ('__init__', 'model', 'validation', 'catalog', 'planner', 'workflows',
-                 'storage', 'runner', 'adapters')
+                 'storage', 'runner', 'adapters', 'reporting')
 ) + ('09_Automation/workflows/quick_scan.yaml',
      '09_Automation/workflows/full_audit.yaml',
      '00_Config/lib/dangerous.txt',
@@ -27,6 +27,15 @@ SOURCE_FILES += tuple('00_Config/lib/' + name for name in (
     'session.bash')) + tuple('00_Config/lib/osint/' + name + '.py' for name in (
     '__init__', 'cli', 'credentials', 'discovery', 'dns', 'model', 'runtime', 'sources'
 )) + ('11_Reports/report_engine.py',)
+
+SOURCE_FILES += ('09_Automation/python/report_generator.py',
+                 '00_Config/lib/postexploitation_evidence.py') + tuple(
+    '11_Reports/lib/' + name + '.py' for name in (
+        '__init__', 'attribution', 'catalog', 'engine', 'model', 'render', 'sources',
+        'parsers/__init__', 'parsers/exploitation', 'parsers/ffuf', 'parsers/headers',
+        'parsers/host_sources', 'parsers/http_inject', 'parsers/nikto', 'parsers/nmap',
+        'parsers/nuclei', 'parsers/postexploitation', 'parsers/rate_limit',
+        'parsers/sqli_findings', 'parsers/sqlmap'))
 
 
 class AutomationFixture:

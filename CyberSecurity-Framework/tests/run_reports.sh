@@ -136,16 +136,14 @@ eq "phase_state 11_Reports pending sin datos" \
 # ──────────────────────────────────────────────────────────
 section "Legacy shim (09_Automation): obsoleto y genera"
 LEGACY_TMP="$TMPD/legacy"
-mkdir -p "$LEGACY_TMP/scans/nmap" "$LEGACY_TMP/out"
+mkdir -p "$LEGACY_TMP/scans/nmap"
 printf '%s' '<nmaprun><host><status state="up"/><address addr="10.0.0.1" addrtype="ipv4"/><ports><port protocol="tcp" portid="80"><state state="open"/><service name="http"/></port></ports></host></nmaprun>' > "$LEGACY_TMP/scans/nmap/a.xml"
 
 OUT=$( \
-    REPORT_SCANS_DIR="$LEGACY_TMP/scans" \
-    REPORT_OUT_DIR="$LEGACY_TMP/out" \
-    REPORT_PROFILE="$LEGACY_TMP/.report_profile" \
     python3 "$FW/09_Automation/python/report_generator.py" \
         --input "$LEGACY_TMP/scans" \
-        --output "$LEGACY_TMP/out/informe.html" 2>&1 )
+        --output "$LEGACY_TMP/out/informe.html" \
+        --target 10.0.0.1 --execute --allow report:report_read 2>&1 )
 
 if printf '%s' "$OUT" | grep -qi "obsoleto"; then
     ok "legacy shim: dice obsoleto"
