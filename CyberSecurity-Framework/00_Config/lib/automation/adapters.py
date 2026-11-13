@@ -13,7 +13,7 @@ import stat
 from typing import Mapping
 from urllib.parse import urlsplit
 
-from .catalog import get_action
+from .catalog import get_action, missing_python_dependencies
 from .model import (Command, Permissions, Plan, PlanError, PreflightError,
                     RunResult, RuntimeContext, Step)
 from .planner import validate_plan
@@ -230,6 +230,8 @@ def _check(step, ctx, permissions):
         raise PlanError('Nikto no admite comas literales en URL')
     for tool in spec.tools:
         _tool(ctx, tool)
+    if missing_python_dependencies(step.action):
+        raise PreflightError('Dependencia Python requerida ausente: PyYAML (yaml)')
     sources = [ctx.framework / '00_Config/lib' / name for name in _SOURCES.get(step.action, ())]
     if step.action == 'report':
         sources.append(ctx.framework / '11_Reports/report_engine.py')
@@ -330,7 +332,7 @@ def compile_step(step: Step, run_dir: Path, ctx: RuntimeContext,
     raw = _check(step, ctx, permissions)
     if step.action == 'report':
         from .reporting import report_command
-        return (report_command(step, run_dir, ctx, permissions),)
+        return (report_command(step, run_dir, ctx),)
     env = child_env(ctx, run_dir)
     v, action = step.inputs, step.action
     target = v.get('target')
