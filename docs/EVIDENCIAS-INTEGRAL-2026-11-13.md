@@ -49,8 +49,8 @@ PATH cerrado a utilidades mínimas/stubs. También verifica la copia al terminar
 
 ## Regresiones y gates
 
-Las regresiones se ejecutarán desde `git archive` de fuentes versionadas tras
-el commit de implementación, no desde este checkout: sin ignorados, sin copiar
+Las regresiones se ejecutaron desde `git archive 2b74bf6` de fuentes versionadas
+tras el commit de implementación, no desde este checkout: sin ignorados, sin copiar
 scope/targets/credenciales del origen, con config/HOME/sesión sintéticos antes
 de ejecutar. Scripts y fixtures inspeccionados previamente.
 
@@ -63,7 +63,29 @@ las conexiones de UI compartidas están en module_intro/dedicada.
 eliminación de árboles compartidos, sin beneficio para los contratos de esta
 entrega. No se reparan heredados ajenos ni se proclama rama verde.
 
-Los resultados efectivos de regresiones y sintaxis se registrarán después de
-ejecutar, no se presuponen. Los pasos7–8 (revisión independiente/integración)
+| Verificación sobre `2b74bf6` | Resultado |
+|---|---|
+| `tests/run_smoke.sh` | 24 comprobaciones OK, fallos0, rc0 (también se examinó el contador, no solo rc) |
+| `tests/run_e2e.sh` | 11 pasan, 0 fallan, rc0 |
+| `tests/run_reports.sh` | 78 tests Python + 28 comprobaciones shell, rc0 |
+| `tests/run_config_menu.sh` | 19 tests, guardas intactas, rc0 |
+| `test_module_intro.py` | 11 tests, rc0 |
+
+Copias independientes conservadas en
+`/tmp/opencode/evidence-task8-regression-qa996pp0/`; comandos, allowlist de fuentes
+archivadas y logs completos en `evidence-task8-logs/regression-*` y
+`regressions.json`. PATH restringido a utilidades locales permitidas y backends
+denegados (e2e añade su nmap stub propio); cero llamadas a backends denegados.
+Python tiene bloqueo adicional de conexión/resolución de red. El smoke no
+propaga su contador de fallos como rc: se comprobó además `fallos: 0`.
+El `py_compile` heredado de reports solo escribió en su copia archivada; la
+verificación de Python nuevo/cambiado de Task8 fue por AST, sin pyc.
+
+`bash -n` del runner modificado: rc0 y stdout/stderr vacíos; AST de los dos Python
+nuevos/cambiados correcto; `git diff --check` rc0 sin salida. Logs en `syntax.log`.
+No se observaron fallos nuevos bloqueantes en las suites ejecutadas; las suites
+no ejecutadas y fallos heredados quedan fuera de esta afirmación.
+
+Los pasos7–8 (revisión independiente/integración)
 pertenecen al controlador y no quedan aprobados por esta entrega. Conservar
 worktree, logs y pendientes históricos/deferred ajenos.
