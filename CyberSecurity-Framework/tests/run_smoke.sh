@@ -78,7 +78,7 @@ if printf '%s' "$out" | grep -qF "[intrusiva]"; then
 else
     echo "  FALLO    sin [intrusiva] en 05_Exploitation"; fail=$((fail+1))
 fi
-out=$(printf '10\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
+out=$(printf '10\n9\n0\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
 if printf '%s' "$out" | grep -qF "[manual]"; then
     echo "  OK       [manual] en 10_Evidence"
 else

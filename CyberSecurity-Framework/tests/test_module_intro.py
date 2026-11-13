@@ -124,7 +124,7 @@ class ModuleIntroTests(unittest.TestCase):
             "07_Wireless": ("mantenimiento", "disponibilidad", "guía", "WiFi", "Bluetooth"),
             "08_Forensics": ("offline", "fuentes", "adquisición", "legal", "no IP"),
             "09_Automation": ("scripts", "adaptador", "declarativos", "no consumidos"),
-            "10_Evidence": ("evidencia", "escanean", "tráfico"),
+            "10_Evidence": ("evidencia", "escanean", "tráfico", "explícitas", "presencia", "no integridad"),
             "11_Reports": ("existentes", "no", "ausencia"),
             "12_Knowledge_Base": ("guías", "locales", "no se ejecutan"),
             "13_Labs": ("laboratorios", "VPN", "sistema", "red", "no garantiza"),
@@ -147,6 +147,7 @@ FUNCTIONS = (
     "reports", "knowledge", "labs",
 )
 SPECIALIZED = dict(zip(MODULES[3:9], FUNCTIONS[3:9]))
+SPECIALIZED['10_Evidence'] = 'evidence'
 PURPOSES = dict(zip(MODULES, (
     "Preparar la configuración", "Recopilar información pública", "Hacer reconocimiento inicial",
     "Realizar escaneo de puertos", "Profundizar en servicios concretos", "Probar explotación controlada",
@@ -260,12 +261,12 @@ pause() { printf 'PAUSE\\n'; }
                 if function != "labs":
                     command += '; IFS= read -r rest; printf "RESTO:%s\\n" "$rest"'
                 result = self.run_ui(command, inputs)
-                output = result.stderr if function == "forensics" else result.stdout
+                output = result.stderr if function in ("forensics", "evidence") else result.stdout
                 self.assert_card_before_options(output, module)
                 self.assertNotIn("PAUSE", result.stdout + result.stderr)
                 if function != "labs":
                     self.assertIn("RESTO:sentinela\n", result.stdout)
-                if function != "forensics":
+                if function not in ("forensics", "evidence"):
                     self.assertEqual(result.stderr, "")
 
     # Detecta ficha impresa una sola vez fuera del bucle; conserva pausas heredadas.
@@ -274,7 +275,7 @@ pause() { printf 'PAUSE\\n'; }
             with self.subTest(module=module):
                 choice = "invalida" if module in SPECIALIZED else "R"
                 result = self.run_ui("module_" + function, choice + "\n0\n")
-                output = result.stderr if function == "forensics" else result.stdout
+                output = result.stderr if function in ("forensics", "evidence") else result.stdout
                 self.assert_card_before_options(output, module, count=2)
                 self.assertEqual(result.stdout.count("PAUSE"),
                                  int(function in ("exploitation", "postexploitation")))
@@ -294,10 +295,10 @@ pause() { printf 'PAUSE\\n'; }
             with self.subTest(module=module):
                 result = self.run_ui('session_target() { printf "192.168.56.101\\n"; }; ' +
                                      function + "_menu", source=self.lib / (function + "_menu.bash"))
-                output = result.stderr if function == "forensics" else result.stdout
+                output = result.stderr if function in ("forensics", "evidence") else result.stdout
                 self.assertIn("Volver", output)
                 self.assertRegex(output, r"(?m)^\s*1[.)]")
-                self.assertEqual(result.stdout if function == "forensics" else result.stderr, "")
+                self.assertEqual(result.stdout if function in ("forensics", "evidence") else result.stderr, "")
                 self.assertNotIn("Para qué sirve:", result.stdout + result.stderr)
                 self.assertNotIn("PAUSE", result.stdout + result.stderr)
                 self.assertNotIn("not found", result.stderr)
@@ -307,7 +308,7 @@ pause() { printf 'PAUSE\\n'; }
         for module, function in zip(MODULES[:-1], FUNCTIONS[:-1]):
             with self.subTest(module=module):
                 result = self.run_ui("module_" + function, "")
-                self.assert_card_before_options(result.stderr if function == "forensics"
+                self.assert_card_before_options(result.stderr if function in ("forensics", "evidence")
                                                 else result.stdout, module)
                 self.assertNotIn("PAUSE", result.stdout + result.stderr)
 

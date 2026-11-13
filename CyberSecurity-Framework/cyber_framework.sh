@@ -27,6 +27,7 @@ source "$LIB_DIR/enumeration_menu.bash"
 source "$LIB_DIR/postexploitation_menu.bash"
 source "$LIB_DIR/wireless_menu.bash"
 source "$LIB_DIR/forensics_menu.bash"
+source "$LIB_DIR/evidence_menu.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -135,7 +136,7 @@ show_phase_line() {
             pending) out="${out}${DIM}.${NC}${key}  " ;;
         esac
     done
-    echo -e "  ${DIM}Fases:${NC} ${out}${DIM}(* hecha, . pendiente)${NC}"
+    echo -e "  ${DIM}Fases:${NC} ${out}${DIM}(* hecha, . pendiente; 10: presencia, no integridad)${NC}"
 }
 
 # ─── Objetivo de la sesión ─────────────────────────────────
@@ -198,6 +199,14 @@ change_target() {
 # ─── FUNCIÓN PARA EJECUTAR SCRIPTS ─────────────────────────
 
 execute_script() {
+    # Module 10 is a fixed inventory even for direct/prepared calls. Route before
+    # generic cd/chmod/argument UI; noncanonical paths are rejected, not resolved.
+    case "/$1/" in
+        */10_Evidence/*) evidence_execute_script "$@"; return $? ;;
+    esac
+    case "/${2:-}/" in
+        */10_Evidence/*) evidence_execute_script "$@"; return $? ;;
+    esac
     # 08 has file identities, never session targets or example defaults. This
     # also protects the original listing, not just the new guided menu.
     case "$1" in
@@ -330,7 +339,15 @@ run_module_scripts() {
         local -a scripts=() categories=()
         local script rel_path choice
 
-        if [[ "$module_dir" == 08_Forensics ]]; then
+        if [[ "$module_dir" == 10_Evidence ]]; then
+            while IFS= read -r rel_path; do
+                script="$module_dir/$rel_path"
+                evidence_safe_leaf "$script" || continue
+                scripts+=("$script")
+                if [[ $rel_path == run_all_evidence.sh ]]; then categories+=(run_all)
+                else categories+=(script); fi
+            done < <(evidence_original_entries)
+        elif [[ "$module_dir" == 08_Forensics ]]; then
             # Do not recursively discover executable-looking recovered evidence.
             while IFS= read -r rel_path; do
                 script="$module_dir/$rel_path"
@@ -410,7 +427,7 @@ run_module_scripts() {
             continue
         elif [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#scripts[@]} )); then
             local idx=$((choice - 1))
-            if [[ "$module_dir" == 08_Forensics ]]; then
+            if [[ "$module_dir" == 08_Forensics || "$module_dir" == 10_Evidence ]]; then
                 # Its coordinator only runs selected sources; original-list
                 # calls use the same file prompts and dangerous gate as 08.
                 execute_script "${scripts[$idx]}" "$module_dir"
@@ -476,7 +493,7 @@ module_automation() {
 }
 
 module_evidence() {
-    run_module_scripts "10_Evidence" "10_Evidence"
+    evidence_menu
 }
 
 module_reports() {
