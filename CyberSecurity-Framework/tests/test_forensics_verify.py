@@ -143,6 +143,23 @@ class RunnerTests(unittest.TestCase):
         self.assertNotEqual(bad.returncode, 0)
         self.assertIn('representative failure', bad.stdout + bad.stderr)
 
+    def test_runner_copies_module_intro_dependency_and_loads_without_errors(self):
+        # Exercise the runner's actual private copy, not its inventory text.
+        shutil.copy2(FW / '00_Config/lib/module_intro.bash', self.fw / '00_Config/lib')
+        result = self.run_fixture(
+            'import subprocess; '
+            'p=Path("00_Config/lib/module_intro.bash"); '
+            'self.assertTrue(p.is_file(), "module_intro dependency missing from runner fixture"); '
+            'r=subprocess.run(["/bin/bash", "-c", '
+            '\'source "$1" && module_intro 08_Forensics\', "probe", str(p)], '
+            'capture_output=True, text=True, timeout=5); '
+            'self.assertEqual(r.returncode, 0, r.stderr); '
+            'self.assertEqual(r.stderr, ""); '
+            'self.assertIn("Para qué sirve:", r.stdout); '
+            'self.assertIn("fuentes explícitas offline", r.stdout)')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('GUARD: OK', result.stdout)
+
     def test_runner_detects_changed_and_new_files(self):
         for body in ('Path("00_Config/scope.yaml").write_text("mutation")',
                      'Path("tests/unexpected.py").write_text("new")',
