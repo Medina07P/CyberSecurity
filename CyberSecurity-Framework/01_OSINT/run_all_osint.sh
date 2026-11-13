@@ -1,18 +1,9 @@
 #!/bin/bash
-echo "════════════════════════════════════════════════════════"
-echo "  EJECUTANDO OSINT"
-echo "════════════════════════════════════════════════════════"
-for script in scripts/*.sh scripts/*.py; do
-    if [[ -f "$script" && "$script" != "run_all"* ]]; then
-        echo ""
-        echo "▶️  Ejecutando: $script"
-        echo "────────────────────────────────────────────────"
-        if [[ "$script" == *.py ]]; then
-            python3 "$script" 2>/dev/null
-        else
-            bash "$script" 2>/dev/null
-        fi
-    fi
-done
-echo ""
-echo "✅ OSINT completado"
+# RUN ALL OSINT - Una sesión coordinada, sin duplicar fuentes
+# Uso: ./run_all_osint.sh <dominio> [archivo] [empresa]
+# Ejemplo: ./run_all_osint.sh example.com
+# Metadatos solo con archivo local. Sin fuerza bruta ni AXFR automáticos.
+# Para dar empresa sin archivo: ./run_all_osint.sh example.com '' 'Example Corp'
+FW_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PYTHONPATH="$FW_DIR/00_Config/lib${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m osint.cli all "$@"

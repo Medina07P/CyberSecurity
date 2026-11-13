@@ -1,15 +1,21 @@
-# 1. Asegúrate de estar en el directorio correcto (desde la raíz del repo)
-cd CyberSecurity-Framework/03_Scanners
+# Primer uso seguro
 
-# 2. Copia cada script (uno por uno) y ejecuta los comandos de arriba
+1. Abre `CyberSecurity-Framework/cyber_framework.sh`.
+2. Entra en **03 → 1**: comprueba herramientas sin enviar tráfico.
+3. Con autorización para el host, usa **03 → 2**: 100 puertos TCP,
+   sin NSE ni escaneo completo. Revisa el resumen antes de confirmar.
+4. Para web, usa **03 → 3** y escribe la URL completa, incluyendo HTTPS,
+   puerto y ruta. La sesión del gestor no determina el esquema.
+5. `0` vuelve al menú anterior; `0` o `!` cancela la pregunta de objetivo.
 
-# 3. Verifica que todos tengan permisos
-chmod +x run_all_scanners.sh
-chmod +x network_scanners/nmap/*.sh
-chmod +x network_scanners/masscan/*.sh
-chmod +x network_scanners/rustscan/*.sh
-chmod +x web_scanners/nikto/*.sh
-chmod +x web_scanners/nuclei/*.sh
+No instales herramientas ni cambies permisos masivamente para «probar» el
+módulo. No uses `run_all_scanners.sh` como smoke test: es un flujo intensivo.
+El menú no usa `sudo` automáticamente.
 
-# 4. Prueba
-./run_all_scanners.sh 192.168.1.10
+Para comprobar las correcciones sin escáneres reales:
+
+```bash
+bash CyberSecurity-Framework/tests/run_scanners_menu.sh
+```
+
+Consulta [README.md](README.md) para requisitos, perfiles, salidas y códigos.

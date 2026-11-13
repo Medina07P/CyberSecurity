@@ -1,46 +1,16 @@
 #!/bin/bash
-# ============================================================
-#  NMAP AGGRESSIVE - Escaneo agresivo con scripts avanzados
-#  Uso: ./nmap_aggressive.sh <IP>
-#  Ejemplo: ./nmap_aggressive.sh 192.168.1.10
-# ============================================================
-
-TARGET="$1"
-SCANS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)/scans"
-OUTPUT_DIR="$SCANS_DIR/nmap"
-
-if [[ -z "$TARGET" ]]; then
-    echo "Uso: ./nmap_aggressive.sh <IP>"
-    echo "Ejemplo: ./nmap_aggressive.sh 192.168.1.10"
-    exit 1
-fi
-
-mkdir -p "$OUTPUT_DIR"
-
-# El log es de este run: sin truncar, el error de hace un mes sigue ahí y
-# todas las ejecuciones posteriores avisan sin motivo real.
-: > "$OUTPUT_DIR/errores.log"
-
-echo "🔍 Escaneo agresivo de: $TARGET"
-
-# Escaneo completo con todos los scripts
-nmap -A -p- -T4 --min-rate=1000 \
+# NMAP AGGRESSIVE — escaneo intensivo de todos los puertos y NSE.
+# Uso: ./nmap_aggressive.sh <IP>
+# Ejemplo: ./nmap_aggressive.sh 192.0.2.1
+TARGET="${1:-}"
+SCANS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../../00_Config/lib" && pwd)"
+source "$SCANS_LIB/scanner_runtime.bash"
+[[ -n "$TARGET" ]] || { echo 'Uso: ./nmap_aggressive.sh <IP>'; exit 1; }
+scanner_host "$TARGET" && scanner_require nmap || exit 1
+OUTPUT_DIR=$(scans_dir nmap) || exit 1
+SLUG=$(scans_slug "$TARGET")
+echo "🔍 Escaneo intensivo: $TARGET"
+scanner_run "$OUTPUT_DIR/errores.log" nmap -A -p- -T4 --min-rate=1000 \
     --script=default,banner,discovery,vuln,auth,version \
-    -oA "$OUTPUT_DIR/aggressive_${TARGET}" "$TARGET" 2>>"$OUTPUT_DIR/errores.log"
-
-# Extraer información clave
-if [[ -f "$OUTPUT_DIR/aggressive_${TARGET}.nmap" ]]; then
-    echo "✅ Escaneo completado"
-    echo ""
-    echo "📊 RESUMEN:"
-    echo "────────────────────────────────────────"
-    grep -E "open|OS|Service Info" "$OUTPUT_DIR/aggressive_${TARGET}.nmap"
-    echo ""
-    echo "📁 Resultados: $OUTPUT_DIR/aggressive_${TARGET}.*"
-fi
-
-# El stderr de la herramienta no se descarta: un "0 hallazgos" no debe
-# poder ser en realidad un fallo de ejecucion.
-if [[ -s "$OUTPUT_DIR/errores.log" ]]; then
-    echo "⚠️  Errores registrados en: $OUTPUT_DIR/errores.log"
-fi
+    -oA "$OUTPUT_DIR/aggressive_${SLUG}" "$TARGET" || exit 1
+echo "✅ Escaneo completado. Resultados: $OUTPUT_DIR/aggressive_${SLUG}.*"

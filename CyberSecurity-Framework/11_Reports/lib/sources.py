@@ -11,6 +11,8 @@ Solo biblioteca estándar, como el resto del motor.
 
 import fnmatch
 import importlib
+import json
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -27,6 +29,7 @@ class Source:
     path: Path
     kind: str
     parser: Callable[[Path, Path], ParseResult] | None
+    host: str | None = None
 
 
 PARSERS: dict[str, Callable[[Path, Path], ParseResult]] = {}
@@ -37,12 +40,43 @@ def register(kind: str, fn: Callable[[Path, Path], ParseResult]) -> None:
     PARSERS[kind] = fn
 
 
+@lru_cache(maxsize=1)
+def postexploitation_engine():
+    """Un único validador de 06 para runtime, visor y parser."""
+    path = Path(__file__).resolve().parents[2] / '00_Config/lib/postexploitation_evidence.py'
+    spec = importlib.util.spec_from_file_location('_report_postexploitation', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 _PARSER_MODULES = (
     "nmap", "nuclei", "nikto", "ffuf", "http_inject",
     "sqlmap", "sqli_findings", "rate_limit", "headers", "host_sources",
+    "exploitation",
+    "postexploitation",
 )
 
 _loaded = False
+
+
+def evidence_metadata(path):
+    """None si no hay sidecar; diccionario inválido si el presente no es fiable."""
+    for suffix in ('.attempt.json', '.meta.json'):
+        sidecar = Path(str(path)+suffix)
+        if not sidecar.exists(): continue
+        try:
+            meta = json.loads(sidecar.read_text())
+            if (isinstance(meta, dict) and meta.get('version') == 1
+                    and isinstance(meta.get('host'), str) and meta['host']
+                    and isinstance(meta.get('puerto'), int) and not isinstance(meta['puerto'], bool)
+                    and 1 <= meta['puerto'] <= 65535
+                    and meta.get('estado') in ('EJECUTADO','CONFIRMADO','DENEGADO','CERRADO','FILTRADO','OMITIDO','NO_DETERMINADO')):
+                return meta
+        except (ValueError, OSError, TypeError):
+            pass
+        return {'estado': 'NO_DETERMINADO', 'invalid': True}
+    return None
 
 
 def _load_parsers() -> None:
@@ -78,8 +112,11 @@ _DIR_RULES: list[tuple[str, str, str]] = [
     ("web", "headers_*.txt", "headers"),
     ("web", "technologies_*.txt", "technologies"),
     ("api", "methods.txt", "api"),
+    ("api", "methods_*.tsv", "api"),
     ("ssh", "auth_methods.txt", "ssh"),
+    ("ssh", "auth_methods_*.txt", "ssh"),
     ("database", "anon.txt", "db"),
+    ("database", "anon_*.txt", "db"),
 ]
 
 
@@ -101,6 +138,13 @@ def _classify(path: Path, scans_dir: Path) -> str:
     if name == "errores.log":
         return "errores"
 
+    # Runs de explotación: scans/<tool>/exploitation_*/run.json
+    if name == "run.json" and len(parts) >= 3 and parts[-2].startswith("exploitation_"):
+        return "exploitation"
+    # Runs de post-explotación: scans/<tool>/postexploitation_*/run.json
+    if name == "run.json" and len(parts) >= 3 and parts[-2].startswith("postexploitation_"):
+        return "postexploitation"
+
     for dir_pat, file_pat, kind in _DIR_RULES:
         if directory == dir_pat and fnmatch.fnmatch(name, file_pat):
             return kind
@@ -121,5 +165,97 @@ def discover(scans_dir: Path) -> list[Source]:
             continue
         kind = _classify(path, scans_path)
         parser = PARSERS.get(kind)
-        sources.append(Source(path=path, kind=kind, parser=parser))
+        host = None
+        # Nuevas evidencias de 04: el último intento manda, sin borrar el
+        # resultado histórico conservado. Los ficheros heredados no se atribuyen.
+        meta = evidence_metadata(path)
+        if meta is not None:
+            host = meta.get('host')
+            state = meta['estado']
+            if parser and state in ('NO_DETERMINADO', 'OMITIDO'):
+                def failed(source, root, state=state):
+                    from .model import relpath
+                    return ParseResult(evaluado=False, no_evaluable=[{'fuente': relpath(source, root), 'motivo': 'último intento: '+state}])
+                parser = failed
+        sources.append(Source(path=path, kind=kind, parser=parser, host=host))
+
+    # Selección por identidad completa; un manifiesto sin identidad fiable no
+    # permite presentar éxitos anteriores de esa carpeta como evidencia actual.
+    postexploitation = [s for s in sources if s.kind == "postexploitation"]
+    if postexploitation:
+        grupos: dict[tuple, list[Source]] = {}
+        invalid_directories = set()
+        for s in postexploitation:
+            try:
+                data = json.loads(s.path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError('manifiesto no es un objeto')
+                host, port = postexploitation_engine().validate_target(
+                    data.get('host'), data.get('puerto'))
+                postexploitation_engine().validate_order(data)
+                if not isinstance(data.get('herramienta'), str) or not data['herramienta']:
+                    raise ValueError('sin herramienta')
+                clave = (host, port, data['herramienta'])
+                s.host = host
+            except (OSError, ValueError, TypeError):
+                invalid_directories.add(s.path.parent.parent)
+                clave = (None, s.path)
+            grupos.setdefault(clave, []).append(s)
+
+        conservar: set[Path] = set()
+        for grp in grupos.values():
+            if len(grp) <= 1:
+                conservar.update(s.path for s in grp)
+                continue
+            def _clave_run(s: Source):
+                d = json.loads(s.path.read_text(encoding="utf-8"))
+                return postexploitation_engine()._clave(d)
+            ultimo = max(grp, key=_clave_run)
+            conservar.add(ultimo.path)
+
+        sources = [
+            s for s in sources
+            if s.kind != "postexploitation" or s.path in conservar
+        ]
+        for s in sources:
+            if s.kind == 'postexploitation' and s.path.parent.parent in invalid_directories:
+                def unattributed(source, root):
+                    from .model import relpath
+                    return ParseResult(evaluado=False, no_evaluable=[{
+                        'fuente': relpath(source, root),
+                        'motivo': 'manifiesto sin identidad fiable en esta carpeta; revisar último intento'}])
+                s.parser = unattributed
+
+    # Priorizar el último run por host/herramienta en explotación: los runs
+    # anteriores del mismo destino se omiten (no se borra evidencia).
+    exploitation = [s for s in sources if s.kind == "exploitation"]
+    if len(exploitation) > 1:
+        grupos: dict[tuple, list[Source]] = {}
+        for s in exploitation:
+            try:
+                data = json.loads(s.path.read_text(encoding="utf-8"))
+                clave = (data.get("host", ""), data.get("herramienta", ""))
+            except (OSError, ValueError, TypeError):
+                clave = (None, None)
+            grupos.setdefault(clave, []).append(s)
+
+        conservar: set[Path] = set()
+        for grp in grupos.values():
+            if len(grp) <= 1:
+                conservar.update(s.path for s in grp)
+                continue
+            def _clave_run(s: Source) -> tuple[str, str]:
+                try:
+                    d = json.loads(s.path.read_text(encoding="utf-8"))
+                    return (d.get("fecha") or d.get("started") or "", d.get("run_id", ""))
+                except (OSError, ValueError, TypeError):
+                    return ("", "")
+            ultimo = max(grp, key=_clave_run)
+            conservar.add(ultimo.path)
+
+        sources = [
+            s for s in sources
+            if s.kind != "exploitation" or s.path in conservar
+        ]
+
     return sources

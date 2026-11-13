@@ -1,5 +1,87 @@
 # AGENTS.md
 
+**Próxima sesión, 2026-11-13:** usuario pide continuar con `09_Automation`;
+leer `docs/RETOMAR-09-2026-11-13.md`. No iniciar09 ahora ni asumir diseño
+aprobado. 08 cerrado según bloque siguiente; preservar ledger/logs y pendientes.
+
+**Cierre integral08, 2026-11-13:** Tasks1–8 y correcciones globales aprobadas.
+I1–I4 resueltos en `25912ef`; N1 pre-GO resuelto en `278ec1b`, con revisión
+independiente aprobada y verificación del controlador:296tests/rc0, Bash/AST
+sin incidencias. Ocho regresiones rc0 sobre `25912ef`; último diff solo helper
+y pruebas,296unittest/296runner verdes sobre `278ec1b`. Integridad corrupta
+no evita cleanup autenticado tras reapear escritores,
+recibos independientes `cleanup.json` no reparan ni validan análisis corrupto;
+Scalpel usa imagen posicional (Foremost -i); coordinador entrega INT/TERM parent-only
+por pidfd y espera hoja/cleanup sin deadline; intento offline sin identidad bloquea
+ACTUAL conservadoramente, sin unir identidades. Evidencia/API/estado en
+`.superpowers/sdd/2026-11-11-forensics-integral/final-fix-report.md` y
+`final-fix-logs/`, `n1-fix-report.md` y `n1-fix-review.md`. Cierre de implementación
+y revisión, NO compatibilidad operacional, custodia legal ni rama completa verde.
+M1 Task5/Task7 permanecen DEFERRED, sin recrear históricos ni pulido. Conservar
+workspace/logs, cuatro pendientes ajenos y nota histórica; sin push. No iniciar09
+sin petición del usuario.
+
+**Actualización histórica 08_Forensics, 2026-11-12:** Tasks1–7 aprobadas tras sus fixes,
+base Task8 `d8967b2`; no repetir implementación. Task8 añade verificador/suite
+aislada y documentación; revisiones posteriormente terminadas según cierre
+2026-11-13 anterior. Guías vigentes: `08_Forensics/USE.md`
+bajo el framework y `docs/FORENSE-INTEGRAL-2026-11-11.md`; ledger en
+`.superpowers/sdd/2026-11-11-forensics-integral/progress.md`.
+08 abre menú por fuentes explícitas, sin IP de sesión ni adquisición/instalación/
+montaje por entrar. Diez entradas y métodos originales conservados; defaults
+sensibles cambiaron por aprobación expresa, ver USE. Copias por analizador y
+raíces privadas; verificador solo lectura no relee originales ni certifica
+custodia legal o compatibilidad operacional. Pruebas solo sintéticas/stubs y
+regresiones antiguas solo en copia limpia; nunca evidencia real/flujo99.
+Task5 M1 logs históricos perdidos no recreados y Task7 M1 seis avisos fixture
+siguen diferidos a revisión global, sin pulido fuera alcance. run_tests heredada
+374/11 (SSTI intermitente sin causa determinada), no declarar rama verde.
+Conservar scope/tres pendientes06, sin push ni instalaciones reales.
+
+**Pausa histórica, superada por la reanudación — 2026-11-12 — 08_Forensics:** leer
+`docs/RETOMAR-FORENSE-2026-11-12.md`. Tasks1–3 aprobadas hasta `3d3eeab`,
+97 pruebas independientes rc0; Task4 PCAP/Volatility con cuatro rutas de trabajo
+sin commit ni revisión aprobada al guardar. Subagente confirmó PAUSED, sin procesos
+propios en curso; consultar su reporte antes de reanudar. Faltan Tasks4–8 y revisión global.
+Ledger: `.superpowers/sdd/2026-11-11-forensics-integral/progress.md`.
+No repetir Tasks1–3, no descartar parciales ni los cuatro pendientes ajenos,
+no usar evidencia real ni suites antiguas sobre este checkout; sin push.
+
+**Actualización mantenimiento 07, 2026-11-11:** Task 1 está en `045d2c8`.
+`07` abre un menú de mantenimiento: 1 disponibilidad mediante `command -v`
+(no ejecuta binarios), 2 guía local, 11 listado original de diez entradas y
+0 volver; EOF retorna sin acciones. La presencia en PATH no acredita hardware,
+permisos ni auditoría. `wifi_handshake.sh` imprime guía, no captura ni verifica
+automáticamente. Las diez fuentes originales y los cuatro pendientes ajenos
+se conservan por hash/modo; no se ejecutan hojas, radio, sudo o instalaciones.
+Documentación y regresión entregadas en `7bcc5bc` y descritas en
+`docs/WIRELESS-MANTENIMIENTO-2026-11-11.md`. Ambas tareas tienen revisión de
+especificación y calidad aprobadas; la revisión global aprobó el cierre del
+mantenimiento, entregado y revisado. Evidencia definitiva del controlador:
+`/tmp/opencode/wireless-maint-avl4ag6x/` (cinco suites rc 0 sobre `7bcc5bc`).
+No declarar implementado el plan operacional integral de 07 ni toda la rama
+verde: `run_tests` sigue heredada en rojo (último cierre de 06: 374 pasan,
+11 fallan, incluido SSTI intermitente sin causa determinada). Suites antiguas
+solo en copia limpia con configuración sintética; sin push.
+
+**Actualización 2026-11-11:** la nota de pausa siguiente es histórica. El bloque
+de infraestructura de 06 está en el commit local `37bdd16`; el cierre de
+**mantenimiento** (menú, informes, validación y pruebas aisladas) se documenta
+en `docs/CIERRE-MANTENIMIENTO-06-2026-11-11.md`, con su estado de verificación.
+No confundirlo con integración operacional de las hojas o el flujo completo:
+no se declaran terminados. Los cambios previos de scope.yaml, cleanup,
+port_forward y run_all_post se conservan fuera del commit de mantenimiento.
+No repetir 05 como si estuviera pendiente desde la nota antigua ni iniciar 07
+sin leer los documentos actuales. Sin push; suites antiguas solo en copia
+limpia sin configuración/evidencia real.
+
+**Pausa 2026-11-10:** 03/04 terminados y diez suites pasando en clon limpio.
+Commits locales autorizados después de la pausa, sin push; scope.yaml permanece
+como configuración local fuera de los commits. El permiso api_keys.py se incluye.
+Próximo trabajo: revisión del **módulo 05**, sin retirar capacidades.
+Leer `docs/RETOMAR-2026-11-10.md` al retomar; no ejecutar suites antiguas sobre
+evidencias reales ni comenzar explotación como smoke test.
+
 Red-team / pentest framework: 118 Bash scripts (plus 4 more under `tests/`) plus a few Python helpers, targeted at Kali Linux. `README.md` is the pitch; this file is the working knowledge.
 
 ## Current state (2026-11-06)
@@ -18,11 +100,72 @@ Para cerrar el hallazgo ALTO de aquel informe (20 × `401` y cero `429` en el lo
 
 On 2026-11-06 the deterministic report engine landed (`docs/superpowers/specs/2026-11-05-informes-automatizados-design.md`, state: approved and implemented). `11_Reports/report_engine.py` reads `scans/` and produces `findings.json` plus two reports — `informe_tecnico.md/.html` and `informe_cliente.md/.html` — attributed to the session target. `11_Reports/report_generator.sh` is the friendly wrapper (`Uso: ./report_generator.sh [tipo]`, slots mode). `R` in the manager menu triggers it; the profile (`cliente`/`auditor`) is stored in `11_Reports/.report_profile` (git-ignored). `09_Automation/python/report_generator.py` is now an obsolescence shim that delegates to the engine. The new suite `tests/run_reports.sh` (57 Python asserts plus shell checks for the wrapper, the menu, the documentation and syntax) covers the parser rules, the attribution, the traps (keywords, catch-all, `NO DETERMINADO`) and the doc checks. `docs/MANUAL-GESTOR.md` is the user-facing guide in Spanish.
 
+Ese mismo día se cerró el agujero de `01_OSINT`: `run_all_osint.sh` no declaraba parámetros y llamaba a sus cinco hijos sin argumentos, así que todos imprimían su `Uso:` y él anunciaba «✅ OSINT completado» con `exit 0` sin haber ejecutado nada. Ahora pide `<dominio> [archivo]`, pasa el dominio a emails/WHOIS-DNS/subdominios, deriva el nombre de empresa para redes sociales (y lo anuncia), ejecuta metadatos solo si le das un archivo local, y un hijo que falla se cuenta y hace salir 1 con su stderr en `01_OSINT/osint_errores.log`. Es el sexto `run_all_*` que se autolocaliza. `docs/OSINT-RUNALL-2026-11-06.md` lo documenta con los 14 asserts nuevos.
+
+Y el objetivo de sesión dejó de ser cosa de dos ficheros: `session_set_target` registra lo que fijas también en `scope.yaml` (IP en `targets.ips`; dominio **y** `*.dominio` en `targets.domains`, con `.bak`, validación PyYAML y descarte del temporal si el YAML deja de parsear — el original no se toca —) y en `targets.txt` (`<host>|—|—|Registrado al fijar el objetivo|B`). Idempotente, sin distinguir mayúsculas, y un fallo avisa sin cancelar la sesión. Se arregló de paso que `scope_allows` no coincidiera con una entrada de dominio sin comodín y que devolviera «no determinado» cuando el `scope.yaml` no tenía IPs. Consecuencia asumida: la comprobación de alcance pasa a ser un registro de lo usado, no una barrera. `docs/ORIGEN-AUTOMATICO-2026-11-06.md` y `docs/MANUAL-GESTOR.md` lo explican; la suite subió a 386 asserts por entonces, incluida una guarda de `md5sum` que impide que los tests toquen el `scope.yaml` y el `targets.txt` reales.
+
+Las claves de API dejan de ser un fichero por herramienta que nadie recuerda rellenar. `00_Config/scripts/api_keys.py` mantiene un registro único (`00_Config/credentials/api-keys.yaml`, `600` en directorio `700`, ignorado por git) y escribe desde ahí los seis destinos: `~/.theHarvester/api-keys.yaml`, `~/.shodan/api_key`, `~/.h8mail_config.ini`, `~/.config/amass/datasources.yaml` (amass v5.1.1 no lee `config.ini`), `~/.recon-ng/keys.db` y `~/.spiderfoot/spiderfoot.db`. Órdenes: `estado [--json|--faltan H]`, `poner H CAMPO VALOR|-`, `pedir H [--campo C]`, `sincronizar [H]` e `importar H`; el gestor las reúne en la opción `K`. Reglas asumidas: el registro manda campo a campo pero un valor no vacío que solo esté en el fichero de la herramienta se conserva y se reporta (nunca se borra por sorpresa; `diverge` lo delata); `-` sí borra en ambos sitios; ninguna salida imprime el valor, solo presencia y longitud; `sincronizar` no crea ficheros vacíos; y una base de datos ausente es `sin inicializar`, nunca un fichero inventado. La suite nueva es `tests/run_keys.sh` (141 asserts, con `HOME`/`KEYS_FILE`/`KEYS_HARVESTER_*` aislados). `docs/API-KEYS-2026-11-06.md` lo documenta.
+
 ## Where it runs
+
+Actualización Enumeración 2026-11-10: `04` tiene menú específico por servicio,
+URL explícita, comprobación local, visor por objetivo y lista completa con las
+16 entradas originales; no se retiraron métodos HTTP, accesos, usuarios,
+fuzzing, consultas Redis ni generadores. Bibliotecas `enumeration_*` bajo
+`00_Config/lib/` centralizan validación, clasificación y evidencia. Nuevos
+resultados por host/puerto y hash web con `.meta.json` y `.attempt.json`;
+el último intento fallido no se presenta como evidencia actual exitosa.
+Los informes admiten nuevas fuentes SSH/MySQL/API y rechazan sidecars
+inválidos sin revivir resultados históricos. HTTP HEAD usa `--head`; ffuf
+se limpia al recibir SIGTERM. Postgres ignora PGHOSTADDR heredado. Nueva
+suite segura `tests/run_enumeration.sh` (39 métodos); pruebas antiguas solo
+en clon limpio. Guía y límites: `04_Enumeration/README.md` y
+`docs/ENUMERACION-2026-11-09.md`. No lanzar el flujo completo como smoke test.
+
+Actualización Escáneres 2026-11-09: `03` abre un menú específico (comprobación
+local sin red, básico de 100 puertos TCP sin NSE, URL explícita Nikto/Nuclei,
+Burp manual y acceso avanzado a las diez entradas). La biblioteca
+`00_Config/lib/scanner_runtime.bash` valida entradas y conserva el historial
+de `errores.log`; las hojas propagan fallos y `run_all_scanners.sh` cuenta
+ejecutadas/fallidas/omitidas. Nmap de red acepta IPv4/dominio, no IPv6 literal.
+Smart completo sigue siendo el perfil CLI por defecto; `basico` es el segundo
+argumento opcional. Nikto rechaza comas literales y exige evidencia fresca de
+evaluación completa, no solo rc=0. RustScan publica stdout solo tras éxito;
+Masscan guarda JSON; Nuclei usa HTTP a 10 peticiones/s, sin Interactsh ni
+comprobación de actualización, y conserva texto `.txt` legible por informes.
+Nueva suite segura: `tests/run_scanners_menu.sh` (27 métodos unittest, fuentes
+copiadas a temporal y PATH cerrado). Detalles: `docs/SCANNERS-2026-11-09.md` y
+`03_Scanners/README.md`. Las suites antiguas siguen requiriendo clon limpio.
+
+Actualización OSINT 2026-11-09: el contrato anterior de run_all descrito arriba
+queda sustituido por `<dominio> [archivo] [empresa]`. Las seis entradas delegan
+en `00_Config/lib/osint/`, comparten fuentes y producen resultados con evidencia
+y cobertura, no URLs construidas. APIs directas opcionales: Brave/GitHub/Hunter,
+lectura de claves sin sincronización. theHarvester CLI se anuncia omitido porque
+sus reintentos y errores opacos no permiten garantizar límites. Subdominios admite
+`<dominio> [directorio_salida] [diccionario] [resolver]`: diccionario local activa
+DNS acotado con `DNS_SI`, nunca implícito desde run_all; sin AXFR ni credenciales.
+Salidas por ejecución en árboles ignorados del módulo; códigos 0/1/2 y detalles
+en `01_OSINT/README.md`. Nueva suite aislada: `tests/run_osint.sh`.
+
+Actualización Configuración 2026-11-09: `00 → api_keys.py` abre `keys_menu`, el
+mismo menú guiado de K, retornando al módulo; no invoca la CLI vacía ni cambia
+su contrato. `run_all_config.sh` se autolocaliza y usa cuatro pasos explícitos de
+solo lectura (validar, verificar, parse_targets --summary, api_keys estado), sin
+asistente ni sincronización de claves. Propaga fallos con exit 1 y stderr visible.
+Los validadores de estructura devuelven 1 al faltar archivos; parse_targets
+devuelve 1 ante errores de lectura/escritura, sin traceback. Nueva suite aislada
+`tests/run_config_menu.sh`: navegación real y claves/objetivos sintéticos.
+
+**Precaución con las suites antiguas:** `tests/run_tests.sh` elimina carpetas y
+logs compartidos (`scans/burp`, `scans/sqlmap`, logs de nmap/nikto/masscan y
+fixtures de http_inject). Ejecuta la regresión completa en worktree limpio o
+clon local temporal, nunca sobre un checkout con evidencias reales. La
+verificación postmerge de OSINT se hizo en clon limpio del commit integrado.
 
 - On Kali it runs for real (this clone, `/home/kali/Documentos/CyberSecurity`). Tooling gaps as of 2026-10-31: `rustscan`, `volatility3`, `foremost` and `nmap-vulners` are not installed; `masscan` needs root; no WiFi/Bluetooth adapter.
 - The Windows checkout cannot run it. Scripts need Linux tooling (`nmap`, `sudo masscan`, `dig`, `md5sum`, `apt`) that is not installed there. WSL has no distro; Git Bash (`C:\Program Files\Git\bin\bash.exe`) only enables syntax checks.
-- Verification available without running a tool: `bash -n <file>` (all 122 `.sh` — 118 outside `tests/` plus the 4 under it — and the 6 `.bash` currently pass), and `python -m py_compile` for the `.py` files (all 8 pass). The four suites under `tests/` are the real check for the manager. Do not claim a scan or audit result you did not produce.
+- Verification available without running a tool: `bash -n <file>` (all 122 `.sh` — 118 outside `tests/` plus the 4 under it — and the 6 `.bash` currently pass), and `python -m py_compile` for the `.py` files (all 8 pass). The six suites under `tests/` (`run_tests`, `run_e2e`, `run_smoke`, `run_reports`, `run_wizard`, `run_keys`) are the real check for the manager; none of them is wired into a runner, they are run by hand. Do not claim a scan or audit result you did not produce.
 - `bash -n` exits 0 on an **unterminated heredoc** — it only prints a warning to stderr. Two scripts (`01_OSINT/scripts/social_media_search.sh`, `05_Exploitation/web/reverse_shell_php.sh`) were truncated that way until 2026-10-30. When verifying, capture stderr, not just the exit code.
 - Keep `.sh`/`.py` LF — `core.autocrlf=true` is set in this clone.
 
@@ -32,7 +175,7 @@ On 2026-11-06 the deterministic report engine landed (`docs/superpowers/specs/20
 - The root holds only documentation and generated data: `README.md`, `.gitignore`, `AGENTS.md`, the generated `scans/`, and `CyberSecurity-Framework/`. The 31 bootstrap files that used to live here were quarantined on 2026-10-30 (`MANIFEST.md` in `%TEMP%\opencode\cybersec-root-cleanup-20261030` explains each one and how to restore it). Two of them were ported rather than dropped: the old `run_all_enum.sh`'s `timeout`/closed-port handling now lives in `04_Enumeration/run_all_enum.sh`, and `readme03.sh` became `03_Scanners/README.md`. `project_manager.sh` and `workflow_orchestrator.py` were dead: nothing referenced them, both hardcoded `~/CyberSecurity-Framework`, and `cyber_framework.sh` is the only entry point (it does not manage projects — the `00_Config/projects/` + `status.json` concept had no consumer anywhere).
 - The framework's own bootstrap generators were quarantined in a second batch (9 files removed; 7 are recoverable in the `framework-generators/` subfolder of the same quarantine — two `creacion.sh` copies were lost to a filename collision, see that folder's `MANIFEST.md`): `run.sh`, `converter.sh`, `05_Exploitation/creacion.sh`, `07_Wireless/creacion.sh`, `12_Knowledge_Base/creacion.sh`, `04_Enumeration/corregir.sh`, `10_Evidence/setup_10_evidence.sh`, `11_Reports/setup_11_reports.sh`, `13_Labs/setup_13_labs.sh`. Every file they wrote already existed. `run.sh` regenerated four `run_all_*.sh`; `converter.sh` rewrote every script in place; `corregir.sh` would have reintroduced the `scans/` path bug fixed in `show_results.sh`.
 - Generated data, not source: `scans/` at the repo root (scan results) and, anchored to each module, `01_OSINT/{domains,emails,metadata,social_media,subdomains}`, `02_Recon/{dns,fingerprinting,host_discovery,screenshots}`, `06_PostExploitation/{loot,persistence}`, `07_Wireless/captures`, `08_Forensics/{analysis,recovered}`, `10_Evidence/{screenshots,pcaps,logs,proofs,findings,credentials}` and `11_Reports/{executive,technical,final_report}`; plus `captures/memory/` (memory dumps) and `02_Recon/recon_<target>_<timestamp>/` inside the framework. Do not delete or "tidy" them.
-- Two directories inside the framework are not tools: `00_Config/lib/` (the manager's library, `.bash` extension so it never shows up as a runnable script) and `tests/` (four test scripts: the library, the end-to-end run, the smoke menu, and the config wizard). `run_all_config.sh` only iterates `scripts/*`, so it never executes the library, and it skips `config_wizard.sh` because that one waits for keyboard input.
+- Two directories inside the framework are not tools: `00_Config/lib/` (the manager's library, `.bash` extension so it never shows up as a runnable script) and `tests/` (six test scripts: the library, the end-to-end run, the smoke menu, the config wizard, the report engine and the API-key registry, plus `tests/fixtures/`). `run_all_config.sh` only iterates `scripts/*`, so it never executes the library, and it skips `config_wizard.sh` because that one waits for keyboard input.
 - Git: branch `develop`, remote `https://github.com/Medina07P/CyberSecurity.git`. Since 2026-10-30 the framework is versioned in an initial import split by module. The root `.gitignore` excludes every generated tree (`scans/`, `loot/`, `captures/`, `dns/`, `fingerprinting/`, `02_Recon/recon_*/`, evidence, generated reports and payloads): those hold real IPs, banners and credential lists from past sessions and must not reach a public remote. `00_Config/.gitignore` covers credentials and the manager's `.session`. When you add a new output directory, add it there too.
 
 ## Generator wrappers are not the tool
@@ -59,7 +202,7 @@ Edit the body between the `cat` line and the closing `EOF`. Editing the wrapper 
 | File | Contract |
 |---|---|
 | `params.bash` | Reads each script's own `Uso:` line: `params_mode` → `none` / `manual` / `slots`; `params_slots` → `posicion / nombre / obligatorio / tipo`; `params_example_values` → defaults from `Ejemplo:` only when its token count matches the slot count |
-| `session.bash` | `session_target` / `session_set_target` / `validate_target`, `targets_from_config`, `scope_allows` (best effort, warns rather than blocks). Persists in `00_Config/.session`, git-ignored |
+| `session.bash` | `session_target` / `session_set_target` / `validate_target`, `targets_from_config`, `scope_allows` (best effort, warns rather than blocks), `scope_add_target` / `targets_add_entry`. Persists in `00_Config/.session` and registers the target in `scope.yaml` + `targets.txt`; all three paths are overridable (`SESSION_FILE`, `SESSION_SCOPE_FILE`, `SESSION_TARGETS_FILE`) so tests never touch the real ones |
 | `phase_status.bash` | `phase_state` → `done` / `pending` / `na`, deduced from evidence on disk (files under `scans/`, `02_Recon/recon_*`, …) — no state file |
 | `prompt.bash` | `prompt_for_slots` → **values on stdout, all UI on stderr**. That split is the fix for the original bug, where the prompt text was captured as the argument |
 | `dangerous.txt` | One framework-relative path per line; those ask for confirmation and do not take `Ejemplo:` defaults |
@@ -69,12 +212,12 @@ Two rules worth keeping:
 - Any function that returns a value to a caller must print **only** the value to stdout. This is the bug that made the manager unusable: it printed the prompt to stdout and the caller captured the whole block.
 - A `Uso:` line with `--flags` or a bare first token (`monitor` in `interface_manager.sh`) is passed through in **manual mode**: the manager shows the usage and you type the whole argument line. It never guesses positions for those.
 
-Verify with `tests/run_tests.sh` (library and scripts, 327 asserts), `tests/run_e2e.sh` (a script really receives the typed value, 11 asserts), `tests/run_smoke.sh` (menu navigation with piped input) and `tests/run_wizard.sh` (58 asserts). All run on Windows/Git Bash without a terminal, and they pass in a clean clone (no `scans/` present) because the phase tests build their own fixture.
+Verify with `tests/run_tests.sh` (library and scripts, 388 asserts), `tests/run_e2e.sh` (a script really receives the typed value, 11 asserts), `tests/run_smoke.sh` (menu navigation with piped input, including `K`), `tests/run_wizard.sh` (58 asserts), `tests/run_reports.sh` (57 Python asserts plus shell checks) and `tests/run_keys.sh` (141 asserts, isolated by `HOME`/`KEYS_FILE`/`KEYS_HARVESTER_DIRS`/`KEYS_HARVESTER_TEMPLATE`). All run on Windows/Git Bash without a terminal, and they pass in a clean clone (no `scans/` present) because the phase tests build their own fixture.
 
 ## Running a script
 
 - Scripts self-locate: no result path depends on the `cwd`. Scan results resolve the repo root from `${BASH_SOURCE[0]}` and go to `<repo>/scans/<tool>/`, so `cd 03_Scanners && ./run_all_scanners.sh <TARGET>`, `bash 03_Scanners/run_all_scanners.sh <TARGET>` and a launch from `/tmp` all land in the same place. Module-owned artifacts (loot, captures, emails, evidence, reports) are anchored to their module with `MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"`, never to `$PWD`.
-- Invoking siblings as `./hermano/...` is a different story: that **does** depend on the `cwd`, so a `run_all_*.sh` that does it must `cd "$(dirname "${BASH_SOURCE[0]}")"` first. As of 2026-10-31 five do: `run_all_recon.sh`, `run_all_scanners.sh`, `run_all_enum.sh`, `run_all_evidence.sh`, `run_all_reports.sh` (plus `show_results.sh`). The other ten (`00_Config`, `01_OSINT`, `05_Exploitation` ×2, `06`, `07`, `08`, `09`, `12`, `13`) still assume they are started from their own directory — the manager always does that, so it has not bitten yet.
+- Invoking siblings as `./hermano/...` is a different story: that **does** depend on the `cwd`, so a `run_all_*.sh` that does it must `cd "$(dirname "${BASH_SOURCE[0]}")"` first. As of 2026-11-06 six do: `run_all_recon.sh`, `run_all_scanners.sh`, `run_all_enum.sh`, `run_all_evidence.sh`, `run_all_reports.sh`, `run_all_osint.sh` (plus `show_results.sh`). The other nine (`00_Config`, `05_Exploitation` ×2, `06`, `07`, `08`, `09`, `12`, `13`) still assume they are started from their own directory — the manager always does that, so it has not bitten yet.
 - Contract: `run_all_*` take one positional target; leaf scripts add port/URL (`./enum_web.sh <IP> [PUERTO]`). Missing args print a `Uso:`/`Ejemplo:` block and `exit 1`.
 - `cyber_framework.sh` detects the required parameter from the filename and the `Uso:`/`Ejemplo:` lines, so those lines are functional, not decoration.
 
