@@ -1,8 +1,9 @@
 """Additional controller-only diagnostics, NOT a descendant isolation barrier.
 
 Never inspect/hash protected data to prove it unchanged. Fixtures construct
-synthetic configuration. Runner is BLOCKED pending an inherited OS barrier;
-this helper must not be used as authority to resume tests or launch probes.
+synthetic configuration. Host runner stays BLOCKED. Only the trusted inside
+entrypoint may relax local Popen diagnostics after boundary probes; this helper
+is never authority to resume tests, launch host probes or certify containment.
 """
 import os
 from contextvars import ContextVar
@@ -48,10 +49,16 @@ def check_event(root, event, args):
         if write or config_data or set(parts) & forbidden or relative.name.startswith('.'):
             raise PermissionError('Automation tests must not open checkout data: ' + str(relative))
     elif event == 'subprocess.Popen':
-        # Neither basename nor temporary-path prefix proves identity. No
-        # interpreter/backend exemptions while the OS barrier is unresolved.
-        # This remains local to this interpreter, NOT a process-tree policy.
-        raise PermissionError('BLOCKED: subprocess requires an approved inherited OS barrier')
+        # Local diagnostics only: no env/token/path-prefix/backend exemption.
+        # Never import an entrypoint here or launch anything to validate it.
+        # Only the already-running fixed trusted entrypoint, after its probes,
+        # can relax this redundant local Popen diagnostic. The OS policy remains
+        # inherited and cannot be enabled/disabled through this helper.
+        controller = sys.modules.get('__main__')
+        if (getattr(controller, '__file__', None) !=
+                '/source/CyberSecurity-Framework/tests/automation_sandbox_inside.py' or
+                not getattr(controller, 'validated_diagnostic_context', lambda: False)()):
+            raise PermissionError('BLOCKED: subprocess requires an approved inherited OS barrier')
     elif event in ('os.remove', 'os.rmdir', 'os.mkdir', 'os.chmod', 'os.rename'):
         if event == 'os.rename':
             paths = ((args[0], args[2]), (args[1], args[3]))

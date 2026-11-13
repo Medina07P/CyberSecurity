@@ -13,6 +13,7 @@ from unittest import mock
 from automation_sandbox_prepare import IsolationBlocked, PreparedRun, RuntimeFile
 import automation_sandbox_policy as policy
 import automation_sandbox_launch as launcher
+import automation_sandbox_inside as inside
 from automation_sandbox_inside import inside_main
 
 
@@ -140,6 +141,7 @@ class SandboxPolicyTests(unittest.TestCase):
                                                          return_value=11))
                     stack.enter_context(mock.patch.object(launcher, '_new_log', return_value=12))
                     stack.enter_context(mock.patch.object(launcher, '_new_json'))
+                    stack.enter_context(mock.patch.object(launcher, '_probe_inputs'))
                     stage = stack.enter_context(mock.patch.object(launcher, 'prepare',
                                                                  return_value=prepared()))
                     validate = stack.enter_context(mock.patch.object(launcher, '_validate_staging'))
@@ -212,7 +214,9 @@ class SandboxPolicyTests(unittest.TestCase):
         for args in (['bash'], ['--suite', 'id'], ['--unsafe'], ['--suite', '--races']):
             with self.assertRaises(IsolationBlocked):
                 launcher._selector(args)
-        self.assertEqual(inside_main(['--suite']), 2)
+        with mock.patch.object(inside, '_context', side_effect=ValueError('not inside')), \
+                mock.patch.object(inside, 'write_json'):
+            self.assertEqual(inside_main(['--suite']), 2)
 
     def test_memfd_seals_and_limits_are_mandatory_in_source(self):
         text = Path(launcher.__file__).read_text()
