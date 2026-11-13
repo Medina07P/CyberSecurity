@@ -73,6 +73,7 @@
 !09_Automation/
 09_Automation/**
 !09_Automation/README.md
+!09_Automation/USE.md
 !09_Automation/bash/
 09_Automation/bash/**
 !09_Automation/bash/auto_enum.sh

@@ -2,6 +2,9 @@
 
 Guía de uso de `cyber_framework.sh`, el punto de entrada interactivo del framework de auditoría de seguridad.
 
+Inventario de [todas las opciones, módulos 00–13 y entradas originales](MENU-OPCIONES.md):
+propósito, entradas, efectos y límites; un archivo presente no acredita integración operacional.
+
 ---
 
 ## Requisitos e instalación

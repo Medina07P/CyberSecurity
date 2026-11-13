@@ -98,6 +98,8 @@ class DockerContracts(unittest.TestCase):
                     '11_Reports/report_engine.py',
                     '09_Automation/workflows/quick_scan.yaml',
                     '09_Automation/workflows/full_audit.yaml')
+        self.assertIn('09_Automation/USE.md', exact)
+        self.assertFalse(included('09_Automation/USE-private.md', rules))
         for path in required:
             self.assertIn(path, exact)
         forbidden = ['00_Config/scope.yaml', '00_Config/targets.txt',

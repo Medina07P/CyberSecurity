@@ -1,28 +1,20 @@
-# 🤖 09_Automation - Automatización
+# 09_Automation — planes explícitos
 
-Scripts y workflows para automatizar todas las fases del framework.
+Entrada preview-first para acciones de catálogo cerrado, no automatización de
+todas las fases ni sustituto de autorización. Entrar en 09 abre un menú sin
+ejecutar herramientas ni heredar el objetivo de sesión.
 
-## 📁 Estructura
+- [Uso, permisos y matriz de conservación](USE.md).
+- [Todas las opciones y herramientas 00–13](../../docs/MENU-OPCIONES.md).
+- [Estado y verificación sintética](../../docs/AUTOMATION-2026-11-13.md).
+- [Contrato Docker estático](docker/README.md): no es un sandbox.
 
-| Directorio | Descripción |
-|-----------|-------------|
-| `bash/` | Scripts Bash para automatización |
-| `python/` | Scripts Python para tareas complejas |
-| `powershell/` | Scripts PowerShell para Windows |
-| `docker/` | Contenedores para entornos aislados |
-| `workflows/` | Definiciones de flujos de trabajo |
-
-## 🚀 Uso Rápido
+Desde el directorio del framework, solo preview:
 
 ```bash
-# Auditoría completa con Bash
-./bash/auto_recon.sh 192.168.1.10
+python3 -I 09_Automation/python/orchestrator.py --target 192.0.2.1
+```
 
-# Orquestador Python
-python3 python/orchestrator.py --target 192.168.1.10 --full
-
-# Generar reporte
-python3 python/report_generator.py --input scans/ --output report.html
-
-# Docker
-docker-compose up -d
+La ejecución exige permisos separados y dependencias presentes; leer USE antes
+de añadir flags. PowerShell no está probado en Windows y Docker no se ha
+construido ni ejecutado. Archivos conservados no acreditan integración operacional.

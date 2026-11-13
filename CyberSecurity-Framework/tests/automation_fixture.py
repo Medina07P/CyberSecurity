@@ -51,6 +51,7 @@ SOURCE_FILES += ('00_Config/lib/automation/cli.py',
                  '09_Automation/docker/Dockerfile',
                  '09_Automation/docker/docker-compose.yml',
                  '09_Automation/README.md')
+SOURCE_FILES += ('09_Automation/USE.md',)
 
 
 class AutomationFixture:
