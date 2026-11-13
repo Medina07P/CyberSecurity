@@ -1,7 +1,7 @@
 # Módulo 10 — revisión integral de evidencias
 
-Fecha: 2026-11-13. Estado: revisión independiente completada; pendiente de
-aprobación del usuario.
+Fecha: 2026-11-13. Estado: aprobado por el usuario (`Aprobado`, tras presentar
+este documento); revisión independiente de planificabilidad completada.
 
 Revisión de planificabilidad: sesión `ses_e29e50f1cffeIzQaj5CtEy6No3`;
 resultado `nothing important left`. No es aprobación del usuario ni revisión
@@ -343,8 +343,9 @@ worktree/logs como limpieza automática.
 
 ## 11. Decisiones propuestas por el agente y pasos siguientes
 
-El usuario eligió el enfoque, no ha aprobado aún los contratos detallados.
-Son propuestas del agente: registros nuevos por UUID/SHA-256, legacy de solo
+El usuario aprobó este diseño después de elegir el enfoque 2. Las decisiones
+inicialmente propuestas por el agente y ahora aprobadas son: registros nuevos por
+UUID/SHA-256, legacy de solo
 lectura, exportación bloqueada ante evidencia no verificable, selección activa
 explícita (cambio de contrato de TARGET), límites de tráfico, perfiles Nmap,
 auxiliar Python estándar y alcance mínimo del indicador de fase.
