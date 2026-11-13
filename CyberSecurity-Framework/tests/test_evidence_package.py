@@ -1,5 +1,6 @@
 """Synthetic exports: catch live-source tar, replacement and incomplete manifests."""
 import hashlib
+import gzip
 from concurrent.futures import ThreadPoolExecutor
 import importlib
 import io
@@ -376,5 +377,49 @@ class PackageTests(unittest.TestCase):
         for i, content in enumerate((raw[:-8], raw[:-8] + bytes([raw[-8] ^ 1]) + raw[-7:])):
             bad = self.root / f'trailer-{i}.tgz'
             bad.write_bytes(content)
+            with self.subTest(case=i), self.assertRaises(self.error):
+                package.check_archive(bad)
+
+    def test_checker_rejects_hidden_tar_after_end_in_same_or_concatenated_gzip(self):
+        self.add()
+        package = self.package()
+        archive = package.create(self.module)
+        package.check_archive(archive)  # A normal package remains valid.
+        raw = gzip.decompress(archive.read_bytes())
+        extra = io.BytesIO()
+        with tarfile.open(fileobj=extra, mode='w') as tar:
+            member = tarfile.TarInfo('undeclared')
+            member.size = 6
+            tar.addfile(member, io.BytesIO(b'hidden'))
+        # Remove record padding, retaining the two zero end blocks. In the
+        # compact variant the second tar is already in tarfile's read buffer.
+        with tarfile.open(archive) as tar:
+            last = tar.getmembers()[-1]
+            end = last.offset_data + ((last.size + 511) // 512) * 512
+        for layout, base in (('compact-prefetched', raw[:end + 1024]), ('record-padded', raw)):
+            for compression, content in (
+                    ('same-gzip', gzip.compress(base + extra.getvalue())),
+                    ('concatenated-gzip', gzip.compress(base) + gzip.compress(extra.getvalue()))):
+                bad = self.root / f'{layout}-{compression}.tgz'
+                bad.write_bytes(content)
+                with self.subTest(layout=layout, compression=compression), self.assertRaises(self.error):
+                    package.check_archive(bad)
+
+    def test_checker_accepts_only_complete_zero_padding_after_declared_tar(self):
+        self.add()
+        package = self.package()
+        archive = package.create(self.module)
+        raw = gzip.decompress(archive.read_bytes())
+        with tarfile.open(archive) as tar:
+            last = tar.getmembers()[-1]
+            end = last.offset_data + ((last.size + 511) // 512) * 512
+        compact = raw[:end] + bytes(1024)
+        good = self.root / 'compact-valid.tgz'
+        good.write_bytes(gzip.compress(compact))
+        package.check_archive(good)
+        for i, tail in enumerate((bytes(512), bytes(1025), bytes(1024) + b'X',
+                                   bytes(1024 + 1024 * 1024) + b'X' + bytes(511))):
+            bad = self.root / f'padding-{i}.tgz'
+            bad.write_bytes(gzip.compress(raw[:end] + tail))
             with self.subTest(case=i), self.assertRaises(self.error):
                 package.check_archive(bad)
