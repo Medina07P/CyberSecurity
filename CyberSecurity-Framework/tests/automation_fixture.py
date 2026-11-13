@@ -37,6 +37,19 @@ SOURCE_FILES += ('09_Automation/python/report_generator.py',
         'parsers/nuclei', 'parsers/postexploitation', 'parsers/rate_limit',
         'parsers/sqli_findings', 'parsers/sqlmap'))
 
+SOURCE_FILES += ('00_Config/lib/automation/cli.py',
+                 '00_Config/lib/automation_menu.bash', 'cyber_framework.sh',
+                 '09_Automation/python/orchestrator.py',
+                 '09_Automation/python/auto_audit.py',
+                 '09_Automation/bash/auto_recon.sh',
+                 '09_Automation/bash/auto_enum.sh',
+                 '09_Automation/bash/auto_exploit.sh',
+                 '09_Automation/run_all_automation.sh',
+                 '09_Automation/powershell/auto_enum.ps1',
+                 '09_Automation/docker/Dockerfile',
+                 '09_Automation/docker/docker-compose.yml',
+                 '09_Automation/README.md')
+
 
 class AutomationFixture:
     def __init__(self):
