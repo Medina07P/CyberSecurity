@@ -73,6 +73,30 @@ def _context():
     return data
 
 
+def _fd_observation():
+    """Observe without closing inherited fds or reading any descriptor contents.
+
+    Fixed CPython listdir(path) opens one directory fd while enumerating. With
+    exactly stdio live it must be fd3, and must be EBADF after listdir returns.
+    Record EVERY enumerated number, live fd and EBADF; do not silently discard
+    unexpected disappearing descriptors or exempt a live fd3. No other own fd
+    is open here. This also detects arbitrarily high inherited fd numbers.
+    """
+    observed = sorted(int(name) for name in os.listdir('/proc/self/fd'))
+    live, closed = [], []
+    for number in observed:
+        try:
+            os.fstat(number)
+        except OSError as exc:
+            if exc.errno != errno.EBADF:
+                raise
+            closed.append(number)
+        else:
+            live.append(number)
+    return {'observed': observed, 'live': live, 'closed_transient': closed,
+            'valid': observed == [0, 1, 2, 3] and live == [0, 1, 2] and closed == [3]}
+
+
 def _observe(role):
     context = _context()
     inside = Path('/work/inside-canary').read_text() == context['run_id']
@@ -98,18 +122,11 @@ def _observe(role):
         else:
             descriptor.close()
             raise ValueError('Socket unexpectedly created; closed without traffic')
-    fds = []
-    for name in os.listdir('/proc/self/fd'):
-        try:
-            os.fstat(int(name))
-        except OSError as exc:
-            if exc.errno != errno.EBADF:
-                raise
-        else:
-            fds.append(int(name))
+    fd_observation = _fd_observation()
     return {'role': role, 'inside_canary_read': inside,
             'outside_canary_read': outside, 'outside_errno': outside_errno,
-            'socket_errno': errors, 'fds': sorted(fds), 'namespaces': namespaces(),
+            'socket_errno': errors, 'fds': fd_observation['live'],
+            'fd_observation': fd_observation, 'namespaces': namespaces(),
             'external_stub_visible': Path(context['external_stub']).exists(),
             'backend_visible': any(Path(p).exists() for p in
                                    ('/usr/bin/nmap', '/bin/nmap', '/usr/bin/curl',
@@ -187,19 +204,30 @@ def _cancel(deadline):
 
 def run_probes(run_id: str) -> dict[str, object]:
     """Corroborate the inherited boundary; no host probes or legacy imports."""
+    # Observe the actual entry controller BEFORE any Popen/close_fds. Child
+    # sanitization must never stand in for this check or hide its findings.
+    entry_fds = _fd_observation()
     context = _context()
     if run_id != context['run_id']:
         raise ValueError('Run identity mismatch')
+    current = namespaces()
+    checks = [{'id': 'entry-fds', 'result': 'PASS' if entry_fds['valid'] else 'FAIL',
+               'reason': 'exact entry stdio plus closed listdir fd3 transient'}]
+    if not entry_fds['valid']:
+        # Persisted by inside_main even on failure; never sanitize or spawn in
+        # order to make the failed entry observation look clean.
+        return {'version': 1, 'run_id': run_id, 'state': 'FAIL', 'checks': checks,
+                'context': context, 'namespaces': current, 'entry_fds': entry_fds,
+                'descendants': [], 'cancel': None}
     deadline = time.monotonic() + 9.5
     descendants = _capture(_python('--probe-child'), max(0.001, deadline - time.monotonic()))
     descendants.append(_capture(_bash('--probe-bash'), max(0.001, deadline - time.monotonic())))
-    current = namespaces()
-    checks = []
     for result in descendants:
         ok = (result['inside_canary_read'] is True and
               result['outside_canary_read'] is False and result['outside_errno'] == errno.ENOENT and
               result['socket_errno'] == [errno.EPERM, errno.EPERM] and
-              result['fds'] == [0, 1, 2] and result['namespaces'] == current and
+              result['fds'] == [0, 1, 2] and result['fd_observation']['valid'] is True and
+              result['namespaces'] == current and
               not result['external_stub_visible'] and not result['backend_visible'])
         checks.append({'id': result['role'], 'result': 'PASS' if ok else 'FAIL',
                        'reason': 'synthetic inherited boundary observations'})
@@ -209,7 +237,7 @@ def run_probes(run_id: str) -> dict[str, object]:
                    'reason': 'pidfd direct child signalled, synthetic descendant reaped'})
     return {'version': 1, 'run_id': run_id,
             'state': 'PASS' if all(c['result'] == 'PASS' for c in checks) else 'FAIL',
-            'checks': checks, 'context': context, 'namespaces': current,
+            'checks': checks, 'context': context, 'namespaces': current, 'entry_fds': entry_fds,
             'descendants': descendants, 'cancel': cancel}
 
 

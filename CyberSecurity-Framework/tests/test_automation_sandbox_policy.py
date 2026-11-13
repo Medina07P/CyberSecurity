@@ -47,6 +47,23 @@ def prepared():
 
 
 class SandboxPolicyTests(unittest.TestCase):
+    def test_isolated_script_bootstrap_precedes_all_local_imports(self):
+        # Inspect the actual -I entry script as data; never start a host Python.
+        tree = ast.parse(Path(launcher.__file__).read_text())
+        bootstrap = next(n for n in tree.body if isinstance(n, ast.Expr)
+                         and isinstance(n.value, ast.Call)
+                         and ast.unparse(n.value.func) == 'sys.path.insert')
+        self.assertEqual(ast.unparse(bootstrap),
+                         'sys.path.insert(0, str(Path(__file__).resolve(strict=True).parent))')
+        local = [n for n in tree.body if isinstance(n, ast.ImportFrom)
+                 and n.module.startswith('automation_sandbox_')]
+        self.assertEqual({n.module for n in local},
+                         {'automation_sandbox_prepare', 'automation_sandbox_policy'})
+        self.assertTrue(all(bootstrap.lineno < n.lineno for n in local))
+        text = Path(launcher.__file__).read_text()
+        self.assertNotIn('site.addsitedir', text)
+        self.assertNotIn('PYTHONPATH', text)
+
     def test_no_host_mounts(self):
         run = prepared()
         argv = policy.bubblewrap_argv(run, 9)
