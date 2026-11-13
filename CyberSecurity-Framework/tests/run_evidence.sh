@@ -1,5 +1,6 @@
 #!/bin/bash
-# Suite aislada: copia allowlist, configuración sintética y PATH cerrado.
+# Suite aislada: storage/inventory/package desde allowlist, sin datos reales.
+# Incluye exportación sintética, configuración privada y PATH cerrado.
 TEST_DIR="$(cd -- "${BASH_SOURCE[0]%/*}" && pwd)" || exit 1
 python3 -B - "$TEST_DIR" <<'PY'
 import pathlib

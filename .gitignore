@@ -88,6 +88,7 @@ CyberSecurity-Framework/11_Reports/final_report/*
 CyberSecurity-Framework/11_Reports/executive/*.md
 CyberSecurity-Framework/11_Reports/technical/*.md
 CyberSecurity-Framework/11_Reports/evidence/*.tar.gz
+CyberSecurity-Framework/11_Reports/evidence/.export-*/
 CyberSecurity-Framework/11_Reports/report_*.json
 
 # Payloads generados (la muestra php_shell.php se conserva)
