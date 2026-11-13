@@ -1,5 +1,15 @@
 # AGENTS.md
 
+**Cierre de revisión 10, 2026-11-13 (integración pendiente):** las ocho tareas
+y la ola global I1/I2 tienen revisión independiente aprobada sobre `8518c91`.
+Verificación del controlador: `tests/run_evidence.sh` 145 tests/rc0/GUARD OK;
+9 Bash sin stderr y 18 AST Python correctos, diff sin incidencias. Cinco
+regresiones sintéticas rc0 según reporte final. Evidencia de cierre en
+`.superpowers/sdd/2026-11-13-evidence-integral/final-fix-review.md` y
+`controller-verification.log`. No implica rama completa verde, compatibilidad
+operacional ni custodia legal. Conservar worktree/logs y pendientes ajenos.
+Sin push; integración en develop requiere confirmación final.
+
 **Fixes globales 10, 2026-11-13 (re-review e integración pendientes):**
 I1 corregido en `5a02c8c`: ownership acreditado antes de entregar INT/TERM,
 cleanup conserva interrupción y no borra reemplazos ajenos; copia larga sigue

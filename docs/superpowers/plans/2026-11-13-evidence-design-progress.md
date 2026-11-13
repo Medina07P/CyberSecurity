@@ -9,7 +9,11 @@
   (`ses_e29e50f1cffeIzQaj5CtEy6No3`).
 - [x] Presentar diseño al usuario y obtener aprobación explícita (`Aprobado`).
 - [x] Invocar writing-plans y preparar plan tras aprobación.
-- [ ] Revisión del plan por el usuario y elección de método de ejecución.
+- [x] Revisión del plan por el usuario y elección de ejecución con subagentes.
+- [x] Ocho entregas implementadas y revisadas; dos fixes globales aprobados.
+- [x] Verificación final del controlador: 145 tests/rc0/GUARD OK sobre 8518c91.
+- [ ] Confirmación e integración local en develop, sin push.
 
-Diseño aprobado; plan en `2026-11-13-evidence-integral.md`, pendiente de revisión
-y elección de ejecución. No hay modificaciones de producto todavía.
+Diseño y plan ejecutados; producto revisado, pendiente de integración local.
+Ledger detallado y logs conservados en
+`.superpowers/sdd/2026-11-13-evidence-integral/`.
