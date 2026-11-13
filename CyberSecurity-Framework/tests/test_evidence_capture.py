@@ -90,6 +90,21 @@ class CaptureTests(unittest.TestCase):
             self.c.validate_plan(self.plan(scan=host, scan_profile='basic', authorize_network=True))
         self.c.validate_plan(self.plan(web='https://[2001:db8::1]:8443/a?q=b', authorize_network=True))
 
+    def test_nmap_ipv4_ranges_rejected_before_ledger_or_backend(self):
+        for host in ('127.0.0.1-2', '0-255.0-255.13.37', '1-2.3.4.5',
+                     '1.2-3.4.5', '1.2.3-4.5'):
+            with self.subTest(host=host):
+                with mock.patch.object(self.c, 'run_child', side_effect=AssertionError('backend invoked')) as child:
+                    self.invalid(scan=host, scan_profile='basic', authorize_network=True)
+                    child.assert_not_called()
+
+    def test_single_hosts_and_hyphenated_domains_remain_valid(self):
+        for host in ('127.0.0.1', '2001:db8::1', '::1', 'localhost',
+                     'example.test', 'api-2.example.test', '127-0-0-1.example.test',
+                     '0-255.0-255.example.test', '1-2', 'a-b.c-d.e-f.g-h'):
+            with self.subTest(host=host):
+                self.c.validate_plan(self.plan(scan=host, scan_profile='basic', authorize_network=True))
+
     def stub(self, name, data, rc=0):
         code = ('import json,sys\nfrom pathlib import Path\na=sys.argv[1:]\n'
                 f'p=Path({str(self.base / "calls")!r})\n'
