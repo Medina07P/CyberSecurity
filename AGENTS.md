@@ -1,5 +1,22 @@
 # AGENTS.md
 
+**Entrega implementación 10, 2026-11-13 (pendiente revisión global/integración):**
+Tasks1–7 revisadas según controlador; Task8 entregables1–6 añade runner allowlist
+y guardas de fuentes permitidas (hash/modo/layout sin leer config/evidencia real),
+HOME/scope/targets/session sintéticos y PATH cerrado. Suite dedicada actual:
+`tests/run_evidence.sh` (142 tests). Contratos en `10_Evidence/{README,USE,FLUJO}.md`,
+`docs/MANUAL-GESTOR.md` y `docs/EVIDENCIAS-INTEGRAL-2026-11-13.md`.
+Tres wrappers conservados, núcleo `00_Config/lib/evidence/`: cinco tipos públicos,
+SHA-256 nuevo/MD5 legacy no migrado, empaquetado bloqueante confidencial sin
+cifrado, captura solo explícita y sin sudo/instalaciones. `10` no adopta TARGET;
+fase done significa presencia, no integridad. `<TARGET>` antiguo retorna2 sin
+adquirir: no se declara reparado99. Pruebas exclusivamente sintéticas/stubs,
+no compatibilidad operacional, autenticidad ni custodia legal. Regresiones solo
+en archivo git versionado con configuración/HOME sintéticos; nunca sobre este
+checkout con datos. Revisión independiente e integración son gates del controlador,
+no aprobados por esta nota; no declarar rama completa verde. Conservar workspace,
+logs, pendientes ajenos y notas históricas; sin push ni tocar checkout original.
+
 **Próxima sesión, 2026-11-13:** usuario pide continuar con `09_Automation`;
 leer `docs/RETOMAR-09-2026-11-13.md`. No iniciar09 ahora ni asumir diseño
 aprobado. 08 cerrado según bloque siguiente; preservar ledger/logs y pendientes.
