@@ -1141,7 +1141,14 @@ def _supervise_owned(streams, tool, arguments, *, preflight_kind=None,
                     os.close(pid_fd)
                     pid_fd = None
                     break
-            if (cancelled or timed_out) and group is not None and workflow_input is None:
+            # Before exec authorization there is no cooperative leaf to clean
+            # up: retire the gate BEFORE waiting for its inert worker. Keep the
+            # anchored teardown path distinct from post-GO workflow cancellation.
+            if gate_write is not None:
+                os.close(gate_write)
+                gate_write = None
+            if (cancelled or timed_out) and group is not None and \
+                    (workflow_input is None or not tool_authorized):
                 group.stop()  # anchor is still live or an unreaped zombie
             actual_rc = backend.wait() if backend is not None else 0
             terminating_signal = -actual_rc if actual_rc < 0 else None
