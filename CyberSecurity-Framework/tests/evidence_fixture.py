@@ -24,6 +24,7 @@ SOURCES = (
     'tests/test_evidence_inventory.py',
     'tests/test_evidence_package.py',
     'tests/test_evidence_process.py',
+    'tests/test_evidence_capture.py',
     'tests/run_evidence.sh',
 )
 

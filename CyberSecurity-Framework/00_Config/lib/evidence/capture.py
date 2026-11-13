@@ -1,18 +1,29 @@
-"""Private acquisition ledger only. Backends and public CLI live in later tasks.
+"""Explicit bounded acquisition and private diagnostics (no public CLI here).
 
 work/ is diagnostic, unpublished material, never evidence. Neither ledger IDs
 nor successful action statuses certify integrity of referenced evidence.
 """
 from datetime import datetime, timezone
+from dataclasses import dataclass
+from contextlib import contextmanager
+import getpass
+import ipaddress
 import json
 import os
 from pathlib import Path
+import platform
 import re
+import signal
+import socket
 import stat
+import struct
 import uuid
+from urllib.parse import urlsplit
 
-from .model import EvidenceError
+from .model import EvidenceError, UsageError
 from .storage import _directory, private_directory
+from .storage import add
+from .process import CaptureInterrupted, run_child, _stream
 
 
 ACTIONS = ('web', 'traffic', 'scan', 'system')
@@ -205,3 +216,235 @@ class RunLedger:
         _validate(trial, self.id)
         self._data = trial
         self._save()
+
+
+@dataclass
+class CapturePlan:
+    web: str | None = None
+    traffic: str | None = None
+    interface: str | None = None
+    scan: str | None = None
+    scan_profile: str | None = None
+    system: bool = False
+    duration: int = 10
+    packet_limit: int = 100
+    authorize_network: bool = False
+
+
+def _host(host):
+    if not isinstance(host, str) or not host or '%' in host:
+        raise UsageError('HOST INVÁLIDO')
+    try:
+        ipaddress.ip_address(host)
+        return
+    except ValueError:
+        pass
+    if (len(host) > 253 or not host.isascii() or
+            any(not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?', label)
+                for label in host.split('.'))):
+        raise UsageError('HOST INVÁLIDO')
+
+
+def _url(url):
+    if (not isinstance(url, str) or not url or '\\' in url or '#' in url or
+            any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url)):
+        raise UsageError('URL INVÁLIDA')
+    try:
+        parts = urlsplit(url)
+        if (parts.scheme not in ('http', 'https') or not parts.netloc or
+                parts.username is not None or parts.password is not None or
+                parts.netloc.endswith(':') or (parts.port is not None and not 1 <= parts.port <= 65535)):
+            raise ValueError('esquema/autoridad/puerto')
+        _host(parts.hostname)
+    except (ValueError, TypeError) as exc:
+        raise UsageError('URL INVÁLIDA') from exc
+
+
+def validate_plan(plan: CapturePlan) -> None:
+    if (not isinstance(plan, CapturePlan) or type(plan.system) is not bool or
+            type(plan.authorize_network) is not bool):
+        raise UsageError('PLAN INVÁLIDO')
+    if not any((plan.web is not None, plan.traffic is not None, plan.scan is not None, plan.system)):
+        raise UsageError('SE REQUIERE UNA ACCIÓN EXPLÍCITA')
+    if any(x is not None for x in (plan.web, plan.traffic, plan.scan)) and not plan.authorize_network:
+        raise UsageError('SE REQUIERE AUTORIZACIÓN DE RED')
+    if (type(plan.duration) is not int or not 1 <= plan.duration <= 300 or
+            type(plan.packet_limit) is not int or not 1 <= plan.packet_limit <= 10000):
+        raise UsageError('LÍMITES DE TRÁFICO INVÁLIDOS')
+    if plan.traffic is None:
+        if plan.interface is not None or plan.duration != 10 or plan.packet_limit != 100:
+            raise UsageError('OPCIONES DE TRÁFICO SIN ACCIÓN')
+    else:
+        _host(plan.traffic)
+        if (not isinstance(plan.interface, str) or not plan.interface or len(plan.interface) > 15 or
+                plan.interface.startswith('-') or
+                any(c.isspace() or ord(c) < 32 or ord(c) == 127 or c in '/:' for c in plan.interface)):
+            raise UsageError('INTERFAZ INVÁLIDA')
+    if plan.scan is None:
+        if plan.scan_profile is not None:
+            raise UsageError('PERFIL SIN ESCANEO')
+    else:
+        _host(plan.scan)
+        if plan.scan_profile not in ('basic', 'full'):
+            raise UsageError('PERFIL OBLIGATORIO: basic/full')
+    if plan.web is not None:
+        _url(plan.web)
+
+
+def capture(root: Path, plan: CapturePlan) -> int:
+    validate_plan(plan)
+    actions = [a for a in ACTIONS if (getattr(plan, a) if a == 'system' else getattr(plan, a) is not None)]
+    ledger = RunLedger(root, actions)
+    handlers = {}
+    failed = False
+
+    def interrupted(signum, frame):
+        raise CaptureInterrupted(signum)
+
+    try:
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            handlers[signum] = signal.signal(signum, interrupted)
+        for action in actions:
+            ledger.start(action)
+            try:
+                status, record = _acquire(root, plan, ledger, action)
+                ledger.finish(action, status, 0, None, [record.id] if record else [])
+            except CaptureInterrupted:
+                raise
+            except (EvidenceError, OSError) as exc:
+                failed = True
+                ledger.finish(action, 'failed', exc.rc if isinstance(exc, _ProcessFailure) else 1, str(exc), [])
+        ledger.close('failed' if failed else 'success')
+        return 1 if failed else 0
+    except CaptureInterrupted as exc:
+        ledger.close('interrupted')
+        return 128 + exc.signum
+    finally:
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
+
+
+@contextmanager
+def _artifact(path):
+    """Read only regular artifacts, without following any path component link."""
+    try:
+        path = Path(path).absolute()
+        with _directory(path.parent) as parent:
+            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=parent)
+        with os.fdopen(fd, 'rb') as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise EvidenceError('ARTEFACTO NO REGULAR')
+            yield stream
+    except OSError as exc:
+        raise EvidenceError(f'ARTEFACTO NO LEGIBLE: {exc}') from exc
+
+
+def validate_png(path: Path) -> None:
+    with _artifact(path) as stream:
+        data = stream.read(9)
+        if len(data) != 9 or data[:8] != b'\x89PNG\r\n\x1a\n':
+            raise EvidenceError('PNG INVÁLIDO O VACÍO')
+
+
+def pcap_packet_count(path: Path) -> int:
+    formats = {b'\xd4\xc3\xb2\xa1': ('<', 1000000), b'\xa1\xb2\xc3\xd4': ('>', 1000000),
+               b'\x4d\x3c\xb2\xa1': ('<', 1000000000), b'\xa1\xb2\x3c\x4d': ('>', 1000000000)}
+    with _artifact(path) as stream:
+        header = stream.read(24)
+        if len(header) != 24 or header[:4] not in formats:
+            raise EvidenceError('CABECERA PCAP INVÁLIDA')
+        endian, resolution = formats[header[:4]]
+        major, minor, zone, accuracy, snaplen, network = struct.unpack(endian + 'HHiIII', header[4:])
+        if (major, minor) != (2, 4) or snaplen == 0:
+            raise EvidenceError('VERSIÓN/SNAPLEN PCAP INVÁLIDO')
+        count = 0
+        while True:
+            packet = stream.read(16)
+            if not packet:
+                return count
+            if len(packet) != 16:
+                raise EvidenceError('CABECERA DE PAQUETE TRUNCADA')
+            seconds, fraction, included, original = struct.unpack(endian + 'IIII', packet)
+            if fraction >= resolution or included > snaplen or included > original:
+                raise EvidenceError('LONGITUD/FECHA DE PAQUETE INVÁLIDA')
+            remaining = included
+            while remaining:
+                chunk = stream.read(min(remaining, 65536))
+                if not chunk:
+                    raise EvidenceError('PAQUETE TRUNCADO')
+                remaining -= len(chunk)
+            count += 1
+
+
+def validate_nmap(path: Path, host: str) -> None:
+    _host(host)
+    footer = re.compile(rb'# Nmap done at [^\x00-\x1f\x7f]+ -- 1 IP address \([01] hosts? up\) scanned in [0-9]+(?:\.[0-9]+)? seconds')
+    with _artifact(path) as stream:
+        last = b''
+        while True:
+            line = stream.readline(1048577)
+            if not line:
+                break
+            if len(line) > 1048576:
+                raise EvidenceError('LÍNEA NMAP EXCESIVA')
+            if line.strip():
+                last = line.rstrip(b'\r\n')
+        if not footer.fullmatch(last):
+            raise EvidenceError('NMAP SIN FINALIZACIÓN NORMAL')
+
+
+class _ProcessFailure(EvidenceError):
+    def __init__(self, result):
+        self.rc = result.returncode
+        super().__init__(f'PROCESO INCOMPLETO: rc={result.returncode}, deadline={result.timed_out}, señal={result.stopped_by}')
+
+
+def _acquire(root, plan, ledger, action):
+    work = ledger.path / 'work'
+    stdout, stderr = ledger.path / f'{action}.stdout', ledger.path / f'{action}.stderr'
+    path = work / {'web': 'web.png', 'traffic': 'traffic.pcap', 'scan': 'scan.nmap', 'system': 'operator.json'}[action]
+    # Reserve private mode before a cooperating tool opens/truncates its output.
+    with _stream(path):
+        pass
+    target = getattr(plan, action) if action != 'system' else None
+    if action == 'system':
+        with _stream(stdout), _stream(stderr):
+            uname = platform.uname()
+            # Do not iterate/_asdict(): its lazy processor field launches uname -p.
+            data = {'scope': 'OPERADOR', 'utc': _now(), 'user': getpass.getuser(),
+                    'hostname': socket.gethostname(), 'uname': {
+                        key: getattr(uname, key) for key in ('system', 'node', 'release', 'version', 'machine')}}
+            with path.open('w', encoding='utf-8') as stream:
+                json.dump(data, stream, ensure_ascii=True, allow_nan=False)
+                stream.write('\n')
+        kind = 'log'
+    else:
+        if action == 'web':
+            argv, timeout = ['cutycapt', f'--url={plan.web}', f'--out={path}'], 60
+            kind = 'screenshot'
+        elif action == 'traffic':
+            argv = ['tcpdump', '-U', '-n', '-c', str(plan.packet_limit), '-i', plan.interface,
+                    '-w', str(path), 'host', plan.traffic]
+            timeout, kind = plan.duration, 'pcap'
+        else:
+            try:
+                ipv6 = ipaddress.ip_address(plan.scan).version == 6
+            except ValueError:
+                ipv6 = False
+            profile = ['--top-ports', '100'] if plan.scan_profile == 'basic' else ['-sV', '-p-']
+            argv = ['nmap'] + (['-6'] if ipv6 else []) + ['-n', '-sT'] + profile + ['-oN', str(path), plan.scan]
+            timeout, kind = (120 if plan.scan_profile == 'basic' else 1800), 'log'
+        result = run_child(argv, stdout, stderr, timeout=timeout, interval_stop=action == 'traffic')
+        normal = result.returncode == 0 and not result.timed_out and result.stopped_by is None
+        interval = (action == 'traffic' and result.timed_out and result.stopped_by == 'SIGINT' and
+                    result.returncode in (0, -signal.SIGINT))
+        if not (normal or interval):
+            raise _ProcessFailure(result)
+        if action == 'web':
+            validate_png(path)
+        elif action == 'scan':
+            validate_nmap(path, plan.scan)
+        elif pcap_packet_count(path) == 0:
+            return 'no-traffic', None
+    record = add(root, kind, path, target=target, origin='capture', run_id=ledger.id, method=action)
+    return 'success', record
