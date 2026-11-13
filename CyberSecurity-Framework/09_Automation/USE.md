@@ -1,5 +1,10 @@
 # Uso de 09 — contratos, no autorización
 
+**Task9 round1: ejecución de verificación BLOQUEADA.** Runner sin discovery ni
+probes hasta disponer de barrera SO heredada revisada. Audithook no protege
+hijos/nietos; ningún prefijo temporal prueba identidad. Conteos anteriores son
+históricos. Pruebas corregidas escritas SIN ejecutar; validación pendiente.
+
 [Inventario completo del gestor, módulos 00–13 y todas sus entradas](../../docs/MENU-OPCIONES.md).
 Los ejemplos parten del directorio `CyberSecurity-Framework`, con destinos
 documentales 192.0.2.1/example.com. No son instrucciones para ejecutar pruebas

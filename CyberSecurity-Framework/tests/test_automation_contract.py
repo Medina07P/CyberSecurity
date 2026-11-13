@@ -1,10 +1,15 @@
-"""Static publication contracts: sources only, never configuration/evidence."""
+"""Written for static review only: execution BLOCKED in Task9 round1.
+
+Publication structure/source contracts, not global semantic or OS containment
+proof. Do not run even these tests until the controller explicitly authorizes.
+"""
 import ast
-import os
 from pathlib import Path
 import re
 import subprocess
 import unittest
+
+from automation_menu_inventory import function_body, literal_options, special_options
 
 FW = Path(__file__).resolve().parents[1]
 ROOT = FW.parent
@@ -25,6 +30,20 @@ def explained_row(doc, key):
     if len(cells) != 4 or len(cells[1]) < 3 or len(cells[2]) < 5 or len(cells[3]) < 20:
         raise AssertionError('Falta finalidad/entrada/efectos/límites: ' + key)
     return row
+
+
+def special_sources():
+    # Source text only; this does not import/execute any framework entry.
+    return {name: (FW / relative).read_text() for name, relative in (
+        ('manager', 'cyber_framework.sh'),
+        ('wizard', '00_Config/scripts/config_wizard.sh'),
+        ('keys', '00_Config/scripts/api_keys.py'),
+        ('evidence', '10_Evidence/evidence_manager.sh'))}
+
+
+def explain_special_options(doc, sources):
+    for key in special_options(sources):
+        explained_row(doc, key)
 
 
 def numeric_case_options(text, variable, occurrence=0):
@@ -95,10 +114,13 @@ class Contracts(unittest.TestCase):
             self.assertIn(flag, accepted, flag)
 
     def test_suite_isolated(self):
+        """Current contract is a hard block, NOT proof of descendant isolation."""
         runner = (FW / 'tests/run_automation.sh').read_text()
-        self.assertIn('PYTHONDONTWRITEBYTECODE', runner)
-        self.assertIn('test_automation_*.py', runner)
-        self.assertNotIn('run_tests.sh', runner)
+        commands = [line for line in runner.splitlines() if line and not line.startswith('#')]
+        self.assertEqual(len(commands), 2)
+        self.assertRegex(commands[0], r"^printf '%s\\n' 'BLOCKED:.*' >&2$")
+        self.assertEqual(commands[1], 'exit 2')
+        self.assertNotIn('$', '\n'.join(commands), 'No environment/argument bypass while blocked')
         fixture = (FW / 'tests/automation_fixture.py').read_text()
         self.assertNotIn('copytree', fixture)
         self.assertNotIn('scope.yaml', fixture.split('class AutomationFixture:')[0])
@@ -115,8 +137,7 @@ class Contracts(unittest.TestCase):
 
     def test_every_menu_option_explained(self):
         doc = (ROOT / 'docs/MENU-OPCIONES.md').read_text()
-        for key in [f'{n:02d}' for n in range(14)] + ['99', 'R', 'T', 'K', '?', 'Q']:
-            explained_row(doc, key)
+        explain_special_options(doc, special_sources())
         # Main case arms of each source function; nested case arms are checked
         # separately below. New numeric options cannot silently lose coverage.
         for module, name in (('03', 'scanners'), ('04', 'enumeration'),
@@ -162,16 +183,67 @@ class Contracts(unittest.TestCase):
         for prefix, options in [('03.web', range(3)), ('04.bd', range(4)),
                                 ('04.web', range(3)), ('06.persist', range(3)),
                                 ('06.lateral', range(4)), ('08.disk', (1, 2)),
-                                ('08.local', range(1, 7)), ('08.requirements', (1, 2)),
-                                ('R', range(4)), ('K', range(6)), ('00.wizard', range(3))]:
+                                ('08.local', range(1, 7)), ('08.requirements', (1, 2))]:
             for option in options:
                 explained_row(doc, prefix + '.' + str(option))
-        for option in ('journal', 'auth', 'syslog', 'dpkg', 'wtmp', 'tree'):
+        for option in literal_options((FW / '00_Config/lib/forensics_menu.bash').read_text(), 'choice', 1):
             explained_row(doc, '08.timeline.' + option)
+        for option in literal_options(function_body(labs, 'tools_menu'), 'shell_opt'):
+            explained_row(doc, '13.shell.' + option)
         # Mutation checks: a header/name without explanation must fail.
         for broken in ('| `09.3` | | | |', '| `09.3` | Quick | target | preview |'):
             with self.assertRaises(AssertionError):
                 explained_row(broken, '09.3')
+
+    def test_special_namespace_row_deletion_mutations(self):
+        """Structure only: deletion must fail, wording still needs source review."""
+        doc = (ROOT / 'docs/MENU-OPCIONES.md').read_text()
+        sources = special_sources()
+        required = special_options(sources)
+        # Explicitly assert the previously untested source/contract namespaces.
+        for key in ('R.abrir', 'T.numero', 'T.0', 'lista.numero', 'lista.0', 'lista.R'):
+            self.assertIn(key, required)
+        for prefix in ('00.keys.', '10.', 'K.herramienta.'):
+            self.assertTrue(any(key.startswith(prefix) for key in required), prefix)
+        for key in sorted(required):
+            with self.subTest(deleted=key):
+                row = explained_row(doc, key)
+                with self.assertRaises(AssertionError):
+                    explain_special_options(doc.replace(row, '', 1), sources)
+
+    def test_new_special_source_options_require_rows(self):
+        """Mutate source STRINGS; never run a menu, parser, or backend."""
+        doc = (ROOT / 'docs/MENU-OPCIONES.md').read_text()
+        sources = special_sources()
+        mutations = (
+            ('manager', '99) full_workflow ;;', '14) module_config ;;\n            99) full_workflow ;;', '14'),
+            ('manager', '3) tipo="ambos" ;;', '3) tipo="ambos" ;;\n        4) tipo="extra" ;;', 'R.4'),
+            ('manager', '4) keys_helper sincronizar ;;', '4) keys_helper sincronizar ;;\n        6) keys_helper estado ;;', 'K.6'),
+            ('manager', 'if [[ "$sel" =~', 'if [[ "$sel" == "X" ]]; then :; fi\n        if [[ "$sel" =~', 'T.X'),
+            ('manager', 'if [[ "$choice" == "0" ]]; then', 'if [[ "$choice" == "X" ]]; then :; fi\n        if [[ "$choice" == "0" ]]; then', 'lista.X'),
+            ('wizard', '1|2) WZ_MODE=', '3) WZ_MODE=3 ;;\n            1|2) WZ_MODE=', '00.wizard.3'),
+            ('keys', 'args = parser.parse_args()', 'subparsers.add_parser("future")\n    args = parser.parse_args()', '00.keys.future'),
+            ('evidence', '--verify)  verify_evidence ;;', '--future) list_evidence ;;\n    --verify)  verify_evidence ;;', '10.future'),
+        )
+        for source, old, new, key in mutations:
+            with self.subTest(added=key):
+                self.assertIn(old, sources[source], 'Source shape changed; review mutation contract')
+                changed = dict(sources, **{source: sources[source].replace(old, new, 1)})
+                self.assertIn(key, special_options(changed))
+                with self.assertRaises(AssertionError):
+                    explain_special_options(doc, changed)
+        changed = dict(sources, wizard=sources['wizard'].replace('¿Otro objetivo?', '¿Otra acción?'))
+        with self.assertRaises(AssertionError):
+            special_options(changed)
+
+    def test_k_sync_semantic_source_contract(self):
+        # Deliberately narrow semantic check for I2, not a claim that row length
+        # validates the meaning of every other menu/tool explanation.
+        manager = special_sources()['manager']
+        self.assertIn('4) keys_helper sincronizar ;;', manager)
+        row = explained_row((ROOT / 'docs/MENU-OPCIONES.md').read_text(), 'K.4')
+        self.assertIn('sin confirmación adicional', row)
+        self.assertIn('directamente', row)
 
     def test_catalog_actions_have_effects_and_conditions(self):
         source = ast.parse((FW / '00_Config/lib/automation/catalog.py').read_text())
@@ -184,47 +256,18 @@ class Contracts(unittest.TestCase):
                 self.assertEqual(len(cells), 4, action)
                 self.assertTrue(all(len(c) >= 9 for c in cells[1:]), action)
 
-    def test_guard_rejects_real_data_and_backend(self):
+    def test_controller_guard_is_additional_only_and_blocks_all_spawn(self):
         from automation_test_guard import check_event
-        for path in (FW / '00_Config/scope.yaml', FW / '00_Config/targets.txt',
-                     ROOT / 'scans/secret.txt', FW / '10_Evidence/credentials/x'):
+        root = Path('/synthetic-not-a-host-checkout')
+        for path in (root / 'CyberSecurity-Framework/00_Config/scope.yaml',
+                     root / 'scans/fake.txt'):
             with self.assertRaises(PermissionError):
-                check_event(ROOT, 'open', (str(path), 'r', 0))
-        with self.assertRaises(PermissionError):
-            check_event(ROOT, 'open', (str(FW / 'tests/../00_Config/scope.yaml'), 'r', 0))
-        with self.assertRaises(PermissionError):
-            check_event(ROOT, 'subprocess.Popen', ('nmap', ['nmap', '192.0.2.1'], None, None))
-        with self.assertRaises(PermissionError):
-            check_event(ROOT, 'subprocess.Popen', ('bash', ['bash', str(FW / '09_Automation/run_all_automation.sh')], None, None))
-        check_event(ROOT, 'open', (str(FW / '09_Automation/USE.md'), 'r', 0))
-
-    def test_runner_discovery_guard_and_failure_rc(self):
-        from automation_fixture import AutomationFixture
-        fixture = AutomationFixture()
-        self.addCleanup(fixture.close)
-        tests = fixture.framework / 'tests'
-        tests.mkdir(exist_ok=True)
-        for name in ('run_automation.sh', 'automation_test_guard.py'):
-            (tests / name).write_text((FW / 'tests' / name).read_text())
-        (tests / 'test_automation_probe.py').write_text(
-            'import unittest, subprocess\nfrom pathlib import Path\n'
-            'class Probe(unittest.TestCase):\n'
-            ' def test_config(self):\n'
-            f'  Path({str(fixture.framework / "00_Config/scope.yaml")!r}).read_text()\n'
-            ' def test_backend(self):\n'
-            '  subprocess.run(["nmap", "192.0.2.1"], check=True)\n')
-        # Defense in depth: even a broken guard must only reach our stub.
-        fixture.stub('nmap', rc=97)
-        result = subprocess.run(['/bin/bash', str(tests / 'run_automation.sh')],
-                                cwd=fixture.repo, text=True, capture_output=True, timeout=20,
-                                env={**os.environ, 'PATH': str(fixture.bin) + os.pathsep + os.defpath})
-        self.assertEqual(result.returncode, 1)
-        self.assertIn('Ran 2 tests', result.stderr)
-        self.assertIn('PermissionError', result.stderr)
-        self.assertIn('must not open checkout data', result.stderr)
-        self.assertIn('Real backend forbidden', result.stderr)
-        self.assertIn('rc=1', result.stderr)
-        self.assertFalse(fixture.log.exists(), 'Guard let a backend reach even the fallback stub')
+                check_event(root, 'open', (str(path), 'r', 0))
+        # All are inert strings passed directly to a guard function: no Popen.
+        for executable in ('synthetic_backend', '/tmp/opencode/automation-unregistered/stub',
+                           'bash', 'python3', 'pwsh', 'git'):
+            with self.subTest(executable=executable), self.assertRaises(PermissionError):
+                check_event(root, 'subprocess.Popen', (executable, [executable], None, None))
 
 
 if __name__ == '__main__':
