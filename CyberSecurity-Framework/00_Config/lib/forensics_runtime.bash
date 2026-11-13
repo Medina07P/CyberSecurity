@@ -150,6 +150,96 @@ _forensics_read_protocol() {
     done
 }
 
+_forensics_start_preflight() {
+    local kind=$1 tool=$2
+    shift 2
+    coproc FORENSICS_WORKER {
+        _forensics_helper supervise-preflight --kind "$kind" --tool "$tool" -- "$@"
+    }
+}
+
+# Owner-shell API, before begin; output only in variables, never stdout.
+# Whitelisted help/privilege probes only, not a generic command executor.
+forensics_preflight() {
+    local kind=${1:-} tool=${2:-} status=0 worker_status metadata result_fd protocol_line
+    FORENSICS_PREFLIGHT_RC=
+    FORENSICS_PREFLIGHT_OUTPUT=
+    FORENSICS_PREFLIGHT_TIMED_OUT=0
+    FORENSICS_PREFLIGHT_CANCELLED=${_FORENSICS_PREFLIGHT_STICKY:-0}
+    (( FORENSICS_PREFLIGHT_CANCELLED == 0 )) || return 1
+    case "$kind:$tool:$#:${3:-}:${4:-}" in
+        compatibility:avml:3:--help:|compatibility:lime:3:--help:|privilege:sudo:4:-n:true) ;;
+        *) return 2 ;;
+    esac
+    shift 2
+    forensics_require python3 || return 2
+    forensics_require bash || return 2
+    forensics_require "$tool" || return 2
+    # Dynamic locals isolate preflight control from later captures. Install
+    # traps before any helper exec, preserving sticky cancellation before GO.
+    local _FORENSICS_CANCELLED=0 _FORENSICS_CONTROL_FD= _FORENSICS_ACTIVE_PID=
+    local _FORENSICS_WAITING=0 _FORENSICS_WAIT_INTERRUPTED=0
+    local _FORENSICS_OLD_INT _FORENSICS_OLD_TERM _FORENSICS_OLD_PIPE
+    local _FORENSICS_HAS_INT=0 _FORENSICS_HAS_TERM=0 _FORENSICS_HAS_PIPE=0
+    _FORENSICS_OLD_INT=$(trap -p INT)
+    _FORENSICS_OLD_TERM=$(trap -p TERM)
+    _FORENSICS_OLD_PIPE=$(trap -p PIPE)
+    [[ -z $_FORENSICS_OLD_INT ]] || _FORENSICS_HAS_INT=1
+    [[ -z $_FORENSICS_OLD_TERM ]] || _FORENSICS_HAS_TERM=1
+    [[ -z $_FORENSICS_OLD_PIPE ]] || _FORENSICS_HAS_PIPE=1
+    trap '_forensics_signal 2' INT
+    trap '_forensics_signal 15' TERM
+    trap '' PIPE
+    _FORENSICS_OLD_INT=$(printf '%s' "$_FORENSICS_OLD_INT" | _forensics_trap_body) || status=1
+    _FORENSICS_OLD_TERM=$(printf '%s' "$_FORENSICS_OLD_TERM" | _forensics_trap_body) || status=1
+    _FORENSICS_OLD_PIPE=$(printf '%s' "$_FORENSICS_OLD_PIPE" | _forensics_trap_body) || status=1
+    if (( status == 0 )); then
+        _forensics_start_preflight "$kind" "$tool" "$@"
+        _FORENSICS_ACTIVE_PID=$!
+        exec {_FORENSICS_CONTROL_FD}>&"${FORENSICS_WORKER[1]}"
+        exec {result_fd}<&"${FORENSICS_WORKER[0]}"
+        if ! _forensics_read_protocol || [[ $protocol_line != READY ]]; then status=1
+        elif (( _FORENSICS_CANCELLED != 0 )); then _forensics_send "CANCEL $_FORENSICS_CANCELLED" || status=1
+        else _forensics_send GO || status=1; fi
+        if (( status == 0 )); then
+            if ! _forensics_read_protocol || [[ $protocol_line != 'RESULT '* ]]; then status=1
+            else
+                metadata=${protocol_line#RESULT }
+                FORENSICS_PREFLIGHT_RC=$(printf '%s' "$metadata" | _forensics_field rc) || status=1
+                FORENSICS_PREFLIGHT_OUTPUT=$(printf '%s' "$metadata" | _forensics_field output) || status=1
+                [[ $(printf '%s' "$metadata" | _forensics_field timed_out) != True ]] || FORENSICS_PREFLIGHT_TIMED_OUT=1
+                [[ $(printf '%s' "$metadata" | _forensics_field output_limited) != True ]] || status=2
+                local observed
+                observed=$(printf '%s' "$metadata" | _forensics_field cancellation_wrapper_signal) || status=1
+                [[ $observed = None ]] || _FORENSICS_CANCELLED=$observed
+            fi
+        fi
+        _forensics_send RELEASE || status=1
+        exec {_FORENSICS_CONTROL_FD}>&-
+        _FORENSICS_CONTROL_FD=
+        exec {result_fd}<&-
+        while :; do
+            _FORENSICS_WAIT_INTERRUPTED=0; _FORENSICS_WAITING=1
+            wait "$_FORENSICS_ACTIVE_PID"; worker_status=$?
+            _FORENSICS_WAITING=0
+            (( _FORENSICS_WAIT_INTERRUPTED != 0 )) || break
+        done
+        (( worker_status == 0 )) || status=1
+    fi
+    FORENSICS_PREFLIGHT_CANCELLED=$_FORENSICS_CANCELLED
+    _FORENSICS_PREFLIGHT_STICKY=$_FORENSICS_CANCELLED
+    _forensics_restore_traps
+    if (( _FORENSICS_CANCELLED != 0 )); then
+        if { (( _FORENSICS_CANCELLED == 2 )) && [[ -n $_FORENSICS_OLD_INT ]]; } || \
+           { (( _FORENSICS_CANCELLED == 15 )) && [[ -n $_FORENSICS_OLD_TERM ]]; }; then
+            kill -s "$_FORENSICS_CANCELLED" "$$"
+        fi
+        return 1
+    fi
+    (( status != 1 )) || return 1
+    (( status == 0 && FORENSICS_PREFLIGHT_TIMED_OUT == 0 )) && [[ $FORENSICS_PREFLIGHT_RC = 0 ]] || return 2
+}
+
 forensics_capture() {
     local name=$1 tool=$2 metadata status function_name result_fd protocol_line worker_status
     shift 2
