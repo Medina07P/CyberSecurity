@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+import select
+import signal
 import subprocess
 import sys
 import unittest
@@ -63,6 +65,121 @@ class MenuFlowTests(unittest.TestCase):
    p.write_text('#!/bin/bash\nexec '+sys.executable+' -B "${BASH_SOURCE[0]%.sh}.fixture" "$@"\n'); p.chmod(0o700)
  def calls(self):
   p=self.root/'calls'; return [json.loads(s) for s in p.read_text().splitlines()] if p.exists() else []
+ def cancellation_case(self,signum,*,local_stage=None,boundary=None):
+  """Only own session receives signals; pipes hold cleanup until released."""
+  import ctypes
+  libc=ctypes.CDLL(None,use_errno=True); previous=ctypes.c_int()
+  self.assertEqual(libc.prctl(37,ctypes.byref(previous),0,0,0),0)
+  self.assertEqual(libc.prctl(36,1,0,0,0),0)
+  self.stub_leaves()
+  target='memory_dump.sh' if local_stage=='memory' else 'strings_analysis.sh'
+  if boundary is None:
+   fixture=next(p for p in (self.fw/'08_Forensics').rglob('*.fixture') if p.with_suffix('.sh').name==target)
+   block=r'''
+if name==os.environ['BLOCK_LEAF']:
+ import signal
+ ready=int(os.environ['READY_FD']); release=int(os.environ['RELEASE_FD'])
+ def cancelled(signum,frame):
+  os.write(ready,b'S')
+  os.read(release,1)
+  fd=os.open(root/'leaf-cleanup.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+  with os.fdopen(fd,'w') as f: json.dump(dict(signal=signum,rc=1,cleanup=True),f)
+  print('LEAF_PRIVATE_CLEANUP',flush=True)
+  sys.exit(1)
+ signal.signal(signal.SIGINT,cancelled); signal.signal(signal.SIGTERM,cancelled)
+ (root/'leaf-pid').write_text(str(os.getpid()))
+ os.write(ready,b'R')
+ while True: signal.pause()
+'''
+   fixture.write_text(fixture.read_text().replace("if name=='memory_dump.sh':",block+"\nif name=='memory_dump.sh':",1))
+  else:
+   # Instrument only the copied shell boundary, never production test hooks.
+   flow=self.fw/'08_Forensics/run_all_forensics.sh'
+   hook='    printf R >&"$READY_FD"\n    IFS= read -r -u "$RELEASE_FD" boundary_release\n'
+   text=flow.read_text()
+   anchor='    bash "$module_dir/$leaf" "$@" >>"$log" 2>&1\n' if boundary=='invoke' else '    status=$?\n'
+   self.assertIn(anchor,text)
+   flow.write_text(text.replace(anchor,hook+anchor if boundary=='invoke' else anchor+hook,1))
+  ready_r,ready_w=os.pipe(); release_r,release_w=os.pipe()
+  sentinel=subprocess.Popen([sys.executable,'-B','-c','import signal; signal.pause()'],env=self.env,start_new_session=True)
+  sentinel_fd=os.pidfd_open(sentinel.pid); proc=None; owner_fd=None; leaf_fd=None; leaf_pid=None
+  try:
+   args=['--local'] if local_stage else ['--memory',str(self.source('first source')), '--log',str(self.source('second source'))]
+   proc=subprocess.Popen(['/bin/bash',str(self.fw/'08_Forensics/run_all_forensics.sh'),*args],
+    env={**self.env,'READY_FD':str(ready_w),'RELEASE_FD':str(release_r),'BLOCK_LEAF':target},
+    cwd=self.root,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,
+    pass_fds=(ready_w,release_r),start_new_session=True)
+   owner_fd=os.pidfd_open(proc.pid)
+   os.close(ready_w); ready_w=None; os.close(release_r); release_r=None
+   if local_stage: proc.stdin.write('FLUJO_LOCAL\nADQUIRIR_MEMORIA\nLEER_LOG_LOCAL\nLOCAL_SI\n'); proc.stdin.flush()
+   self.assertTrue(select.select([ready_r],[],[],8)[0],'readiness pipe not signaled')
+   self.assertEqual(os.read(ready_r,1),b'R')
+   if boundary is None:
+    leaf_pid=int((self.root/'leaf-pid').read_text()); leaf_fd=os.pidfd_open(leaf_pid)
+   self.assertIsNone(proc.poll())
+   os.killpg(proc.pid,signum)  # pinned live owner, separate session from sentinel
+   if boundary is None:
+    self.assertTrue(select.select([ready_r],[],[],4)[0],'leaf did not receive group signal')
+    self.assertEqual(os.read(ready_r,1),b'S')
+    self.assertFalse(select.select([owner_fd],[],[],0.15)[0],'owner exited before active leaf cleanup')
+    os.write(release_w,b'x\n')
+   out,err=proc.communicate(timeout=8)
+   self.assertEqual(proc.returncode,1,err)
+   self.assertIsNone(sentinel.poll(),'unrelated sentinel was signaled')
+   expected=[] if boundary=='invoke' else ['strings_analysis.sh']
+   if local_stage: expected=['memory_dump.sh']+(['strings_analysis.sh'] if local_stage=='strings' else [])
+   self.assertEqual([c[0] for c in self.calls()],expected,err)
+   self.assertNotIn('Lectura del log del host',err)
+   self.assertNotIn('LEER_LOG_LOCAL',err); self.assertNotIn('LOCAL_SI',err)
+   self.assertEqual(out,''); self.assertNotIn('LEAF_PRIVATE_CLEANUP',err)
+   logs=list((self.root/'outputs').rglob('workflow.log')); self.assertEqual(len(logs),1)
+   self.assertIn('workflow_cancelled wrapper_signal='+str(signum),logs[0].read_text())
+   if boundary is None:
+    self.assertEqual(json.loads((self.root/'leaf-cleanup.json').read_text()),dict(signal=signum,rc=1,cleanup=True))
+    self.assertIn('LEAF_PRIVATE_CLEANUP',logs[0].read_text())
+  finally:
+   try: os.write(release_w,b'x\n')
+   except BrokenPipeError: pass
+   if proc is not None:
+    if proc.poll() is None: os.killpg(proc.pid,signal.SIGKILL)
+    proc.communicate(timeout=5)
+   if leaf_fd is not None:
+    if not select.select([leaf_fd],[],[],3)[0]: signal.pidfd_send_signal(leaf_fd,signal.SIGKILL)
+    try: os.waitpid(leaf_pid,0)
+    except ChildProcessError: pass
+    os.close(leaf_fd)
+   signal.pidfd_send_signal(sentinel_fd,signal.SIGKILL); sentinel.wait(timeout=5); os.close(sentinel_fd)
+   for fd in (ready_r,ready_w,release_r,release_w,owner_fd):
+    if fd is not None: os.close(fd)
+   self.assertEqual(libc.prctl(36,previous.value,0,0,0),0)
+ def test_workflow_cancellation_group_sigint_waits_cleanup_no_second_source(self):
+  self.cancellation_case(signal.SIGINT)
+ def test_workflow_cancellation_group_sigterm_waits_cleanup_no_second_source(self):
+  self.cancellation_case(signal.SIGTERM)
+ def test_workflow_cancellation_local_memory_sigint_no_new_prompts_or_reads(self):
+  self.cancellation_case(signal.SIGINT,local_stage='memory')
+ def test_workflow_cancellation_local_memory_sigterm_no_new_prompts_or_reads(self):
+  self.cancellation_case(signal.SIGTERM,local_stage='memory')
+ def test_workflow_cancellation_local_strings_sigint_no_new_prompts_or_reads(self):
+  self.cancellation_case(signal.SIGINT,local_stage='strings')
+ def test_workflow_cancellation_local_strings_sigterm_no_new_prompts_or_reads(self):
+  self.cancellation_case(signal.SIGTERM,local_stage='strings')
+ def test_workflow_cancellation_before_invocation_sigint_never_launches(self):
+  self.cancellation_case(signal.SIGINT,boundary='invoke')
+ def test_workflow_cancellation_before_invocation_sigterm_never_launches(self):
+  self.cancellation_case(signal.SIGTERM,boundary='invoke')
+ def test_workflow_cancellation_after_wait_sigint_never_launches_next(self):
+  self.cancellation_case(signal.SIGINT,boundary='returned')
+ def test_workflow_cancellation_after_wait_sigterm_never_launches_next(self):
+  self.cancellation_case(signal.SIGTERM,boundary='returned')
+ def test_workflow_cancellation_not_inferred_from_ordinary_rc_1_130_143(self):
+  self.stub_leaves(); a=self.source('ordinary error'); b=self.source('independent source')
+  for rc in (1,130,143):
+   (self.root/'calls').unlink(missing_ok=True)
+   r=self.flow('--memory',a,'--log',b,FAIL_strings_analysis_sh=str(rc))
+   self.assertEqual(r.returncode,1,r.stderr)
+   self.assertEqual([c[0] for c in self.calls()],['strings_analysis.sh','log_analyzer.sh'])
+   self.assertIn('ejecutadas=2 fallidas=1',r.stderr)
  def run_shell(self,code,input='',**env):
   return subprocess.run(['/bin/bash','-c',code],input=input,text=True,capture_output=True,cwd=self.root,env={**self.env,**env},timeout=45)
  def manager(self,code='module_forensics',input=''):
