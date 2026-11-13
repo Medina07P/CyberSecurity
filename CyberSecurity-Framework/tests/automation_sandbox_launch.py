@@ -322,6 +322,37 @@ def _supervise(child, pidfd, pending, deadline=None):
                 killed = True
 
 
+def _probe_inputs(run):
+    """Exclusive synthetic inputs; siblings outside mounts, no host data reads."""
+    for path, content, mode in (
+            (run.root / 'outside-canary', run.root.name.encode(), 0o600),
+            (run.work / 'inside-canary', run.root.name.encode(), 0o600),
+            (run.root / 'external-double',
+             ('#!/bin/bash\nprintf synthetic > ' +
+              str(run.root / 'external-marker') + '\n').encode(), 0o500)):
+        fd = _new_log(path)
+        try:
+            view = memoryview(content)
+            while view:
+                count = os.write(fd, view)
+                if count <= 0:
+                    raise IsolationBlocked('Short synthetic input write')
+                view = view[count:]
+            os.fchmod(fd, mode)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    _new_json(run.work / 'probe-context.json', {
+        'version': 1, 'run_id': run.root.name,
+        'outside_canary': str(run.root / 'outside-canary'),
+        'external_stub': str(run.root / 'external-double'),
+        'external_marker': str(run.root / 'external-marker'),
+        'host_namespaces': {name: os.readlink('/proc/self/ns/' + name)
+                            for name in ('mnt', 'pid', 'net', 'user', 'ipc',
+                                         'uts', 'cgroup')},
+    })
+
+
 def launch() -> int:
     host_deadline = time.monotonic() + HOST_TIMEOUT
     run = None
@@ -376,6 +407,9 @@ def launch() -> int:
         _validate_staging(run)
         for name in ('home', 'tmp'):
             (run.work / name).mkdir(mode=0o700)
+        # Synthetic siblings are outside all mounts; the marker double is never
+        # executed, even if unexpectedly visible. All failed artifacts retained.
+        _probe_inputs(run)
         seccomp_fd = _seccomp_memfd()
         descriptors.append(seccomp_fd)
         argv = bubblewrap_argv(run, seccomp_fd) + (selector,)
@@ -422,6 +456,20 @@ def launch() -> int:
                 receipt['returncode'] != states[receipt['state']] or
                 result != receipt['returncode']):
             raise IsolationBlocked('Invalid or inconsistent inside receipt')
+        if (run.root / 'external-marker').exists():
+            raise IsolationBlocked('External synthetic marker unexpectedly exists')
+        if receipt['state'] == 'PASS' or (receipt['state'] == 'BLOCKED' and result == 2):
+            probes = load_json(run.evidence / 'probes.json', {
+                'version', 'run_id', 'state', 'checks', 'context', 'namespaces',
+                'descendants', 'cancel'})
+            if (probes['run_id'] != run.root.name or probes['state'] != 'PASS' or
+                    not isinstance(probes['checks'], list) or
+                    {row.get('id') for row in probes['checks'] if isinstance(row, dict)} !=
+                    {'python-child', 'bash-grandchild', 'bash-child', 'cancel-owned-descendants'} or
+                    len(probes['checks']) != 4 or
+                    any(not isinstance(row, dict) or set(row) != {'id', 'result', 'reason'} or
+                        row['result'] != 'PASS' for row in probes['checks'])):
+                raise IsolationBlocked('Fresh probe result missing or inconsistent')
         return result
     except _HostStop:
         # Stop raising during termination/reap. Supervision now forwards the
