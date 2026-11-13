@@ -20,6 +20,7 @@ source "$LIB_DIR/phase_status.bash"
 source "$LIB_DIR/prompt.bash"
 source "$LIB_DIR/report_profile.bash"
 source "$LIB_DIR/scans.bash"
+source "$LIB_DIR/module_intro.bash"
 source "$LIB_DIR/scanners_menu.bash"
 source "$LIB_DIR/exploitation_menu.bash"
 source "$LIB_DIR/enumeration_menu.bash"
@@ -315,6 +316,7 @@ run_module_scripts() {
         clear_screen
         echo -e "${CYAN}${BOLD}━━━ MÓDULO $module_name ━━━${NC}"
         echo ""
+        module_intro "$module_dir"
 
         if [[ ! -d "$module_dir" ]]; then
             echo -e "${RED}❌ Módulo no encontrado: $module_dir${NC}"

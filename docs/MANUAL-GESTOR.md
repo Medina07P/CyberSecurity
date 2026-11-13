@@ -62,6 +62,29 @@ Cada script declara sus parámetros en su propia línea `Uso:`, así que el gest
 
 ---
 
+## Fichas de entrada: elegir sin ejecutar
+
+Los catorce módulos (`00`–`13`) muestran bajo su cabecera y antes de las opciones
+una ficha breve: **Para qué sirve**, **Entrada**, **Incluye** y **Precauciones**.
+La ficha vuelve a aparecer al redibujar el menú, sin pausas ni preguntas nuevas.
+Entrar y leerla no lanza pruebas ni selecciona herramientas automáticamente;
+las opciones, confirmaciones y argumentos de cada acción se mantienen.
+Las herramientas mencionadas no están necesariamente instaladas o disponibles,
+y una entrada conservada no implica un flujo operacional integrado.
+
+No necesitas recorrer todos los módulos: elige los que correspondan al trabajo
+autorizado. Por ejemplo, para una **Metasploitable propia en una red de laboratorio**
+con IP privada `192.168.56.101`, normalmente puedes saltar `01_OSINT`: sus fuentes
+públicas no describen esa IP privada. Tras comprobar alcance y autorización en
+`00`, usa `02` para reconocimiento, `03` para puertos/servicios y `04` para
+profundizar en los servicios encontrados. Esas acciones generan tráfico y debes
+seleccionarlas y confirmarlas; leer la ficha no las ejecuta. La IP es un ejemplo,
+no un objetivo que debas copiar sin verificar tu laboratorio.
+
+**`99` no es una comprobación rápida**: encadena fases activas, incluida fuerza
+bruta, explotación, persistencia y limpieza. No lo uses para explorar el menú ni
+como prueba de funcionamiento.
+
 ## Objetivo de sesión
 
 El objetivo se guarda en `00_Config/.session` (git-ignored) y se usa para:
