@@ -37,6 +37,8 @@ SOURCE_FILES += ('09_Automation/python/report_generator.py',
         'parsers/nuclei', 'parsers/postexploitation', 'parsers/rate_limit',
         'parsers/sqli_findings', 'parsers/sqlmap'))
 
+SOURCE_FILES += ('tests/fixtures/automation/powershell_contract.ps1',)
+
 SOURCE_FILES += ('00_Config/lib/automation/cli.py',
                  '00_Config/lib/automation_menu.bash', 'cyber_framework.sh',
                  '09_Automation/python/orchestrator.py',
