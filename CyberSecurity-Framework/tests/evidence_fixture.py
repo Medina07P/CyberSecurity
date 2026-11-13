@@ -11,6 +11,8 @@ import tempfile
 
 SOURCES = (
     '10_Evidence/evidence_manager.sh',
+    '10_Evidence/auto_capture.sh',
+    '10_Evidence/run_all_evidence.sh',
     '00_Config/lib/evidence/__init__.py',
     '00_Config/lib/evidence/model.py',
     '00_Config/lib/evidence/storage.py',
@@ -25,6 +27,7 @@ SOURCES = (
     'tests/test_evidence_package.py',
     'tests/test_evidence_process.py',
     'tests/test_evidence_capture.py',
+    'tests/test_evidence_cli.py',
     'tests/run_evidence.sh',
 )
 
