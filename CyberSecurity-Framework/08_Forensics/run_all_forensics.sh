@@ -1,6 +1,23 @@
 #!/bin/bash
 # Flujo por fuentes elegidas. No IP, glob, adquisición ni lectura local implícita.
 # Uso: ./run_all_forensics.sh [--memory FILE] [--log FILE] [--pcap FILE] [--disk FILE] [--timeline-auth FILE] [--local]
+# All leaves stay synchronous foreground commands. Bash defers these traps
+# until the active foreground command has returned (including its cleanup).
+# Exit from the trap, not from a later rc-based check: this also closes the
+# check/invoke and return/next-prompt boundaries without launching another leaf.
+flow_cancelled=0
+flow_log=
+flow_cancel() {
+    (( flow_cancelled != 0 )) || flow_cancelled=$1
+    trap '' INT TERM
+    if [[ -n $flow_log ]]; then
+        printf 'workflow_cancelled wrapper_signal=%d\n' "$flow_cancelled" >>"$flow_log"
+    fi
+    printf 'Flujo cancelado; no se iniciarán más fuentes ni lecturas locales.\n' >&2
+    exit 1
+}
+trap 'flow_cancel 2' INT
+trap 'flow_cancel 15' TERM
 script_dir=${BASH_SOURCE[0]%/*}
 [[ $script_dir != "${BASH_SOURCE[0]}" ]] || script_dir=.
 module_dir=$(CDPATH= cd -- "$script_dir" && pwd) || exit 2
@@ -60,6 +77,7 @@ except (OSError,ValueError):
 PY
 ) || exit 2
 log="$workflow_dir/workflow.log"
+flow_log=$log
 executed=0; failed=$invalid_count; omitted=$((5 - ${#sources[@]} + invalid_count)); attempted=0; began=0
 (( invalid_count == 0 )) || printf 'selected_source precondition_failed=%d\n' "$invalid_count" >>"$log"
 flow_step() {
