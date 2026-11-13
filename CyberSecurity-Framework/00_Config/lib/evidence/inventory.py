@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import warnings
 
 from .model import EvidenceError, Inventory, Issue, Record, Verification, VerifiedRecord
 from .storage import PUBLIC_ROOTS, DIRECTORY_FLAGS, _directory, _version
@@ -178,6 +179,14 @@ def scan(root: Path) -> Inventory:
                 try:
                     info = os.stat(name, dir_fd=fd, follow_symlinks=False)
                     if stat.S_ISDIR(info.st_mode):
+                        if path == root / 'logs/runs':
+                            from .capture import read_run
+                            try:
+                                read_run(child)
+                                warnings.warn(f'LEDGER DIAGNÓSTICO EXCLUIDO: {child}', UserWarning)
+                            except (EvidenceError, OSError, ValueError, TypeError) as exc:
+                                issue(child, 'INVALID', exc)
+                            continue
                         directories.add(child)
                         child_fd = os.open(name, DIRECTORY_FLAGS, dir_fd=fd)
                         try:
@@ -185,6 +194,9 @@ def scan(root: Path) -> Inventory:
                         finally:
                             os.close(child_fd)
                     elif stat.S_ISREG(info.st_mode):
+                        if path == root / 'logs/runs':
+                            issue(child, 'INVALID', 'ARCHIVO AJENO A LEDGER')
+                            continue
                         if name != '.gitkeep':
                             files.add(child)
                     else:
@@ -249,8 +261,6 @@ def scan(root: Path) -> Inventory:
     for path in sorted(files - covered):
         issue(path, 'MISSING_METADATA', 'CONTENIDO SIN METADATOS')
     for path in sorted(directories):
-        if path == root / 'logs/runs':
-            issue(path, 'INVALID', 'LEDGER SIN ESQUEMA ADMITIDO EN ESTA VERSIÓN')
         if re.fullmatch(r'[0-9a-f]{32}', path.name) and path / 'evidence.json' not in parsed:
             issue(path, 'INVALID', 'REGISTRO INCOMPLETO O INVÁLIDO')
     return Inventory(records, issues)
