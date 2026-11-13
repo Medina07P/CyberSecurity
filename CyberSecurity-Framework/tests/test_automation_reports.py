@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 
 from automation_fixture import AutomationFixture
 
@@ -167,6 +168,76 @@ raise SystemExit(''' + str(rc) + ')\n')
         parent.symlink_to(self.f.home, target_is_directory=True)
         with self.assertRaises(PreflightError):
             check_report_destination(destination)
+
+    def test_publication_does_not_adopt_directory_swapped_after_mkdir(self):
+        from automation import reporting
+        source = self.f.repo / 'private-reports'
+        source.mkdir(mode=0o700)
+        for name in reporting.REPORT_FILES:
+            (source / name).write_text('synthetic report')
+        destination = self.output
+        identity = reporting.check_report_destination(destination)
+        mkdir = os.mkdir
+        attacked = []
+
+        def replace_destination(name, mode=0o777, *, dir_fd=None):
+            mkdir(name, mode, dir_fd=dir_fd)
+            if name == destination.name:
+                # Original vulnerable window: replace the just-created inode
+                # before the publisher opens that name, keeping its parent.
+                os.rename(destination, self.f.repo / 'displaced')
+                mkdir(destination, 0o755)
+                attacked.append('mkdir/open substitution')
+            elif str(name).startswith('.report-publication-'):
+                # Secure implementation prepares privately: a competing actor
+                # can occupy the external name, but cannot replace the stage.
+                mkdir(destination, 0o755)
+                attacked.append('external name occupied before publication')
+
+        with patch.object(reporting.os, 'mkdir', side_effect=replace_destination):
+            with self.assertRaises(PreflightError):
+                reporting.publish_reports(source, destination, identity)
+        self.assertEqual(len(attacked), 1)
+        self.assertEqual(list(destination.iterdir()), [])
+        self.assertEqual({p.name for p in source.iterdir()}, set(reporting.REPORT_FILES))
+
+    def test_publication_compares_exposed_name_with_previously_pinned_identity(self):
+        from automation import reporting
+        source = self.f.repo / 'private-reports'
+        source.mkdir(mode=0o700)
+        for name in reporting.REPORT_FILES:
+            (source / name).write_text('synthetic report')
+        identity = reporting.check_report_destination(self.output)
+        rename = reporting._rename_noreplace
+        displaced = self.f.repo / 'displaced'
+
+        def substitute_after_publication(*args):
+            rename(*args)
+            self.output.rename(displaced)
+            self.output.mkdir(mode=0o755)
+
+        with patch.object(reporting, '_rename_noreplace', side_effect=substitute_after_publication):
+            with self.assertRaises(PreflightError):
+                reporting.publish_reports(source, self.output, identity)
+        self.assertEqual(list(self.output.iterdir()), [])
+        self.assertEqual({p.name for p in displaced.iterdir()}, set(reporting.REPORT_FILES))
+        self.assertEqual(displaced.stat().st_mode & 0o777, 0o700)
+        self.assertEqual({p.name for p in source.iterdir()}, set(reporting.REPORT_FILES))
+
+    def test_publication_cross_filesystem_fails_closed_without_copy_fallback(self):
+        import errno
+        from automation import reporting
+        source = self.f.repo / 'private-reports'
+        source.mkdir(mode=0o700)
+        for name in reporting.REPORT_FILES:
+            (source / name).write_text('synthetic report')
+        identity = reporting.check_report_destination(self.output)
+        with patch('ctypes.CDLL') as libc, patch('ctypes.get_errno', return_value=errno.EXDEV):
+            libc.return_value.renameat2.return_value = -1
+            with self.assertRaisesRegex(PreflightError, 'mismo sistema de archivos'):
+                reporting.publish_reports(source, self.output, identity)
+        self.assertFalse(self.output.exists())
+        self.assertEqual({p.name for p in source.iterdir()}, set(reporting.REPORT_FILES))
 
     def test_helper_rejects_stale_run_reports(self):
         from automation.reporting import report_command
