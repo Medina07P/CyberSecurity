@@ -103,3 +103,16 @@ no ejecutadas y fallos heredados quedan fuera de esta afirmación.
 Los pasos7–8 (revisión independiente/integración)
 pertenecen al controlador y no quedan aprobados por esta entrega. Conservar
 worktree, logs y pendientes históricos/deferred ajenos.
+# Estado final de revisión — controlador
+
+Revisión independiente global y re-review de I1/I2 completados: ambos
+ADDRESSED, sin hallazgos nuevos bloqueantes sobre `8518c91`. Verificación
+posterior del controlador: 145 pruebas, rc0, GUARD OK; 9 archivos Bash con
+stderr vacío y 18 AST Python correctos; diff sin incidencias. Cinco regresiones
+sintéticas constan en el reporte de fixes. Los estados de revisión pendientes
+que aparecen más abajo son históricos de la entrega, no el estado actual.
+
+Integración local en `develop` todavía pendiente de confirmación. No push,
+no compatibilidad operacional, custodia legal ni afirmación de rama completa
+verde. Reportes y logs se conservan en
+`.superpowers/sdd/2026-11-13-evidence-integral/`.
