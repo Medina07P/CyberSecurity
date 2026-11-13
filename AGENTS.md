@@ -1,20 +1,26 @@
 # AGENTS.md
 
-**Ola global integral08, 2026-11-12:** gates Tasks1–8 aprobados; revisión GLOBAL
-de `0913b0e` bloqueada por I1–I4. Fixes en verificación, re-review del controlador
-pendiente: integridad corrupta no evita cleanup autenticado tras reapear escritores,
+**Cierre integral08, 2026-11-13:** Tasks1–8 y correcciones globales aprobadas.
+I1–I4 resueltos en `25912ef`; N1 pre-GO resuelto en `278ec1b`, con revisión
+independiente aprobada y verificación del controlador:296tests/rc0, Bash/AST
+sin incidencias. Ocho regresiones rc0 sobre `25912ef`; último diff solo helper
+y pruebas,296unittest/296runner verdes sobre `278ec1b`. Integridad corrupta
+no evita cleanup autenticado tras reapear escritores,
 recibos independientes `cleanup.json` no reparan ni validan análisis corrupto;
 Scalpel usa imagen posicional (Foremost -i); coordinador entrega INT/TERM parent-only
 por pidfd y espera hoja/cleanup sin deadline; intento offline sin identidad bloquea
 ACTUAL conservadoramente, sin unir identidades. Evidencia/API/estado en
 `.superpowers/sdd/2026-11-11-forensics-integral/final-fix-report.md` y
-`final-fix-logs/`. No declarar global aprobada, compatibilidad operacional ni rama
-verde. M1 Task5/Task7 permanecen DEFERRED, sin recrear históricos ni pulido.
+`final-fix-logs/`, `n1-fix-report.md` y `n1-fix-review.md`. Cierre de implementación
+y revisión, NO compatibilidad operacional, custodia legal ni rama completa verde.
+M1 Task5/Task7 permanecen DEFERRED, sin recrear históricos ni pulido. Conservar
+workspace/logs, cuatro pendientes ajenos y nota histórica; sin push. No iniciar09
+sin petición del usuario.
 
-**Actualización 08_Forensics, 2026-11-12:** Tasks1–7 aprobadas tras sus fixes,
+**Actualización histórica 08_Forensics, 2026-11-12:** Tasks1–7 aprobadas tras sus fixes,
 base Task8 `d8967b2`; no repetir implementación. Task8 añade verificador/suite
-aislada y documentación; su revisión y la revisión global corresponden al
-controlador y NO se declaran terminadas. Guías vigentes: `08_Forensics/USE.md`
+aislada y documentación; revisiones posteriormente terminadas según cierre
+2026-11-13 anterior. Guías vigentes: `08_Forensics/USE.md`
 bajo el framework y `docs/FORENSE-INTEGRAL-2026-11-11.md`; ledger en
 `.superpowers/sdd/2026-11-11-forensics-integral/progress.md`.
 08 abre menú por fuentes explícitas, sin IP de sesión ni adquisición/instalación/
