@@ -54,6 +54,7 @@ forensics_register_cleanup() {
     metadata=$(_forensics_helper validate --run "$FORENSICS_RUN_DIR") || return 2
     [[ $(printf '%s' "$metadata" | _forensics_field finished) = None &&
        $(printf '%s' "$metadata" | _forensics_field steps) = '[]' ]] || return 2
+    _forensics_helper init-cleanup --run "$FORENSICS_RUN_DIR" >/dev/null || return 1
     _FORENSICS_CLEANUP_CALLBACK=$1
 }
 
@@ -154,13 +155,40 @@ _forensics_start_preflight() {
     local kind=$1 tool=$2
     shift 2
     coproc FORENSICS_WORKER {
-        _forensics_helper supervise-preflight --kind "$kind" --tool "$tool" -- "$@"
+        if [[ $kind = workflow ]]; then
+            local -a interactive=()
+            [[ ${FORENSICS_LEAF_INTERACTIVE:-0} = 0 ]] || interactive=(--interactive)
+            _forensics_helper supervise-leaf --log "$1" --leaf "$2" \
+                --stdin-fd "$_FORENSICS_INPUT_FD" "${interactive[@]}" -- "${@:3}"
+        else
+            _forensics_helper supervise-preflight --kind "$kind" --tool "$tool" -- "$@"
+        fi
     }
 }
 
 # Owner-shell API, before begin; output only in variables, never stdout.
 # Whitelisted help/privilege probes only, not a generic command executor.
 forensics_preflight() {
+    local _FORENSICS_WORKFLOW_API=0
+    _forensics_controlled "$@"
+}
+
+# Workflow only: no run, no deadline, inherited selected stdin, private log.
+# Results distinguish ordinary rc (including 130/143) from explicit cancellation.
+forensics_workflow_leaf() {
+    local _FORENSICS_INPUT_FD status _FORENSICS_WORKFLOW_API=1
+    exec {_FORENSICS_INPUT_FD}<&0 || return 1
+    _forensics_controlled workflow bash "$@"
+    status=$?
+    exec {_FORENSICS_INPUT_FD}<&-
+    FORENSICS_LEAF_RC=$FORENSICS_PREFLIGHT_RC
+    FORENSICS_LEAF_CANCELLED=$FORENSICS_PREFLIGHT_CANCELLED
+    (( FORENSICS_LEAF_CANCELLED == 0 )) && [[ -n $FORENSICS_LEAF_RC ]] || return 1
+    [[ $FORENSICS_LEAF_RC != 0 ]] || (( status == 0 )) || return 1
+    return "$FORENSICS_LEAF_RC"
+}
+
+_forensics_controlled() {
     local kind=${1:-} tool=${2:-} status=0 worker_status metadata result_fd protocol_line
     FORENSICS_PREFLIGHT_RC=
     FORENSICS_PREFLIGHT_OUTPUT=
@@ -169,6 +197,7 @@ forensics_preflight() {
     (( FORENSICS_PREFLIGHT_CANCELLED == 0 )) || return 1
     case "$kind:$tool:$#:${3:-}:${4:-}" in
         compatibility:avml:3:--help:|compatibility:lime:3:--help:|privilege:sudo:4:-n:true) ;;
+        workflow:bash:*) [[ ${_FORENSICS_WORKFLOW_API:-0} = 1 ]] || return 2 ;;
         *) return 2 ;;
     esac
     shift 2
@@ -206,9 +235,11 @@ forensics_preflight() {
             else
                 metadata=${protocol_line#RESULT }
                 FORENSICS_PREFLIGHT_RC=$(printf '%s' "$metadata" | _forensics_field rc) || status=1
-                FORENSICS_PREFLIGHT_OUTPUT=$(printf '%s' "$metadata" | _forensics_field output) || status=1
-                [[ $(printf '%s' "$metadata" | _forensics_field timed_out) != True ]] || FORENSICS_PREFLIGHT_TIMED_OUT=1
-                [[ $(printf '%s' "$metadata" | _forensics_field output_limited) != True ]] || status=2
+                if [[ $kind != workflow ]]; then
+                    FORENSICS_PREFLIGHT_OUTPUT=$(printf '%s' "$metadata" | _forensics_field output) || status=1
+                    [[ $(printf '%s' "$metadata" | _forensics_field timed_out) != True ]] || FORENSICS_PREFLIGHT_TIMED_OUT=1
+                    [[ $(printf '%s' "$metadata" | _forensics_field output_limited) != True ]] || status=2
+                fi
                 local observed
                 observed=$(printf '%s' "$metadata" | _forensics_field cancellation_wrapper_signal) || status=1
                 [[ $observed = None ]] || _FORENSICS_CANCELLED=$observed
@@ -370,12 +401,15 @@ forensics_finish() {
         # Protect the validation/trap-snapshot boundary too, not just the body
         # of the callback: a prior handler can itself request finish here.
         _FORENSICS_CLEANUP_ACTIVE=1
-        metadata=$(_forensics_helper validate --run "$FORENSICS_RUN_DIR") || {
-            _FORENSICS_FAILED=1; _FORENSICS_CLEANUP_ACTIVE=0; return 1;
-        }
-        [[ $(printf '%s' "$metadata" | _forensics_field finished) = None ]] || {
-            _FORENSICS_FAILED=1; _FORENSICS_CLEANUP_ACTIVE=0; return 1;
-        }
+        # Content trust is NOT resource ownership. Even an unreadable manifest
+        # cannot prevent the registered callback's independent ownership checks.
+        # Its explicit cleanup journal was bound to this run before allocation.
+        metadata=$(_forensics_helper validate --run "$FORENSICS_RUN_DIR") || _FORENSICS_FAILED=1
+        if [[ -n $metadata && $(printf '%s' "$metadata" | _forensics_field finished) != None ]]; then
+            # Preserve the ordinary API's closed-run guard. Independent late
+            # receipts require their explicit API, never callback re-entry.
+            _FORENSICS_FAILED=1; _FORENSICS_CLEANUP_ACTIVE=0; return 1
+        fi
         old_int=$(trap -p INT); old_term=$(trap -p TERM)
         [[ -z $old_int ]] || has_int=1
         [[ -z $old_term ]] || has_term=1
@@ -389,6 +423,7 @@ forensics_finish() {
         trap '_forensics_cleanup_signal 15' TERM
         "$_FORENSICS_CLEANUP_CALLBACK"
         cleanup_rc=$?
+        _forensics_helper finish-cleanup --run "$FORENSICS_RUN_DIR" >/dev/null || cleanup_rc=1
         FORENSICS_STEP_RC=$captured_rc
         FORENSICS_STEP_OUT=$captured_out
         FORENSICS_STEP_ERR=$captured_err

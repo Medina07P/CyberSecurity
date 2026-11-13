@@ -186,6 +186,15 @@ _forensics_disk_mount_probe() {
 _forensics_disk_publish_step() {
     local expected=$1 metadata status state expected_status=1
     shift
+    if [[ ${_FORENSICS_DISK_PUBLISH_CLEANUP:-0} = 1 ]]; then
+        # Independent receipt remains verifiable when analysis metadata/content
+        # is invalid. It never repairs the run or relaxes its ordinary validator.
+        metadata=$(_forensics_helper cleanup-step "$@")
+        status=$?
+        [[ $expected != COMPLETADO ]] || expected_status=0
+        [[ $status = "$expected_status" && -n $metadata ]] || { _forensics_block; return 1; }
+        [[ ${_FORENSICS_DISK_RECEIPTS_ONLY:-0} = 0 ]] || return 0
+    fi
     metadata=$(_forensics_helper step "$@")
     status=$?
     state=$(printf '%s' "$metadata" | python3 -B -c '
@@ -209,6 +218,14 @@ _forensics_disk_manual() {
 
 _forensics_disk_publish_resources() {
     local state=$1 name rc
+    local _FORENSICS_DISK_PUBLISH_CLEANUP=1 _FORENSICS_DISK_RECEIPTS_ONLY=0
+    local validation
+    validation=$(_forensics_helper validate --run "$FORENSICS_RUN_DIR") || _FORENSICS_DISK_RECEIPTS_ONLY=1
+    if [[ $_FORENSICS_DISK_RECEIPTS_ONLY = 0 ]]; then
+        [[ $(printf '%s' "$validation" | _forensics_field dependents_blocked) = False &&
+           $(printf '%s' "$validation" | _forensics_field finished) = None ]] || _FORENSICS_DISK_RECEIPTS_ONLY=1
+    fi
+    if [[ $_FORENSICS_DISK_RECEIPTS_ONLY = 1 ]]; then _FORENSICS_FAILED=1; fi
     local -a artifacts=() complete=()
     [[ $state != COMPLETADO ]] || complete=(--complete)
     if [[ -n ${_FORENSICS_DISK_CONTROL:-} && -f $_FORENSICS_DISK_CONTROL/cleanup.log ]]; then

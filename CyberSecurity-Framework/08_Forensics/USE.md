@@ -144,6 +144,16 @@ diagnóstico manual privado. Cancelación espera escritores y cleanup opt-in
 sincrónico antes de cerrar, registra recibos/hash/rc de limpieza; no desmonta
 recursos ajenos ni borra directorios ajenos.
 
+La integridad del contenido no autentica la propiedad del montaje: incluso si
+work, un artefacto o `run.json` se corrompe, se intenta liberar únicamente los
+recursos propios autenticados, después de reapear escritores. No se relaja el
+validador del análisis ni se repara/restaura evidencia. El registro independiente
+`cleanup.json` se crea antes de asignar recursos y liga recibos a ruta/dev/inode/
+UID del run; conserva rc y hashes de diagnósticos de cleanup. Su interfaz interna
+explícita `validate-cleanup --run RUN` verifica SOLO esos recibos, no acredita el
+análisis corrupto. Si la metadata no permite cerrar el run, se conserva inválida
+y el wrapper falla; los recibos no convierten ese run en COMPLETADO.
+
 `file_carving.sh FILE [OUTPUT_DIR] [--physical]`: offline conserva Foremost,
 Scalpel y ddrescue con copias/destinos separados. Físico requiere token/root y
 solo ddrescue lee dispositivo directo, sin copia previa obligatoria. Imagen y
@@ -152,6 +162,9 @@ o tamaño físico desconocido impide declarar total. Hash del producto no es
 hash del soporte original. Analizar después la imagen con Foremost/Scalpel
 requiere selección explícita. Cero productos válidos se distingue de backend
 ausente o fallido.
+Scalpel recibe la imagen como argumento posicional (`-i` significaría lista de
+rutas a leer); Foremost conserva `-i IMAGE`. Nunca se interpretan bytes de la
+imagen como una selección adicional de fuentes.
 
 ## Acciones locales sensibles y tokens
 
@@ -188,7 +201,9 @@ Timeout/cancelación aborta sin fallback. Otras sondas no adquieren ese deadline
 `step.signal` es cancelación observada por wrapper, no señal terminadora inferida
 del rc. Supervisor ancla hijos propios y restaura señales; no cubre escape
 deliberado de sesión ni garantiza cleanup frente a SIGKILL. Flujo maneja SIGINT/
-SIGTERM sticky, espera hoja/cleanup activos y no inicia nuevas fuentes/prompts;
+SIGTERM sticky, también dirigidos SOLO al PID del coordinador: entrega la señal
+a la hoja activa por pidfd concreto y espera su cleanup, sin timeout operacional
+ni señales por PID/PGID reciclables. No inicia nuevas fuentes/prompts;
 fallo ordinario de una fuente no impide independientes.
 
 ## Flujo, estados, visor y verificador
@@ -214,6 +229,12 @@ inicio UTC, separa identidades y no revive éxito antiguo ante intento nuevo
 fallido/incompleto o metadata inválida. Solo explora raíces propias conocidas;
 externos requieren run explícito, no parent externo. Consulta válida puede
 devolver0 mostrando FALLIDO: eso no significa análisis exitoso.
+Un intento offline sin identidad/copia usable (ENOSPC, staging mutado o intento
+incompleto antes de identidad) bloquea conservadoramente ACTUAL en la selección,
+también con filtro de digest y entre raíces conocidas. No se atribuye a otro
+digest ni se presenta una copia incompleta como entrada válida. Coste deliberado:
+un intento no atribuible puede impedir vigencia de otras identidades de esa
+selección; los históricos siguen consultables, sin migración ni limpieza automática.
 
 `python3 tests/verify_forensics.py RUN_JSON` usa el mismo lector estricto08, sin
 importar ejecutores, crear bytecode (también Python normal sin -B), adquirir ni

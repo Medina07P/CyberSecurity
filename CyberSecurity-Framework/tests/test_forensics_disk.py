@@ -58,6 +58,20 @@ if name == 'umount':
  if a[-1]!=s.get('point'): sys.exit(88)
  s['mounted']=False; save(); sys.exit(0)
 if name in ('foremost','scalpel'):
+ if name=='foremost':
+  assert a[0]=='-i' and a[2]=='-o' and len(a)==4
+  inputs=[p(a[1])]
+ elif '-i' in a:
+  # Scalpel 1.60: -i is a LIST, not an image. Model only synthetic paths.
+  inputs=[p(line) for line in p(a[a.index('-i')+1]).read_text().splitlines()]
+ else:
+  assert len(a)==3 and a[0]=='-o'
+  inputs=[p(a[2])]
+ if name=='scalpel':
+  for source in inputs:
+   assert source.is_relative_to(root)
+   with (root/'scalpel-inputs').open('a') as f:
+    f.write(json.dumps({'path':str(source),'size':len(source.read_bytes())})+'\n')
  out=p(a[a.index('-o')+1]); out.mkdir(mode=0o700,exist_ok=True)
  if not os.environ.get('ZERO_RECOVERED'): (out/'SECRET.bin').write_bytes(b'SECRET-CONTENT')
  if os.environ.get('WAIT_BACKEND'):
@@ -400,6 +414,72 @@ exit "$status"
             if process.poll() is None:
                 process.terminate(); process.communicate(timeout=20)
 
+    def corrupt_listing_cleanup(self, target, cancel=False):
+        library=self.framework/'00_Config/lib/forensics_disk.bash'
+        injection='''
+        root=Path(os.environ['ROOT']); run=Path(os.environ['FORENSICS_RUN_DIR'])
+        kernel=json.loads((root/'kernel.json').read_text())
+        target=os.environ['CORRUPT_TARGET']
+        damaged=Path(kernel['copy']) if target=='work' else (run/'analysis/file.stdout' if target=='artifact' else run/'run.json')
+        damaged.write_text('{}' if target=='metadata' else 'CORRUPTED')
+        if os.environ.get('CANCEL_CORRUPT'):
+            (root/'started').touch()
+            __import__('signal').pause()
+'''
+        library.write_text(library.read_text().replace("    elif action=='list':", "    elif action=='list':\n"+injection))
+        script=self.framework/'08_Forensics/disk/disk_forensics.sh'
+        env={**self.env,'CORRUPT_TARGET':target,**({'CANCEL_CORRUPT':'1'} if cancel else {})}
+        process=subprocess.Popen(['/bin/bash',str(script),str(self.source),'--mount-copy'],env=env,
+            stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        process.stdin.write('MONTAR_COPIA\n'); process.stdin.close(); process.stdin=None
+        try:
+            if cancel:
+                deadline=time.monotonic()+20
+                while not (self.root/'started').exists() and process.poll() is None and time.monotonic()<deadline: time.sleep(.01)
+                self.assertTrue((self.root/'started').exists())
+                process.send_signal(signal.SIGTERM)
+            out,err=process.communicate(timeout=30)
+            self.assertEqual(process.returncode,1,err)
+            state=json.loads((self.root/'kernel.json').read_text())
+            self.assertFalse(state['mounted'],'corrupt evidence prevented owned cleanup')
+            self.assertIsNone(state['loop'])
+            self.assertEqual(inventory(self.root/'sources'),self.original)
+            run=next((self.root/'outputs/analysis/runs').iterdir())
+            helper=self.framework/'00_Config/lib/forensics_evidence.py'
+            receipt=subprocess.run([sys.executable,'-B',str(helper),'validate-cleanup','--run',str(run)],env=self.env,
+                                   text=True,capture_output=True,timeout=10)
+            self.assertEqual(receipt.returncode,0,receipt.stderr)
+            steps=json.loads(receipt.stdout)['steps']
+            self.assertEqual([(s['name'],s['rc']) for s in steps],
+                             [('cleanup_umount',0),('cleanup_detach',0),('disk_resources',0)])
+            # The independent receipt MUST NOT make corrupt analysis trustworthy.
+            invalid=subprocess.run([sys.executable,'-B',str(helper),'validate','--run',str(run)],env=self.env,capture_output=True)
+            self.assertEqual(invalid.returncode,2)
+            if target=='metadata': self.assertEqual((run/'run.json').read_text(),'{}')
+            else:
+                data=json.loads((run/'run.json').read_text())
+                self.assertEqual(data['state'],'FALLIDO'); self.assertIsNotNone(data['finished'])
+            (run/'analysis/disk-control/cleanup.log').write_text('tampered receipt')
+            invalid=subprocess.run([sys.executable,'-B',str(helper),'validate-cleanup','--run',str(run)],env=self.env,capture_output=True)
+            self.assertNotEqual(invalid.returncode,0)
+        finally:
+            if process.poll() is None: process.terminate(); process.communicate(timeout=20)
+
+    def test_corrupt_work_still_cleans_owned_resources(self):
+        self.corrupt_listing_cleanup('work')
+
+    def test_corrupt_artifact_still_cleans_owned_resources(self):
+        self.corrupt_listing_cleanup('artifact')
+
+    def test_corrupt_work_with_cancellation_still_cleans_owned_resources(self):
+        self.corrupt_listing_cleanup('work',True)
+
+    def test_corrupt_artifact_with_cancellation_still_cleans_owned_resources(self):
+        self.corrupt_listing_cleanup('artifact',True)
+
+    def test_invalid_metadata_has_explicit_independent_cleanup_receipt(self):
+        self.corrupt_listing_cleanup('metadata')
+
     def cancel_cleanup_receipt(self, inside, failure):
         if inside:
             backend=self.root/'bin'/'mount'
@@ -550,6 +630,21 @@ trap inject_finish DEBUG
             self.assertEqual(data['state'],'COMPLETADO')
         for path in (self.root/'outputs'/'recovered').rglob('*'):
             self.assertEqual(path.stat().st_mode & 0o777,0o700 if path.is_dir() else 0o600)
+
+    def test_scalpel_image_is_positional_never_a_list_of_other_sources(self):
+        other=self.root/'sources'/'second-not-selected'
+        other.write_bytes(b'NOT-SELECTED')
+        payload=(str(other)+'\n').encode()
+        self.source.write_bytes(payload)
+        self.original=inventory(self.root/'sources')
+        result=self.leaf('file_carving.sh',self.source)
+        reads=[json.loads(line) for line in (self.root/'scalpel-inputs').read_text().splitlines()]
+        self.assertEqual(len(reads),1)
+        self.assertNotEqual(reads[0]['path'],str(other),'Scalpel read a path from image bytes')
+        self.assertEqual(reads[0]['size'],len(payload))
+        data=self.manifests()[0]
+        self.assertIn(reads[0]['path'],[item['work_path'] for item in data['inputs']])
+        self.assertEqual(next(s['rc'] for s in data['steps'] if s['name']=='scalpel'),0,result.stderr)
 
     def test_ddrescue_map_not_rc_or_nonempty_image_controls_coverage(self):
         for mode,state in [('bad','PARCIAL'),('pending','PARCIAL'),('unknown','NO_EVALUABLE'),

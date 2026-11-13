@@ -65,7 +65,7 @@ class MenuFlowTests(unittest.TestCase):
    p.write_text('#!/bin/bash\nexec '+sys.executable+' -B "${BASH_SOURCE[0]%.sh}.fixture" "$@"\n'); p.chmod(0o700)
  def calls(self):
   p=self.root/'calls'; return [json.loads(s) for s in p.read_text().splitlines()] if p.exists() else []
- def cancellation_case(self,signum,*,local_stage=None,boundary=None):
+ def cancellation_case(self,signum,*,local_stage=None,boundary=None,parent_only=False):
   """Only own session receives signals; pipes hold cleanup until released."""
   import ctypes
   libc=ctypes.CDLL(None,use_errno=True); previous=ctypes.c_int()
@@ -97,9 +97,14 @@ if name==os.environ['BLOCK_LEAF']:
    flow=self.fw/'08_Forensics/run_all_forensics.sh'
    hook='    printf R >&"$READY_FD"\n    IFS= read -r -u "$RELEASE_FD" boundary_release\n'
    text=flow.read_text()
-   anchor='    bash "$module_dir/$leaf" "$@" >>"$log" 2>&1\n' if boundary=='invoke' else '    status=$?\n'
+   anchor='    flow_leaf "$module_dir/$leaf" "$@"\n' if boundary=='invoke' and 'flow_leaf ' in text else ('    bash "$module_dir/$leaf" "$@" >>"$log" 2>&1\n' if boundary=='invoke' else '    status=$?\n')
    self.assertIn(anchor,text)
    flow.write_text(text.replace(anchor,hook+anchor if boundary=='invoke' else anchor+hook,1))
+  # Preserve fixture pipes ONLY in the disposable supervisor copy. Production
+  # child fd policy stays closed except for its gate and selected stdin.
+  helper=self.fw/'00_Config/lib/forensics_evidence.py'
+  helper.write_text(helper.read_text().replace('pass_fds=(gate_read,),',
+   "pass_fds=(gate_read, *[int(os.environ[k]) for k in ('READY_FD','RELEASE_FD') if k in os.environ]),"))
   ready_r,ready_w=os.pipe(); release_r,release_w=os.pipe()
   sentinel=subprocess.Popen([sys.executable,'-B','-c','import signal; signal.pause()'],env=self.env,start_new_session=True)
   sentinel_fd=os.pidfd_open(sentinel.pid); proc=None; owner_fd=None; leaf_fd=None; leaf_pid=None
@@ -117,9 +122,10 @@ if name==os.environ['BLOCK_LEAF']:
    if boundary is None:
     leaf_pid=int((self.root/'leaf-pid').read_text()); leaf_fd=os.pidfd_open(leaf_pid)
    self.assertIsNone(proc.poll())
-   os.killpg(proc.pid,signum)  # pinned live owner, separate session from sentinel
+   if parent_only: signal.pidfd_send_signal(owner_fd,signum)
+   else: os.killpg(proc.pid,signum)  # pinned live owner, separate session from sentinel
    if boundary is None:
-    self.assertTrue(select.select([ready_r],[],[],4)[0],'leaf did not receive group signal')
+    self.assertTrue(select.select([ready_r],[],[],4)[0],'active leaf did not receive cancellation')
     self.assertEqual(os.read(ready_r,1),b'S')
     self.assertFalse(select.select([owner_fd],[],[],0.15)[0],'owner exited before active leaf cleanup')
     os.write(release_w,b'x\n')
@@ -153,7 +159,13 @@ if name==os.environ['BLOCK_LEAF']:
     if fd is not None: os.close(fd)
    self.assertEqual(libc.prctl(36,previous.value,0,0,0),0)
  def test_workflow_cancellation_group_sigint_waits_cleanup_no_second_source(self):
-  self.cancellation_case(signal.SIGINT)
+   self.cancellation_case(signal.SIGINT)
+ def test_workflow_parent_only_sigint_waits_cleanup_no_second_source(self):
+  self.cancellation_case(signal.SIGINT,parent_only=True)
+ def test_workflow_parent_only_sigterm_waits_cleanup_no_second_source(self):
+  self.cancellation_case(signal.SIGTERM,parent_only=True)
+ def test_workflow_parent_only_local_acquisition_sigterm_no_new_prompts(self):
+  self.cancellation_case(signal.SIGTERM,parent_only=True,local_stage='memory')
  def test_workflow_cancellation_group_sigterm_waits_cleanup_no_second_source(self):
   self.cancellation_case(signal.SIGTERM)
  def test_workflow_cancellation_local_memory_sigint_no_new_prompts_or_reads(self):
@@ -348,6 +360,42 @@ if name==os.environ['BLOCK_LEAF']:
   self.assertEqual(viewed.returncode,0,viewed.stderr)
   self.assertIn('"operation": "memory"',viewed.stdout)
   self.assertIn('"operation": "strings"',viewed.stdout)
+ def test_workflow_parent_only_real_acquisition_cancels_nested_capture_before_host_reads(self):
+  import time
+  from test_forensics_acquisition import BACKEND
+  for name in ('sudo','avml','lime','dd','uname','cat'):
+   path=self.root/'bin'/name
+   if path.exists(): path.unlink()
+   body=BACKEND.replace('PYTHON',sys.executable,1)
+   body=body.replace(" sys.exit(int(os.environ.get('RAM_RC','0')))",
+    " (root/'acquiring').write_text(str(os.getpid()))\n __import__('signal').pause()")
+   path.write_text(body); path.chmod(0o700)
+  path=self.fw/'08_Forensics/memory/memory_dump.sh'
+  path.write_text(path.read_text().replace('(( EUID == 0 ))','[[ ${FIXTURE_ROOT:-0} = 1 ]]'))
+  proc=subprocess.Popen(['/bin/bash',str(self.fw/'08_Forensics/run_all_forensics.sh'),'--local'],
+   env={**self.env,'FIXTURE_ROOT':'1'},stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True)
+  owner=os.pidfd_open(proc.pid); backend=None
+  try:
+   proc.stdin.write('FLUJO_LOCAL\nADQUIRIR_MEMORIA\nLEER_LOG_LOCAL\nLOCAL_SI\n'); proc.stdin.flush()
+   deadline=time.monotonic()+12
+   while not (self.root/'acquiring').exists() and proc.poll() is None and time.monotonic()<deadline: time.sleep(.01)
+   self.assertTrue((self.root/'acquiring').exists())
+   backend=os.pidfd_open(int((self.root/'acquiring').read_text()))
+   signal.pidfd_send_signal(owner,signal.SIGTERM)
+   out,err=proc.communicate(timeout=15)
+   self.assertEqual(proc.returncode,1,err)
+   self.assertTrue(select.select([backend],[],[],1)[0],'nested acquisition backend survived')
+   self.assertNotIn('LEER_LOG_LOCAL',err); self.assertNotIn('LOCAL_SI',err)
+   data=json.loads(next((self.root/'outputs/analysis').rglob('run.json')).read_text())
+   self.assertIsNotNone(data['finished']); self.assertEqual(data['state'],'CANCELADO')
+   self.assertEqual(next(s['signal'] for s in data['steps'] if s['name']=='acquire'),15)
+   self.assertEqual([c[0] for c in self.calls()],['avml','avml'])
+  finally:
+   if proc.poll() is None: signal.pidfd_send_signal(owner,signal.SIGKILL); proc.communicate(timeout=5)
+   if backend is not None:
+    if not select.select([backend],[],[],0)[0]: signal.pidfd_send_signal(backend,signal.SIGKILL)
+    os.close(backend)
+   os.close(owner)
  def test_all_selected_routes_absolute_from_external_cwd(self):
   self.stub_leaves(); a=self.source('a')
   r=self.flow('--pcap',a,'--disk',a,'--timeline-auth',a)
@@ -406,6 +454,30 @@ if name==os.environ['BLOCK_LEAF']:
   r=self.viewer(); self.assertEqual(r.returncode,1,r.stderr)
   self.assertNotIn('ACTUAL',r.stdout); self.assertIn('NO_EVALUABLE',r.stdout+r.stderr)
   self.assertIn('HISTORICO',r.stdout)
+ def test_viewer_staging_failures_and_preidentity_incomplete_block_history(self):
+   import contextlib, io
+   import errno
+   from unittest.mock import patch
+   with contextlib.redirect_stderr(io.StringIO()): old=self.make_run()
+   e=load_evidence(); src=self.root/'sources/viewer-source'
+   digest=hashlib.sha256(src.read_bytes()).hexdigest()
+   for fault in ('enospc','mutation','incomplete'):
+    with self.subTest(fault=fault):
+     with contextlib.redirect_stderr(io.StringIO()): attempt=e.start_run(old.parent,'strings','offline',[])
+     if fault!='incomplete':
+      copy=e._copy
+      def fail(*args):
+       if fault=='enospc': raise OSError(errno.ENOSPC,'synthetic')
+       copy(*args); Path(args[1]).write_bytes(b'CORRUPT')
+      with patch.object(e,'_copy',side_effect=fail),self.assertRaises(ValueError): e.stage_input(attempt,src)
+      e.finish_run(attempt)
+     for flags in ((),('--input',digest)):
+      before=inventory(self.root/'outputs')
+      result=self.viewer(*flags)
+      self.assertNotIn('ACTUAL ',result.stdout)
+      self.assertIn(old.name,result.stdout)
+      self.assertIn('HISTORICO ',result.stdout)
+      self.assertEqual(inventory(self.root/'outputs'),before)
  def test_viewer_external_only_explicit_and_never_reopens_source(self):
   external=self.make_run(root=self.root/'external')
   (self.root/'sources/viewer-source').unlink()

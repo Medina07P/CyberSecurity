@@ -32,6 +32,43 @@ class PreflightTests(unittest.TestCase):
         return subprocess.run(['/bin/bash','-c','source "$RUNTIME" || exit 90\n'+body],
                               env=env,text=True,capture_output=True,timeout=20)
 
+    def test_workflow_leaf_pidfd_denial_cannot_execute_selected_leaf(self):
+        with sandbox() as root:
+            env=self.environment(root)
+            module=root/'code/08_Forensics/memory'; module.mkdir(parents=True)
+            leaf=module/'strings_analysis.sh'
+            leaf.write_text('#!/bin/bash\nprintf forbidden > "$ROOT/forbidden"\n')
+            log=root/'outputs/workflow.log'; log.touch(mode=0o600)
+            helper=Path(env['RUNTIME']).with_name('forensics_evidence.py')
+            helper.write_text(helper.read_text().replace("if __name__ == '__main__':",
+                "def denied(*args): raise PermissionError('synthetic pidfd denial')\nos.pidfd_open=denied\nif __name__ == '__main__':"))
+            result=self.shell(root,'forensics_workflow_leaf "$ROOT/outputs/workflow.log" "$ROOT/code/08_Forensics/memory/strings_analysis.sh"',env)
+            self.assertEqual(result.returncode,1,result.stderr)
+            self.assertFalse((root/'forbidden').exists())
+
+    def test_workflow_leaf_cancel_before_go_is_sticky_and_not_a_backend_rc(self):
+        with sandbox() as root:
+            env=self.environment(root)
+            module=root/'code/08_Forensics/memory'; module.mkdir(parents=True)
+            leaf=module/'strings_analysis.sh'
+            leaf.write_text('#!/bin/bash\nprintf forbidden > "$ROOT/forbidden"\n')
+            log=root/'outputs/workflow.log'; log.touch(mode=0o600)
+            result=self.shell(root,r'''
+injected=0
+inject() {
+ [[ $BASHPID = $$ && $injected = 0 && $BASH_COMMAND = _forensics_start_preflight* ]] || return 0
+ injected=1; kill -INT "$$"
+}
+set -T; trap inject DEBUG
+forensics_workflow_leaf "$ROOT/outputs/workflow.log" "$ROOT/code/08_Forensics/memory/strings_analysis.sh"
+[[ $? = 1 && $FORENSICS_LEAF_CANCELLED = 2 && $FORENSICS_LEAF_RC = 0 ]] || exit 81
+trap - DEBUG
+forensics_workflow_leaf "$ROOT/outputs/workflow.log" "$ROOT/code/08_Forensics/memory/strings_analysis.sh"
+[[ $? = 1 ]] || exit 82
+''',env)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertFalse((root/'forbidden').exists())
+
     def test_preflight_private_output_real_rc_no_run_and_no_generic_execution(self):
         with sandbox() as root:
             env=self.environment(root); env['PROBE_RC']='7'

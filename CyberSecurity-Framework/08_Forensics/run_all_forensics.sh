@@ -1,10 +1,8 @@
 #!/bin/bash
 # Flujo por fuentes elegidas. No IP, glob, adquisición ni lectura local implícita.
 # Uso: ./run_all_forensics.sh [--memory FILE] [--log FILE] [--pcap FILE] [--disk FILE] [--timeline-auth FILE] [--local]
-# All leaves stay synchronous foreground commands. Bash defers these traps
-# until the active foreground command has returned (including its cleanup).
-# Exit from the trap, not from a later rc-based check: this also closes the
-# check/invoke and return/next-prompt boundaries without launching another leaf.
+# Owned leaf supervision delivers parent-only cancellation and waits cleanup.
+# Outside a leaf the sticky handler exits before any new source or prompt.
 flow_cancelled=0
 flow_log=
 flow_cancel() {
@@ -22,6 +20,7 @@ script_dir=${BASH_SOURCE[0]%/*}
 [[ $script_dir != "${BASH_SOURCE[0]}" ]] || script_dir=.
 module_dir=$(CDPATH= cd -- "$script_dir" && pwd) || exit 2
 helper="$module_dir/../00_Config/lib/forensics_evidence.py"
+source "$module_dir/../00_Config/lib/forensics_runtime.bash" || exit 2
 usage() {
     printf 'Uso: run_all_forensics.sh [--memory FILE] [--log FILE] [--pcap FILE] [--disk FILE] [--timeline-auth FILE] [--local]\nSin fuentes no hay trabajo. Seleccione archivos offline en el menú 08. --memory ejecuta strings; Volatility Windows se selecciona aparte con perfil/símbolos locales.\n--local: adquisición RAM, strings sobre producto validado, log del host y timeline local; confirmaciones separadas.\n' >&2
 }
@@ -80,11 +79,20 @@ log="$workflow_dir/workflow.log"
 flow_log=$log
 executed=0; failed=$invalid_count; omitted=$((5 - ${#sources[@]} + invalid_count)); attempted=0; began=0
 (( invalid_count == 0 )) || printf 'selected_source precondition_failed=%d\n' "$invalid_count" >>"$log"
+flow_leaf() {
+    local status
+    (( flow_cancelled == 0 )) || flow_cancel "$flow_cancelled"
+    forensics_workflow_leaf "$log" "$@"
+    status=$?
+    if (( ${FORENSICS_LEAF_CANCELLED:-0} != 0 )); then flow_cancelled=$FORENSICS_LEAF_CANCELLED; fi
+    (( flow_cancelled == 0 )) || flow_cancel "$flow_cancelled"
+    return "$status"
+}
 flow_step() {
     local label=$1 leaf=$2 status
     shift 2
     (( attempted+=1 ))
-    bash "$module_dir/$leaf" "$@" >>"$log" 2>&1
+    flow_leaf "$module_dir/$leaf" "$@"
     status=$?
     (( executed+=1 ))
     (( status == 2 )) || (( began+=1 ))
@@ -96,7 +104,7 @@ if (( local_mode )); then
     # A new, isolated analysis root makes this acquisition unambiguous. Never
     # search the historical RAM tree. The leaf receives stdin directly.
     (( attempted+=1 ))
-    FORENSICS_ANALYSIS_ROOT="$workflow_dir/acquisition" bash "$module_dir/memory/memory_dump.sh" >>"$log"
+    FORENSICS_ANALYSIS_ROOT="$workflow_dir/acquisition" FORENSICS_LEAF_INTERACTIVE=1 flow_leaf "$module_dir/memory/memory_dump.sh"
     status=$?; (( executed+=1 ))
     (( status == 2 )) || (( began+=1 ))
     printf 'memory_acquisition rc=%d\n' "$status" >>"$log"
@@ -146,7 +154,7 @@ PY
             flow_step host_log logs/log_analyzer.sh /var/log/syslog || :
             # The timeline leaf obtains its OWN LOCAL_SI confirmation directly.
             (( attempted+=1 ))
-            bash "$module_dir/timeline/timeline_creator.sh" --local >>"$log"
+            FORENSICS_LEAF_INTERACTIVE=1 flow_leaf "$module_dir/timeline/timeline_creator.sh" --local
             status=$?; (( executed+=1 )); (( status == 0 )) || (( failed+=1 ))
             (( status == 2 )) || (( began+=1 ))
             printf 'local_timeline rc=%d\n' "$status" >>"$log"
