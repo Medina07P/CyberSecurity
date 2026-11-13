@@ -35,6 +35,89 @@ LIMITS = ((resource.RLIMIT_AS, 2 * 1024**3), (resource.RLIMIT_CPU, 600),
           (resource.RLIMIT_NPROC, 256))
 
 
+class _HostStop(BaseException):
+    """Unwind interruptible host work, including Task1's bounded copy loops."""
+
+
+class _Child:
+    """Our one unreaped child; no synchronous preexec/exec handshake."""
+    def __init__(self):
+        self.pid = None
+        self.returncode = None
+
+    def poll(self):
+        if self.pid is None:
+            return 2
+        old_mask = signal.pthread_sigmask(signal.SIG_BLOCK,
+                                         {signal.SIGINT, signal.SIGTERM, signal.SIGALRM})
+        try:
+            if self.returncode is None:
+                waited, status = os.waitpid(self.pid, os.WNOHANG)
+                if waited:
+                    self.returncode = os.waitstatus_to_exitcode(status)
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
+        return self.returncode
+
+    def wait(self, timeout=None):
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while self.poll() is None:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired('/usr/bin/bwrap', timeout)
+            time.sleep(0.01)
+        return self.poll()
+
+    def kill(self):
+        # This PID is only used while it is our unreaped child. It cannot be
+        # reused; all ordinary supervision prefers its pidfd.
+        self.send_signal(signal.SIGKILL)
+
+    def send_signal(self, number):
+        if self.pid is not None and self.returncode is None:
+            try:
+                os.kill(self.pid, number)
+            except ProcessLookupError:
+                pass
+
+
+def _fork_child(child, argv, bwrap_fd, seccomp_fd, stdout, stderr):
+    # Publish the PID into an already-owned object BEFORE unmasking signals.
+    # Thus cancellation cannot lose a child between fork and caller assignment.
+    old_mask = signal.pthread_sigmask(signal.SIG_BLOCK,
+                                     {signal.SIGINT, signal.SIGTERM, signal.SIGALRM})
+    try:
+        child.pid = os.fork()
+        if child.pid == 0:
+            try:
+                for number in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM):
+                    signal.signal(number, signal.SIG_DFL)
+                signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
+                os.umask(0o077)
+                null = os.open('/dev/null', os.O_RDONLY | os.O_CLOEXEC)
+                os.dup2(null, 0)
+                os.dup2(stdout, 1)
+                os.dup2(stderr, 2)
+                for name in os.listdir('/proc/self/fd'):
+                    number = int(name)
+                    if number not in (0, 1, 2, bwrap_fd, seccomp_fd):
+                        try:
+                            os.close(number)
+                        except OSError as exc:
+                            if exc.errno != errno.EBADF:
+                                raise
+                os.set_inheritable(bwrap_fd, False)
+                os.set_inheritable(seccomp_fd, True)
+                for kind, limit in LIMITS:
+                    resource.setrlimit(kind, (limit, limit))
+                # fexecve pins the approved ELF; the fd closes on exec. No host
+                # environment, argv command selection, or Python fallback.
+                os.execve(bwrap_fd, argv, {})
+            except BaseException:
+                os._exit(2)
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
+
+
 def _selector(argv):
     if not argv:
         return '--suite'
@@ -46,14 +129,14 @@ def _selector(argv):
 def _open_bwrap():
     """Pin fixed executable inode. Read installed version documentation as data.
 
-    Popen executes this descriptor, not a second pathname lookup. Package changes
+    Child fexecve uses this descriptor, not a second pathname lookup. Package changes
     require explicit review of this fixed documentary version; never --version.
     """
     fd, parent, name = _open_regular(BWRAP)
     try:
         before = os.fstat(fd)
         if (before.st_uid != 0 or before.st_mode & (stat.S_ISUID | stat.S_ISGID | 0o022)
-                or not before.st_mode & 0o111 or fd >= 256):
+                or not before.st_mode & 0o111 or not 3 <= fd < 256):
             raise IsolationBlocked('bwrap must be root-owned, non-setid and non-writable')
         try:
             capabilities = os.getxattr(fd, 'security.capability')
@@ -221,12 +304,19 @@ def _supervise(child, pidfd, pending, deadline=None):
                 forwarded = now
                 # pidfd pins only our direct child. No killpg/name/PID discovery.
                 try:
-                    signal.pidfd_send_signal(pidfd, pending[0] if pending else signal.SIGTERM)
+                    number = pending[0] if pending else signal.SIGTERM
+                    if pidfd is None:
+                        child.send_signal(number)
+                    else:
+                        signal.pidfd_send_signal(pidfd, number)
                 except ProcessLookupError:
                     pass
             elif forwarded is not None and not killed and now >= forwarded + SIGNAL_GRACE:
                 try:
-                    signal.pidfd_send_signal(pidfd, signal.SIGKILL)
+                    if pidfd is None:
+                        child.kill()
+                    else:
+                        signal.pidfd_send_signal(pidfd, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
                 killed = True
@@ -240,6 +330,8 @@ def launch() -> int:
     pending = []
     child = None
     pidfd = None
+    timer_owned = False
+    interrupted_mask = None
     try:
         selector = _selector(sys.argv[1:])
         if (sys.platform != 'linux' or os.uname().machine != 'x86_64' or
@@ -252,11 +344,32 @@ def launch() -> int:
         if not hasattr(signal, 'pidfd_send_signal'):
             raise IsolationBlocked('Missing pinned-child signalling')
         _validate_limits()
+        if signal.pthread_sigmask(signal.SIG_BLOCK, set()) & {
+                signal.SIGINT, signal.SIGTERM, signal.SIGALRM}:
+            raise IsolationBlocked('Managed host signals must not be masked')
+        if signal.getitimer(signal.ITIMER_REAL) != (0.0, 0.0):
+            raise IsolationBlocked('Existing host alarm must not be replaced')
+        if signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL:
+            raise IsolationBlocked('Child ownership requires default SIGCHLD disposition')
         def remember(number, frame):
             if not pending:
                 pending.append(number)
-        for number in (signal.SIGINT, signal.SIGTERM):
-            previous[number] = signal.signal(number, remember)
+        def interrupt(number, frame):
+            nonlocal interrupted_mask
+            # A second cancellation must not interrupt the unwind/reap of the
+            # first. Restore the original mask only after child/fd release.
+            interrupted_mask = signal.pthread_sigmask(
+                signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM, signal.SIGALRM})
+            if number != signal.SIGALRM:
+                remember(number, frame)
+            raise _HostStop()
+        for number in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM):
+            previous[number] = signal.signal(number, interrupt)
+        # Python signal exceptions interrupt progressing Python loops and
+        # interruptible syscalls (PEP475 does not retry when the handler raises).
+        # No cooperation/change to Task1's API and no auxiliary host process.
+        timer_owned = True
+        signal.setitimer(signal.ITIMER_REAL, max(0.000001, host_deadline - time.monotonic()))
         bwrap_fd, bwrap_record = _open_bwrap()
         descriptors.append(bwrap_fd)
         run = prepare(REPO)
@@ -280,24 +393,12 @@ def launch() -> int:
             return 128 + pending[0]
         if time.monotonic() >= host_deadline:
             raise IsolationBlocked('Host budget exhausted before payload')
-        def child_setup():
-            os.umask(0o077)
-            # This inode-pinning fd is usable for execve but closes on exec.
-            # Only the sealed seccomp fd survives into Bubblewrap; bwrap consumes
-            # it before the payload. Task3 must verify no residual payload fds.
-            os.set_inheritable(bwrap_fd, False)
-            for kind, limit in LIMITS:
-                resource.setrlimit(kind, (limit, limit))
-        child = subprocess.Popen(
-            argv, executable='/proc/self/fd/' + str(bwrap_fd),
-            stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
-            env={}, close_fds=True, pass_fds=(seccomp_fd, bwrap_fd),
-            preexec_fn=child_setup, cwd=run.work,
-        )
+        child = _Child()
+        _fork_child(child, argv, bwrap_fd, seccomp_fd, stdout, stderr)
         try:
             pidfd = os.pidfd_open(child.pid, 0)
         except OSError:
-            # Popen's child remains unreaped, so this specific PID cannot be
+            # Our child remains unreaped, so this specific PID cannot be
             # reused. No other process is targeted if pidfd acquisition fails.
             child.kill()
             child.wait()
@@ -322,17 +423,44 @@ def launch() -> int:
                 result != receipt['returncode']):
             raise IsolationBlocked('Invalid or inconsistent inside receipt')
         return result
+    except _HostStop:
+        # Stop raising during termination/reap. Supervision now forwards the
+        # recorded signal or expired deadline, escalates after5s, and polls our
+        # own child. Only uninterruptible kernel tasks can delay SIGKILL/reap.
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        for number in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(number, remember)
+        if child is not None and child.pid is not None:
+            _supervise(child, pidfd, pending, deadline=host_deadline)
+        spawned = child is not None and child.pid is not None
+        code = 128 + pending[0] if pending else (1 if spawned else 2)
+        # No additional diagnostic I/O after cancellation/deadline: retain all
+        # existing (possibly incomplete) artifacts and report only via exit rc.
+        return code
     except (IsolationBlocked, OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
-        print('BLOCKED: ' + str(exc) + '; retained run: ' + str(run.root if run else None),
-              file=sys.stderr)
-        if run is not None:
-            try:
-                _new_json(run.evidence / 'launch-blocked.json',
-                          {'version': 1, 'state': 'BLOCKED', 'reason': str(exc)})
-            except (OSError, IsolationBlocked):
-                pass
+        try:
+            print('BLOCKED: ' + str(exc) + '; retained run: ' + str(run.root if run else None),
+                  file=sys.stderr)
+            if run is not None:
+                try:
+                    _new_json(run.evidence / 'launch-blocked.json',
+                              {'version': 1, 'state': 'BLOCKED', 'reason': str(exc)})
+                except (OSError, IsolationBlocked):
+                    pass
+        except _HostStop:
+            pass  # diagnostic I/O is subject to the same still-active timer
         return 128 + pending[0] if pending else 2
     finally:
+        final_mask = signal.pthread_sigmask(signal.SIG_BLOCK,
+                                           {signal.SIGINT, signal.SIGTERM, signal.SIGALRM})
+        if timer_owned:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            # The owned one-shot alarm may have become pending just before the
+            # final mask. Do not deliver it to the restored previous handler.
+            signal.sigtimedwait({signal.SIGALRM}, 0)
+            # Do not let another cancellation abandon our child during reap.
+            for number in (signal.SIGINT, signal.SIGTERM):
+                signal.signal(number, remember)
         # Descriptor release is not artifact cleanup: no unlink/rmdir/finalizers.
         if child is not None and child.poll() is None:
             if pidfd is not None:
@@ -347,6 +475,8 @@ def launch() -> int:
             os.close(fd)
         for number, handler in previous.items():
             signal.signal(number, handler)
+        signal.pthread_sigmask(signal.SIG_SETMASK,
+                               interrupted_mask if interrupted_mask is not None else final_mask)
 
 
 if __name__ == '__main__':

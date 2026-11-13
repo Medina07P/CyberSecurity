@@ -3,6 +3,7 @@
 No fixtures, old suites, cleanup hooks or host syscalls for BPF installation.
 """
 import ast
+from contextlib import ExitStack
 import errno
 from pathlib import Path
 import struct
@@ -77,7 +78,13 @@ class SandboxPolicyTests(unittest.TestCase):
                 mock.patch.object(launcher, 'REPO', Path('/unit-test-checkout')), \
                 mock.patch.object(launcher, '_validate_limits'), \
                 mock.patch.object(launcher, 'prepare') as stage, \
-                mock.patch.object(launcher.subprocess, 'Popen') as payload, \
+                mock.patch.object(launcher, '_fork_child') as payload, \
+                mock.patch.object(launcher.signal, 'getitimer', return_value=(0, 0)), \
+                mock.patch.object(launcher.signal, 'getsignal', return_value=launcher.signal.SIG_DFL), \
+                mock.patch.object(launcher.signal, 'setitimer'), \
+                mock.patch.object(launcher.signal, 'sigtimedwait'), \
+                mock.patch.object(launcher.signal, 'pthread_sigmask', return_value=set()), \
+                mock.patch.object(launcher.signal, 'signal', return_value=launcher.signal.SIG_DFL), \
                 mock.patch.object(launcher.sys, 'argv', ['launcher']):
             self.assertEqual(launcher.launch(), 2)
         prerequisite.assert_called_once_with()
@@ -91,15 +98,102 @@ class SandboxPolicyTests(unittest.TestCase):
             'PYTHONDONTWRITEBYTECODE': '1'})
         tree = ast.parse(Path(launcher.__file__).read_text())
         calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
-                 and isinstance(n.func, ast.Attribute) and n.func.attr == 'Popen']
+                 and isinstance(n.func, ast.Attribute) and n.func.attr == 'execve']
         self.assertEqual(len(calls), 1)
-        options = {k.arg: k.value for k in calls[0].keywords}
-        self.assertIs(ast.literal_eval(options['close_fds']), True)
-        self.assertEqual(ast.literal_eval(options['env']), {})
-        self.assertEqual(ast.unparse(options['pass_fds']), '(seccomp_fd, bwrap_fd)')
-        self.assertEqual(ast.unparse(options['stdin']), 'subprocess.DEVNULL')
-        self.assertEqual(ast.unparse(options['preexec_fn']), 'child_setup')
-        self.assertNotIn('shell', options)
+        self.assertEqual(ast.unparse(calls[0]), 'os.execve(bwrap_fd, argv, {})')
+        text = Path(launcher.__file__).read_text()
+        self.assertIn("os.listdir('/proc/self/fd')", text)
+        self.assertIn('number not in (0, 1, 2, bwrap_fd, seccomp_fd)', text)
+        self.assertIn('os.set_inheritable(bwrap_fd, False)', text)
+        self.assertIn('os.set_inheritable(seccomp_fd, True)', text)
+        self.assertIn("os.open('/dev/null'", text)
+
+    def test_deadline_and_cancel_interrupt_prepare_validation_and_startup(self):
+        # Deterministic signal callbacks only: no real timer/fork/fs/process.
+        for phase in ('prepare', '_validate_staging', 'before_fork', 'startup'):
+            for number in (launcher.signal.SIGALRM, launcher.signal.SIGINT,
+                           launcher.signal.SIGTERM):
+                with self.subTest(phase=phase, number=number), ExitStack() as stack:
+                    handlers = {}
+                    def install(signum, callback):
+                        handlers[signum] = callback
+                        return launcher.signal.SIG_DFL
+                    timer = stack.enter_context(mock.patch.object(
+                        launcher.signal, 'setitimer'))
+                    stack.enter_context(mock.patch.object(launcher.signal, 'getitimer',
+                                                         return_value=(0, 0)))
+                    stack.enter_context(mock.patch.object(launcher.signal, 'getsignal',
+                                                         return_value=launcher.signal.SIG_DFL))
+                    stack.enter_context(mock.patch.object(launcher.signal, 'pthread_sigmask',
+                                                         return_value=set()))
+                    stack.enter_context(mock.patch.object(launcher.signal, 'sigtimedwait'))
+                    stack.enter_context(mock.patch.object(launcher.signal, 'signal',
+                                                         side_effect=install))
+                    stack.enter_context(mock.patch.object(launcher, 'REPO', Path('/unit')))
+                    stack.enter_context(mock.patch.object(launcher.sys, 'argv', ['launcher']))
+                    stack.enter_context(mock.patch.object(launcher, '_validate_limits'))
+                    stack.enter_context(mock.patch.object(launcher, '_open_bwrap',
+                                                         return_value=(10, {})))
+                    stack.enter_context(mock.patch.object(launcher.os, 'close'))
+                    stack.enter_context(mock.patch.object(Path, 'mkdir'))
+                    stack.enter_context(mock.patch.object(launcher, '_seccomp_memfd',
+                                                         return_value=11))
+                    stack.enter_context(mock.patch.object(launcher, '_new_log', return_value=12))
+                    stack.enter_context(mock.patch.object(launcher, '_new_json'))
+                    stage = stack.enter_context(mock.patch.object(launcher, 'prepare',
+                                                                 return_value=prepared()))
+                    validate = stack.enter_context(mock.patch.object(launcher, '_validate_staging'))
+                    def interrupted(*args):
+                        self.assertIn(number, handlers)
+                        self.assertTrue(timer.called)  # armed before work begins
+                        self.assertGreater(timer.call_args.args[1], 0)
+                        handlers[number](number, None)
+                        self.fail('interruptible host work must not continue')
+                    def started(child, *args):
+                        child.pid = 123  # only a double, never a live host PID
+                    spawn = stack.enter_context(mock.patch.object(launcher, '_fork_child',
+                                                                 side_effect=started))
+                    pin = stack.enter_context(mock.patch.object(launcher.os, 'pidfd_open',
+                                                               side_effect=interrupted))
+                    expected = ((1 if phase == 'startup' else 2)
+                                if number == launcher.signal.SIGALRM else 128 + number)
+                    supervise = stack.enter_context(mock.patch.object(launcher, '_supervise',
+                                                                      return_value=(expected, 'STOP')))
+                    stack.enter_context(mock.patch.object(launcher._Child, 'poll', return_value=0))
+                    if phase == 'prepare':
+                        stage.side_effect = interrupted
+                    elif phase == '_validate_staging':
+                        validate.side_effect = interrupted
+                    elif phase == 'before_fork':
+                        spawn.side_effect = interrupted
+                    self.assertEqual(launcher.launch(), expected)
+                    if phase in ('prepare', '_validate_staging'):
+                        spawn.assert_not_called()
+                        pin.assert_not_called()
+                    elif phase == 'before_fork':
+                        pin.assert_not_called()
+                        supervise.assert_not_called()
+                    else:
+                        spawn.assert_called_once()
+                        supervise.assert_called_once()
+
+    def test_startup_returns_child_without_waiting_for_preexec(self):
+        child = launcher._Child()
+        with mock.patch.object(launcher.os, 'fork', return_value=123), \
+                mock.patch.object(launcher.signal, 'pthread_sigmask', return_value=set()), \
+                mock.patch.object(launcher.os, 'execve') as execute:
+            launcher._fork_child(child, ('/usr/bin/bwrap',), 10, 11, 12, 13)
+        self.assertEqual(child.pid, 123)
+        execute.assert_not_called()
+
+    def test_startup_before_pidfd_uses_only_owned_unreaped_child(self):
+        child = mock.Mock()
+        child.wait.side_effect = [launcher.subprocess.TimeoutExpired('startup', 0.1), -15]
+        with mock.patch.object(launcher.time, 'monotonic', side_effect=[0, 1]), \
+                mock.patch.object(launcher.signal, 'pidfd_send_signal') as send:
+            self.assertEqual(launcher._supervise(child, None, [15]), (143, 'SIGNAL'))
+        child.send_signal.assert_called_once_with(15)
+        send.assert_not_called()
 
     def test_rejects_unstaged_runtime_and_reused_layout(self):
         run = prepared()
