@@ -259,6 +259,9 @@ def preflight(plan: Plan, ctx: RuntimeContext, permissions: Permissions) -> None
     plan = validate_plan(plan)
     for step in plan.steps:
         _check(step, ctx, permissions)
+        if step.action == 'report':
+            from .reporting import report_preflight
+            report_preflight(step, ctx)
 
 
 def _private_directory(parent, name):
