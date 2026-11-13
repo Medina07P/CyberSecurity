@@ -1,5 +1,5 @@
 #!/bin/bash
-# Suite aislada: storage/inventory/package desde allowlist, sin datos reales.
+# Suite aislada: storage/inventory/package/process/ledger desde allowlist.
 # Incluye exportación sintética, configuración privada y PATH cerrado.
 TEST_DIR="$(cd -- "${BASH_SOURCE[0]%/*}" && pwd)" || exit 1
 python3 -B - "$TEST_DIR" <<'PY'

@@ -16,11 +16,14 @@ SOURCES = (
     '00_Config/lib/evidence/storage.py',
     '00_Config/lib/evidence/inventory.py',
     '00_Config/lib/evidence/package.py',
+    '00_Config/lib/evidence/process.py',
+    '00_Config/lib/evidence/capture.py',
     '00_Config/lib/evidence/cli.py',
     'tests/evidence_fixture.py',
     'tests/test_evidence_storage.py',
     'tests/test_evidence_inventory.py',
     'tests/test_evidence_package.py',
+    'tests/test_evidence_process.py',
     'tests/run_evidence.sh',
 )
 
