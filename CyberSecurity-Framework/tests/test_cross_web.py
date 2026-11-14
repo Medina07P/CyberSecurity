@@ -521,6 +521,63 @@ hr_request_pair form password literal
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(f.curl_records(), [])
 
+        # Absolute capture is local evidence of scheme, never a reason to probe.
+        for override, expected in ((None, 'https://example.test:8443/login'),
+                                   ('http', 'http://example.test:8443/login')):
+            f = self.fixture()
+            request = self.capture(f, target='https://example.test:8443/login')
+            f.env['RATE_LIMIT_SI'] = '1'
+            if override is not None:
+                f.env['RATE_LIMIT_ESQUEMA'] = override
+            result = f.run_leaf(RATE, (str(request), '2'))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual([row['urls'] for row in f.curl_records()], [[expected], [expected]])
+
+        # Repeated/encoded-equivalent names and ambiguous JSON paths fail before
+        # any transmission; retain the original zero-call and literal URL oracles.
+        for target, body, ct, override in (
+                ('/login', 'password=a&password=b', FORM, 'https'),
+                ('/login', 'password=a&%70assword=b', FORM, 'https'),
+                ('/login?password=a&%70assword=b', '', FORM, 'https'),
+                ('/login', '{"password":"a","password":"b"}', 'application/json', 'https'),
+                ('/login', '{"a.password":"a","a":{"password":"b"}}', 'application/json', 'https'),
+                ('https://other.test/login', 'password=a', FORM, 'https'),
+                ('//example.test/login', 'password=a', FORM, 'https'),
+                ('/login', 'password=a', FORM, '')):
+            with self.subTest(target=target, body=body, override=override):
+                f = self.fixture()
+                request = self.capture(f, target=target, body=body, content_type=ct)
+                f.env.update(RATE_LIMIT_SI='1', RATE_LIMIT_ESQUEMA=override)
+                result = f.run_leaf(RATE, (str(request), '2'))
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertEqual(f.curl_invocations(), [], result.stdout + result.stderr)
+
+        # Real leaf composition changes only password in each supported location.
+        for target, body, ct, location in (
+                ('/login?password=captured&nonce=%2f+', 'opaque', 'text/plain', 'query'),
+                ('/login?nonce=%2f+', 'username=a%40b&password=captured&nonce=%2f+', FORM, 'form'),
+                ('/login?nonce=%2f+', '{"password":"captured","tiny":1e-400,"keep":[true,null]}',
+                 'application/json', 'json')):
+            f = self.fixture()
+            request = self.capture(f, target=target, body=body, content_type=ct)
+            result = self.rate(f, request)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            calls = f.curl_records()
+            self.assertEqual(len(calls), 2)
+            for n, row in enumerate(calls, 1):
+                self.assertEqual(self.logical(row, location, 'password'), 'wrong-' + str(n))
+                self.assertIn('nonce=%2f+', row['urls'][0])
+                self.assertIn('Cookie: synthetic=session', row['headers'])
+                if location == 'query':
+                    self.assertEqual(row['body'], 'opaque')
+                elif location == 'form':
+                    self.assertIn('username=a%40b&', row['body'])
+                    self.assertIn('nonce=%2f+', row['body'])
+                else:
+                    parsed = json.loads(row['body'], parse_float=lambda token: token)
+                    self.assertEqual(parsed['tiny'], '1e-400')
+                    self.assertEqual(parsed['keep'], [True, None])
+
     def test_rate_403_and_existing_verdicts(self):
         def response(code, time='0.010', headers=None):
             return {'code': code, 'time': time, 'headers': headers or {}, 'body': 'denied'}
@@ -536,6 +593,9 @@ hr_request_pair form password literal
             ([response('200')], 2, 'NO DETERMINADO', 1, 1),
             ([response('302')], 2, 'NO DETERMINADO', 1, 1),
             ([response('401'), response('403')], 3, 'NO DETERMINADO', 1, 2),
+            ([response('401')] * 5 + [response('401', '0.500')] * 5 + [response('403')],
+             12, 'NO DETERMINADO', 1, 11),
+            ([response('401'), response('403', headers={'Retry-After': '17'})], 3, 'FRENADO', 0, 2),
             ([response('401')] * 5 + [response('401', '0.500')] * 5, 10, 'FRENADO (por retardo)', 0, 10),
             ([response('401')] * 4 + [response('401', '0.500')] * 5, 9, 'SIN FRENO', 0, 9),
         )
@@ -549,6 +609,7 @@ hr_request_pair form password literal
                 self.assertIn('Veredicto: ' + verdict, result.stdout)
                 calls = f.curl_records()
                 self.assertEqual(len(calls), sends)
+                self.assertEqual(len(f.curl_invocations()), sends)
                 for n, row in enumerate(calls, 1):
                     self.assertEqual(self.logical(row, 'form', 'password'), 'wrong-' + str(n))
                     self.assertEqual(self.logical(row, 'form', 'username'), 'alice@example.test')
@@ -561,6 +622,10 @@ hr_request_pair form password literal
                     self.assertEqual(line.split('\t')[1], expected['code'])
                     if 'Retry-After' in expected['headers']:
                         self.assertEqual(line.split('\t')[4], expected['headers']['Retry-After'])
+                if any(item['code'] == '403' and not item['headers'] for item in responses):
+                    self.assertEqual(lines[-1].split('\t')[5], '403 SIN SEÑAL DE FRENO')
+                    report, = (f.repo / 'scans/web').glob('rate_limit_*.txt')
+                    self.assertIn('HTTP 403 sin señal explícita de freno', report.read_text())
 
     def test_web_inputs_and_previous_runs_are_preserved(self):
         for leaf in (LOGIN, RATE):
