@@ -561,7 +561,7 @@ def launch() -> int:
         descriptors.append(bwrap_fd)
         run = prepare(REPO)
         _validate_staging(run)
-        for name in ('home', 'tmp'):
+        for name in ('home', 'tmp', 'fixtures'):
             (run.work / name).mkdir(mode=0o700)
         # Synthetic siblings are outside all mounts; the marker double is never
         # executed, even if unexpectedly visible. All failed artifacts retained.

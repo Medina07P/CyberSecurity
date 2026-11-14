@@ -78,7 +78,7 @@ SOURCE_FILES += ('09_Automation/USE.md',)
 
 class AutomationFixture:
     def __init__(self):
-        self.repo = Path(mkdtemp(prefix='automation-', dir='/tmp/opencode'))
+        self.repo = Path(mkdtemp(prefix='automation-', dir='/work/fixtures'))
         self.framework = self.repo / 'CyberSecurity-Framework'
         self.bin = self.repo / 'bin'
         self.home = self.repo / 'home'

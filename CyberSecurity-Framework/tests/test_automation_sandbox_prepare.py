@@ -19,7 +19,7 @@ from automation_sandbox_elf import read_elf, resolve_runtime
 
 
 def persistent_case():
-    root = Path('/tmp/opencode') / ('sandbox-prepare-case-' + uuid.uuid4().hex)
+    root = Path('/work/fixtures') / ('sandbox-prepare-case-' + uuid.uuid4().hex)
     root.mkdir(mode=0o700)
     return root
 
