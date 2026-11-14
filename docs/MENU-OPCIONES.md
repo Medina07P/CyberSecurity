@@ -48,7 +48,7 @@ En el principal se acepta un dígito como alias de00–09; `?` admite también
 | `11` | Informes | tipo/objetivo/input | lista genérica; motor11 lee existentes e históricos atribuibles; cada generación conserva runs/id y recibo propio |
 | `12` | Base de conocimiento | término de búsqueda | lista genérica; lectura local, no auditoría ni explotación |
 | `13` | Laboratorios | menú Labs/nombre/ruta | abre main.sh; plantillas locales y acciones rápidas/VPN/borrado, no despliegue automático de infraestructura |
-| `99` | Flujo heredado completo | objetivo de sesión y confirmación | encadena00/01/02/03/04/05/06/10/11, incluye fuerza bruta/persistencia/limpieza; no incluye09 ni prueba éxito por fase; no ejecutar como validación |
+| `99` | Flujo heredado completo | objetivo de sesión y confirmación | encadena00/01/02/03/04/05/06/10/11; puede incluir fuerza bruta/explotación, pero no añade Burp ni cleanup/persistencia/lateral excluidos por sus coordinadores; no incluye09 ni prueba éxito por fase; no ejecutar como validación |
 | `R` | Informe rápido | 1 técnico,2 cliente,3 ambos,0 volver; perfil/nombres | genera desde datos existentes; ofrece abrir HTML; no inicia escáner ni acredita actualidad |
 | `T` | Cambiar objetivo | número de targets o0/manual; IP/dominio | guarda .session y registra scope.yaml/targets.txt con backups; scope es registro best-effort, no barrera de autorización |
 | `K` | Registro de API keys | subopción y herramienta/campo | puede leer/escribir HOME y registro; secretos nunca deben publicarse; Enter conserva y '-' borra |
@@ -93,8 +93,13 @@ siguen disponibles en la lista completa. Ver entradas para sus límites.
 | `03.web.1` | Nikto | URL explícita validada | evalúa servidor, necesita salida completa; rc0 solo no basta |
 | `03.web.2` | Nuclei | URL explícita validada | HTTP medium/high/critical,10peticiones/s, sin Interactsh/update; no confirma automáticamente explotabilidad |
 | `03.web.0` | Cancelar web | ninguna adicional | no lanza Nikto/Nuclei; conserva históricos |
-| `03.4` | Burp manual | puerto proxy opcional | abre GUI y explica Repeater; Community no escanea ni guarda proyectos |
+| `03.4` | Burp manual | consentimiento de apertura y puerto proxy opcional | abre GUI y explica Repeater; no envía curl ni autoriza tráfico posterior; Community no escanea ni guarda proyectos |
 | `03.5` | Lista avanzada original | elegir ruta y argumentos | incluye full/NSE/Masscan/RustScan; no es perfil básico seguro |
+| `03.6` | Control Burp | elegir estado, verificar o parar | entrar no ejecuta acciones; apertura GUI permanece en03.4 |
+| `03.burp.0` | Volver | 0 o EOF | sin llamadas nuevas, señales ni tráfico de verificación |
+| `03.burp.1` | Estado local | ninguna adicional | --estado sin crear artefactos ni conectar; puerto ocupado no acredita dueño/captura; posible NO_DETERMINADO |
+| `03.burp.2` | Verificar proxy | URL HTTP(S), puerto explícito y consentimiento propio | --verificar URL --proxy-port N --execute --confirm-network; un GET, no deriva URL/permiso de sesión; no/EOF/0 cancelan; código HTTP no certifica captura |
+| `03.burp.3` | Parar instancia propia | ID burp-32hex y consentimiento de señales | --parar --instance ID --execute; identidad acreditada y pidfd, TERM y posible KILL; no consulta ni PID legacy; conserva artefactos |
 | `03.0` | Volver | ninguna adicional | sin escaneo ni instalación nueva |
 | `04.1` | Disponibilidad local | ninguna adicional | no ejecuta binarios/red; NSE se contrasta al usarlo |
 | `04.2` | SSH | host y puerto22 default | versión/auth/usuarios/algoritmos; no solo banner |
@@ -142,7 +147,10 @@ siguen disponibles en la lista completa. Ver entradas para sus límites.
 | `06.lateral.2` | Port forward | host/local_port/remote_port/user | túnel/listener; puede exponer acceso local, no ejecutado al entrar |
 | `06.lateral.3` | PSExec | IP/dominio/usuario/password/comando | generador escribe wrapper; argumentos sensibles ocultos en UI, no garantía sobre procesos externos |
 | `06.lateral.0` | Cancelar lateral | ninguna adicional | no crea túnel nuevo ni elimina existente |
-| `06.7` | Limpieza | confirmaciones de hoja | trunca/borra logs locales; destructivo, no higiene de tests |
+| `06.7` | Limpieza LOCAL | elegir preview predeterminado o aplicación | entrar solo presenta opciones; sesión no es destino; la aplicación conserva gate propio de hoja |
+| `06.cleanup.0` | Cancelar | 0, ! o EOF | no aplica ni despacha limpieza; conserva sesión remota y artefactos |
+| `06.cleanup.1` | Preview LOCAL | 1 o Enter | --preview explícito, sin leer cuerpos ni crear artefactos; no adquiere permiso para aplicar |
+| `06.cleanup.2` | Aplicar LOCAL | consentimiento específico con UID e impactos | solo tras aceptación pasa --execute --confirm-local-cleanup; cuatro logs, historial y snapshot; sin sudo automático, rc1 parcial; hijo history -c no borra memoria del padre |
 | `06.8` | Flujo completo post | target explícito | combina acciones locales sensibles; mantenimiento del menú no lo vuelve integración operacional |
 | `06.9` | Lista completa | ruta y argumentos | todas las hojas/generadores originales, sin autorización implícita |
 | `06.11` | Alias lista completa | ruta y argumentos | alias heredado de9 no anunciado; mismas hojas y confirmaciones |
@@ -328,7 +336,7 @@ antes de operar: no se ha verificado aquí compatibilidad operacional.
 | `03_Scanners/network_scanners/nmap/nmap_scripts.sh` | host, puertos opcionales | ejecuta NSE y guarda resultados | scripts activos, presencia de textoCVE no explotación confirmada |
 | `03_Scanners/network_scanners/nmap/nmap_smart.sh` | host, perfil opcional | basico100TCP sin NSE; default completo inteligente | completo sigue default CLI, IPv6 literal no soportado |
 | `03_Scanners/network_scanners/rustscan/rustscan_scan.sh` | host explícito | puertos rápidos con publicación stdout tras éxito | binario puede faltar; no confundir rc fallido con cero puertos |
-| `03_Scanners/web_scanners/burpsuite/burp_launcher.sh` | puerto opcional | lanza Burp y guía captura manual con puerto real | Community sin escaneo/proyectos guardados; requiere GUI |
+| `03_Scanners/web_scanners/burpsuite/burp_launcher.sh` | puerto opcional; --estado; --verificar URL --proxy-port N --execute --confirm-network; --parar --instance ID --execute | apertura GUI/manual sin curl; estado inerte; GET separado y parada propia acreditada | curl --disable primero; HTTP no certifica captura; recibos privados por instancia, legacy intacto; no señales por nombre/PID ambiguo ni control de daemon garantizado |
 | `03_Scanners/web_scanners/nikto/nikto_scan.sh` | URL explícita | escanea servidor y publica evidencia de evaluación completa | comas literales rechazadas; rc0 solo no basta |
 | `03_Scanners/web_scanners/nuclei/nuclei_cves.sh` | URL, severidad opcional | plantillas CVE HTTP contra URL | activo, coincidencia no explotabilidad; revisar cobertura |
 | `03_Scanners/web_scanners/nuclei/nuclei_scan.sh` | URL explícita | plantillas HTTP10peticiones/s, texto para informes | sin Interactsh/update; no todas vulnerabilidades ni protocolos |
@@ -375,7 +383,7 @@ antes de operar: no se ha verificado aquí compatibilidad operacional.
 | `05_Exploitation/wireless/wifi_attack.sh` | interfaz explícita | verifica interfaz y sudo iwlist scan, guarda redes y errores | no deauth/cracking; hardware/privilegios/alcance radio no verificados |
 | `06_PostExploitation/run_all_post.sh` | target explícito | combina operaciones locales sensibles y hojas | no es post remoto coherente; no registrado en09 |
 | `06_PostExploitation/show_results.sh` | objetivo opcional | visor local de metadata/evidencia | no recolecta ni valida operacionalmente técnicas |
-| `06_PostExploitation/cleanup/logs_cleaner.sh` | confirmaciones locales | limpieza/truncado de logs del host | destructivo; nunca usar para limpiar fixtures del checkout |
+| `06_PostExploitation/cleanup/logs_cleaner.sh` | preview/help inertes; --execute más --confirm-local-cleanup o frase TTY específica | plan local fijo; aplicación trunca cuatro logs/historial y crea snapshot privado nuevo | sin sudo automático; fallos parciales rc1, enlaces rechazados; history -c solo hijo; legacy /tmp/last_access.txt intacto; nunca higiene de tests |
 | `06_PostExploitation/credential_access/history_parser.sh` | host local sin target | lee historiales y extrae candidatos sensibles | puede exponer secretos; coincidencia no credencial vigente |
 | `06_PostExploitation/credential_access/linux_creds.sh` | host local sin target | recoge archivos/datos credenciales locales | requiere permisos; no implica descifrado ni acceso remoto |
 | `06_PostExploitation/lateral_movement/port_forward.sh` | target/local_port/remote_port/user opcional | crea túnel SSH | listener y acceso lateral requieren alcance; no rollback automático |

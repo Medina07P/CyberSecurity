@@ -85,7 +85,8 @@ seleccionarlas y confirmarlas; leer la ficha no las ejecuta. La IP es un ejemplo
 no un objetivo que debas copiar sin verificar tu laboratorio.
 
 **`99` no es una comprobación rápida**: encadena fases activas, incluida fuerza
-bruta, explotación, persistencia y limpieza. No lo uses para explorar el menú ni
+bruta y explotación; no añade Burp ni limpieza/persistencia/lateral excluidos por
+sus coordinadores. No lo uses para explorar el menú ni
 como prueba de funcionamiento.
 
 ## Objetivo de sesión
@@ -170,7 +171,21 @@ Al entrar en **03** aparece un menú específico:
 4. **Burp manual**: abre el lanzador y explica la captura; Community no escanea
    ni guarda proyectos.
 5. **Avanzado**: conserva los diez scripts. Smart completo, NSE, Nmap agresivo,
-   Masscan, RustScan y run_all son intensivos y piden confirmación adicional.
+    Masscan, RustScan y run_all son intensivos y piden confirmación adicional.
+6. **Control Burp**: 1 estado local sin conectar/crear salidas; 2 verificación
+   con URL HTTP(S), puerto explícito y permiso propio de enviar un GET; 3 parar
+   instancia propia por ID con consentimiento de TERM/posible KILL; 0 volver.
+   Abrir en03.4 no autoriza red posterior. No/EOF/0 cancelan sin aplicar/enviar.
+
+La apertura no ejecuta curl; Burp puede generar tráfico propio de la aplicación.
+Puerto ocupado y respuesta HTTP no acreditan dueño/captura. Parar tiene efectos,
+requiere recibo nuevo e identidad/pidfd; no adopta PID legacy. Config/log/recibos
+privados por instancia en `scans/burp/instances/<ID>/`; anteriores intactos.
+CLI: `--verificar URL --proxy-port N --execute --confirm-network` (en TTY, frase
+`ENVIAR GET` puede sustituir solo el último flag); `--parar --instance ID --execute`.
+Curl usa `--disable` primero, un GET max-time5, sin redirects/retries ni `-k`.
+No deriva URL/permiso de sesión ni añade Burp a coordinadores/99. Ver guía03 para
+migración de CLI y límites de Community/daemonización.
 
 Antes del análisis básico o web se muestra herramienta, objetivo e intensidad.
 Solo una confirmación afirmativa ejecuta. `0` o `!` cancela la pregunta de
@@ -230,6 +245,24 @@ Detalles, riesgos y ejemplos: `CyberSecurity-Framework/04_Enumeration/README.md`
 Todas las opciones piden confirmación antes de ejecutar y no elevan privilegios automáticamente. Las hojas capturadas mantienen sus contratos y permisos independientes (`SQLMAP_SI`, `SQLMAP_ENUMERAR`, `SQLMAP_TABLA`).
 
 Detalles, riesgos y ejemplos: `CyberSecurity-Framework/05_Exploitation/README.md` y `docs/EXPLOTACION-2026-11-10.md`.
+
+## Módulo 06: limpieza LOCAL separada
+
+Las entradas originales de post-explotación se conservan. **06.7** muestra
+preview (Enter/1), aplicación (2) y cancelar (0/!); EOF no aplica. Solo después
+de explicar LOCAL, UID y efectos y obtener consentimiento específico pasa
+`--execute --confirm-local-cleanup`. La IP de sesión no es destino ni permiso.
+La hoja sin argumentos/`--preview`/`--help` es inerte; `--execute` en TTY requiere
+frase exacta `LIMPIAR LOCAL` si no se pasó el flag específico. Desconocidos o
+consentimiento solo retornan2 antes de efectos. No sirve un sí global.
+
+Cuatro logs fijos y `.bash_history` se truncan con credenciales actuales, sin
+sudo automático: fallos por permisos son parciales veraces/rc1. `history -c`
+solo afecta al hijo, nunca a la memoria del shell padre. Snapshot nuevo privado
+en `scans/cleanup/<uuid>/last_access.txt`; enlaces/objetos especiales rechazados,
+salidas anteriores y `/tmp/last_access.txt` legacy conservados sin migración.
+`run_all_post`/99 no adquieren limpieza. Nunca ejecutar cleanup como smoke.
+Guía: `CyberSecurity-Framework/06_PostExploitation/README.md`.
 
 ## Módulo 07: mantenimiento inalámbrico
 
@@ -493,7 +526,7 @@ El motor de informes **no parsea** `scope.yaml` en v1 (evita depender de PyYAML)
 - Los escaneos van a `scans/<herramienta>/` en la raíz del repositorio, se lance el script desde donde se lance. Los artefactos OSINT quedan en los directorios ignorados de `01_OSINT` descritos arriba.
 - `scans/` está en `.gitignore`: contiene IPs y hallazgos de cada sesión, no se sube al repositorio.
 - Los scripts intrusivos (`[intrusiva]`) piden confirmación aparte.
-- Nunca ejecutes `99` como prueba de humo: ejecuta fuerza bruta, explotación y limpieza contra todos los objetivos configurados.
+- Nunca ejecutes `99` como prueba de humo: encadena fases activas con fuerza bruta/explotación; no añade Burp ni limpieza excluidos por sus coordinadores.
 
 ### Herramientas no instaladas
 

@@ -956,81 +956,15 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────
-section "burp_launcher: puerto, config y PID"
-BSTUB="$TMPD/bin"; mkdir -p "$BSTUB"
-cat > "$BSTUB/burpsuite" <<'EOS'
-#!/bin/bash
-printf '%s\n' "$*" >> "${BSTUB_LOG:-/dev/null}"
-if [ -n "${BSTUB_BIND:-}" ]; then
-    exec python3 -c 'import socket,sys,time
-s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-s.bind(("127.0.0.1",int(sys.argv[1]))); s.listen(5); time.sleep(30)' "$BSTUB_BIND"
-fi
-sleep 30
-EOS
-chmod +x "$BSTUB/burpsuite"
-export BSTUB_LOG="$TMPD/burp_llamadas.txt" BSTUB_BIND=""
-: > "$BSTUB_LOG"
-
-export SESSION_FILE="$TMPD/.session"; printf '127.0.0.1\n' > "$SESSION_FILE"
-OUT=$(PATH="$BSTUB:$PATH" BURP_LAUNCHER_ESPERA=2 bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" 8099 2>&1)
-sleep 0.5   # el stub corre en segundo plano
-eq "launcher: llama al wrapper, no a java -jar" "$(grep -c . "$BSTUB_LOG")" "1"
-eq "launcher: pasa --project-file" "$(grep -c -- '--project-file' "$BSTUB_LOG")" "1"
-eq "launcher: escribe el config con el puerto" "$(grep -c '"listener_port":8099' "$FW/../scans/burp/config_127.0.0.1.json")" "1"
-eq "launcher: guarda el PID" "$([ -s "$FW/../scans/burp/burp.pid" ] && echo 1)" "1"
-eq "launcher: --estado informa del PID" "$(PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --estado 2>&1 | grep -c 'PID')" "1"
-PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --parar >/dev/null 2>&1
-eq "launcher: --parar borra el PID" "$([ -f "$FW/../scans/burp/burp.pid" ] && echo queda || echo borrado)" "borrado"
-
-# Puerto ocupado: elige otro
-python3 -c 'import socket,time;s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(("127.0.0.1",8080));s.listen(1);time.sleep(8)' &
-OCC=$!; sleep 1
-: > "$BSTUB_LOG"
-PATH="$BSTUB:$PATH" BURP_LAUNCHER_ESPERA=2 bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" >/dev/null 2>&1
-eq "launcher: con 8080 ocupado no usa 8080" "$(grep -c '"listener_port":8080' "$FW/../scans/burp/config_127.0.0.1.json")" "0"
-kill $OCC 2>/dev/null
-PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --parar >/dev/null 2>&1
-rm -rf "$FW/../scans/burp" "$BSTUB"
-
-# ──────────────────────────────────────────────────────────
-section "burp_launcher: espera, captura y explicación"
-BSTUB="$TMPD/bin"; mkdir -p "$BSTUB"
-# burpsuite falso que SÍ abre el puerto indicado en el config
-cat > "$BSTUB/burpsuite" <<'EOS'
-#!/bin/bash
-CFG=""; while [ $# -gt 0 ]; do
-    case "$1" in
-        --config-file=*) CFG="${1#*=}" ;;
-        --config-file)   CFG="$2"; shift ;;
-    esac
-    shift
-done
-PORT=$(grep -o '"listener_port":[0-9]*' "$CFG" 2>/dev/null | cut -d: -f2)
-exec python3 -c 'import socket,sys,time
-s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-s.bind(("127.0.0.1",int(sys.argv[1]))); s.listen(5); time.sleep(20)' "$PORT"
-EOS
-chmod +x "$BSTUB/burpsuite"
-export SESSION_FILE="$TMPD/.session"; printf '127.0.0.1\n' > "$SESSION_FILE"
-OUT=$(PATH="$BSTUB:$PATH" BURP_LAUNCHER_ESPERA=10 bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" 8090 2>&1)
-eq "launcher: detecta el puerto cuando escucha" "$(printf '%s' "$OUT" | grep -c 'Burp escucha')" "1"
-eq "launcher: explica el flujo manual" "$(printf '%s' "$OUT" | grep -ci 'Repeater')" "1"
-eq "launcher: imprime el comando de http_inject" "$(printf '%s' "$OUT" | grep -c 'http_inject.sh')" "1"
-eq "launcher: avisa de que Community no guarda el proyecto" "$(printf '%s' "$OUT" | grep -ci 'no guarda' )" "1"
-PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --parar >/dev/null 2>&1
-
-# El config se ignora y el puerto no escucha: no aborta, guía
-cat > "$BSTUB/burpsuite" <<'EOS'
-#!/bin/bash
-sleep 5
-EOS
-chmod +x "$BSTUB/burpsuite"
-OUT=$(PATH="$BSTUB:$PATH" BURP_LAUNCHER_ESPERA=2 bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" 8091 2>&1)
-eq "launcher: si no escucha, guía en vez de abortar" "$(printf '%s' "$OUT" | grep -ci 'Settings.*Proxy')" "1"
-eq "launcher: si no escucha, no miente sobre la captura" "$(printf '%s' "$OUT" | grep -ci 'verificad')" "0"
-PATH="$BSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/burpsuite/burp_launcher.sh" --parar >/dev/null 2>&1
-rm -rf "$FW/../scans/burp" "$BSTUB"
+section "burp_launcher: migración de contratos (NO ejecución legacy)"
+# Los antiguos tests abrían sockets/puertos reales, podían invocar curl real y
+# borraban scans/burp. Sus equivalentes están en los cuatro IDs Burp existentes
+# de test_cross_consent.ConsentTests, bajo selección --cross-consent revisada:
+# open: wrapper/config/puerto/guía/instancias privadas; status: observación inerte;
+# verify: argv exacto curl --disable primero y permiso propio; stop: identidad,
+# pidfd/TERM/KILL y recibos conservados. Nunca invocar ese launcher desde aquí.
+# No contar esta remisión como tests PASS/SKIP ni como evidencia de ejecución.
+echo 'Burp: equivalentes confinados separados; este runner no acredita esos casos.'
 
 # ──────────────────────────────────────────────────────────
 section "http_inject: guardas que pide la revisión"
