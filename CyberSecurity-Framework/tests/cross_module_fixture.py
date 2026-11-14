@@ -28,12 +28,12 @@ SOURCE_FILES = (
 )
 
 WEB_SOURCE_FILES = (
-    '00_Config/lib/http_request.bash', '00_Config/lib/scans.bash',
+    '00_Config/lib/http_fields.py', '00_Config/lib/http_request.bash', '00_Config/lib/scans.bash',
     '00_Config/lib/session.bash',
     '05_Exploitation/web/web_login_bruteforce.sh',
     '05_Exploitation/web/rate_limit_probe.sh',
 )
-PURE_SOURCE_FILES = ('00_Config/lib/http_request.bash',)
+PURE_SOURCE_FILES = ('00_Config/lib/http_fields.py', '00_Config/lib/http_request.bash')
 
 
 def _new_text(path, value):

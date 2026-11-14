@@ -262,6 +262,34 @@ hr_python() {
     printf '%s\n' "${HTTP_REQUEST_PYTHON:-python3}"
 }
 
+# hr_request_pair <ubicacion> <nombre_crudo> <literal> [<ubicacion> <nombre_crudo> <literal>]
+# Un único JSON {target,body}; originales HR_* intactos. Datos por stdin NUL,
+# nunca argv/interpolación Python. Error de productor/intérprete se propaga.
+hr_request_pair() (
+    if (( $# != 3 && $# != 6 )); then
+        printf '%s\n' 'Se requieren uno o dos cambios de campo completos.' >&2
+        return 2
+    fi
+    set -o pipefail
+    printf '%s\0' "$HR_TARGET" "$HR_BODY" "$HR_CT" "$@" |
+        "$(hr_python)" -I -B "$HR_LIB_DIR/http_fields.py" compose
+)
+
+# hr_pair_part target|body: consume JSON por stdin e imprime SOLO el valor.
+# El JSON de transporte puede expandirse al escapar datos; el helper limita
+# composición a1MiB total original y extracción a su representación acotada.
+hr_pair_part() {
+    case "${1:-}" in
+        target|body) ;;
+        *) printf '%s\n' 'Parte de petición inválida.' >&2; return 2 ;;
+    esac
+    if (( $# != 1 )); then
+        printf '%s\n' 'Se requiere una única parte de petición.' >&2
+        return 2
+    fi
+    "$(hr_python)" -I -B "$HR_LIB_DIR/http_fields.py" "part-$1"
+}
+
 # hr_params → "ubicacion|nombre|valor" por parámetro (query, form o json)
 # 4 si el cuerpo es JSON y no hay intérprete · 5 si el JSON no parsea
 hr_params() {
