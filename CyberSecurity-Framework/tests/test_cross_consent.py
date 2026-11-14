@@ -6,6 +6,7 @@ not discovery omissions. Synthetic fixtures and final artifacts persist.
 """
 from pathlib import Path
 import importlib
+import io
 import os
 import signal
 import stat
@@ -36,8 +37,9 @@ class ConsentTests(unittest.TestCase):
 
     def test_cleanup_nonexecution_is_inert(self):
         for args, rc in (((), 0), (('--preview',), 0), (('--help',), 0),
-                         (('--estado',), 2), (('--parar',), 2), (('--unknown',), 2),
-                         (('--execute',), 2)):
+                          (('--estado',), 2), (('--parar',), 2), (('--unknown',), 2),
+                          (('--help', '--unknown'), 2), (('--help', '--execute'), 2),
+                          (('--execute',), 2)):
             with self.subTest(args=args):
                 f = self.fixture()
                 before = f.snapshot()
@@ -45,6 +47,20 @@ class ConsentTests(unittest.TestCase):
                 self.assertEqual(result.returncode, rc, result.stderr)
                 self.assertEqual(f.records(), [])
                 self.assertEqual(f.snapshot(), before)
+        # TTY-specific refusal/EOF/generic yes cannot authorize LOCAL effects.
+        class TTY(io.StringIO):
+            def isatty(self):
+                return True
+        f = self.fixture()
+        cli = self.core(f, 'cleanup_cli')
+        before = f.snapshot()
+        ops = mock.Mock()
+        for answer in ('', 'no\n', 'si\n'):
+            with mock.patch.object(cli.sys, 'stdin', TTY(answer)), \
+                    mock.patch.object(cli.sys, 'stderr', TTY()):
+                self.assertEqual(cli.main(['--execute'], framework=f.framework, ops=ops), 2)
+        ops.perform.assert_not_called()
+        self.assertEqual(f.snapshot(), before)
         # Fixture transport contracts use doubles only: no timed-out real leaf.
         for state in ('DONE', 'TIMEOUT', 'LAUNCH_ERROR'):
             f = self.fixture()
@@ -210,7 +226,11 @@ class ConsentTests(unittest.TestCase):
         directory.mkdir()
         fifo = f.home / 'log-fifo'
         os.mkfifo(fifo)
-        for path in (link, directory, fifo):
+        alias = f.home / 'hardlink'
+        os.link(target, alias)
+        parent_link = f.home / 'parent-link'
+        parent_link.symlink_to(f.home, target_is_directory=True)
+        for path in (link, directory, fifo, alias, parent_link / 'referent'):
             with self.subTest(path=path), self.assertRaises((OSError, ValueError)):
                 files.truncate_regular(path)
         self.assertEqual(target.read_text(), 'preserve synthetic bytes')

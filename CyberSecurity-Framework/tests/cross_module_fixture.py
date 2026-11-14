@@ -10,6 +10,10 @@ import subprocess
 from tempfile import mkdtemp
 
 SOURCE_FILES = (
+    '00_Config/lib/consent/__init__.py',
+    '00_Config/lib/consent/files.py',
+    '00_Config/lib/consent/cleanup.py',
+    '00_Config/lib/consent/cleanup_cli.py',
     '06_PostExploitation/cleanup/logs_cleaner.sh',
     '03_Scanners/web_scanners/burpsuite/burp_launcher.sh',
     '03_Scanners/run_all_scanners.sh', '06_PostExploitation/run_all_post.sh',
@@ -83,7 +87,10 @@ class CrossModuleFixture:
         (self.home / '.bash_history').write_text('synthetic-history-sentinel\n')
         self.env = {
             'PATH': str(self.bin) + ':/usr/bin:/bin', 'HOME': str(self.home),
-            'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8', 'PYTHONDONTWRITEBYTECODE': '1',
+            # The exact sandbox omits locale archives: C is always available.
+            # Python UTF-8 mode retains Unicode without setlocale warnings.
+            'LANG': 'C', 'LC_ALL': 'C', 'PYTHONUTF8': '1',
+            'PYTHONDONTWRITEBYTECODE': '1',
             'SESSION_FILE': str(config / '.session'),
             'SESSION_SCOPE_FILE': str(config / 'scope.yaml'),
             'SESSION_TARGETS_FILE': str(config / 'targets.txt'),
