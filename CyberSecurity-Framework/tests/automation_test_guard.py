@@ -17,7 +17,7 @@ _OPEN_PATH = ContextVar('automation_guard_open_path', default=None)
 def preservation_event(event, args):
     """Fail closed on unclassified controller destruction; not child isolation.
 
-    Only the exact25case grant inside a verified fork-local Landlock scope may
+    Only an exact selection-bound grant in a verified fork-local Landlock scope may
     discard fresh synthetic objects. All other cases/default remain blocked.
     """
     if event in ('os.remove', 'os.rmdir', 'os.truncate'):

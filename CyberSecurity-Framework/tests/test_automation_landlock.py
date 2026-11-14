@@ -446,7 +446,8 @@ class LandlockContracts(unittest.TestCase):
                         and n.name == 'run_selection')
         decisions = [n for n in ast.walk(function) if isinstance(n, ast.Call)
                      and isinstance(n.func, ast.Name) and n.func.id == 'selection_outcome']
-        self.assertEqual(sorted(n.args[1].value for n in decisions), ['race', 'suite'])
+        self.assertEqual(sorted(n.args[1].value for n in decisions),
+                         ['cross-consent', 'race', 'suite'])
 
 
 if __name__ == '__main__':

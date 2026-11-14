@@ -16,10 +16,14 @@ def configure_worker(root, pinned, case_id, permitted, abi):
             type(permitted) is not bool or
             root.parent != Path('/work/fixtures') or not root.name.startswith('case-')):
         raise ValueError('Invalid fork-local case scope')
-    from automation_suite_selection import preservation_inventory
-    ids = preservation_inventory()['authorization']['case_ids']
-    if permitted != (case_id in ids):
-        raise ValueError('Case grant differs from fixed25 inventory')
+    from automation_suite_selection import case_disposable_allowed
+    if permitted != case_disposable_allowed(case_id):
+        raise ValueError('Case grant differs from validated selection inventory')
+    import __main__ as controller
+    if getattr(controller, 'validated_selection', lambda: None)() == '--cross-consent':
+        from cross_module_selection import group_cases
+        if case_id not in group_cases('--cross-consent') or not permitted:
+            raise ValueError('Case identity outside validated cross selection')
     info = root.stat(follow_symlinks=False)
     if (info.st_dev, info.st_ino, info.st_uid, info.st_mode) != pinned:
         raise ValueError('Case root identity changed')

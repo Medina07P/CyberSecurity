@@ -48,6 +48,10 @@ PYTHON_CANONICAL = '_sysconfigdata__linux_x86_64-linux-gnu.py'
 UTILITIES = ('basename', 'cat', 'chmod', 'cp', 'date', 'dirname', 'env',
              'find', 'grep', 'head', 'mkdir', 'mktemp', 'mv', 'od', 'printf',
              'readlink', 'sed', 'sort', 'stat', 'tail', 'timeout', 'tr', 'wc')
+CROSS_RUNTIME = (
+    ('/usr/bin/mawk', '/usr/bin/awk'), ('/usr/bin/cut', '/usr/bin/cut'),
+    ('/usr/bin/seq', '/usr/bin/seq'), ('/usr/bin/sleep', '/usr/bin/sleep'),
+    ('/usr/bin/tee', '/usr/bin/tee'))
 
 
 def _identity(info):
@@ -245,6 +249,7 @@ def source_names():
 
 
 _SOURCE_DATA = frozenset({
+    'CyberSecurity-Framework/tests/cross_module_cases.json',
     'CyberSecurity-Framework/00_Config/lib/dangerous.txt',
     'CyberSecurity-Framework/09_Automation/workflows/quick_scan.yaml',
     'CyberSecurity-Framework/09_Automation/workflows/full_audit.yaml',
@@ -269,6 +274,21 @@ _FORBIDDEN_PARTS = frozenset({'credentials', 'scans', '__pycache__',
                               'home', 'site-packages', 'dist-packages'})
 
 
+def _ordinary_runtime_identity(source):
+    """New fixed runtime must be root-owned regular executable, never a link."""
+    fd, parent, name = _open_regular(source)
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or
+                info.st_mode & (stat.S_ISUID | stat.S_ISGID | 0o022) or
+                not info.st_mode & 0o111 or
+                _identity(info) != _identity(os.stat(name, dir_fd=parent, follow_symlinks=False))):
+            raise IsolationBlocked('Untrusted fixed ordinary runtime: ' + str(source))
+    finally:
+        os.close(fd)
+        os.close(parent)
+
+
 def _runtime_entries():
     data = load_json(HERE / 'automation_sandbox_manifest.json',
                      {'version', 'executables', 'stdlib', 'yaml', 'extensions', 'python_aliases'})
@@ -282,6 +302,7 @@ def _runtime_entries():
                 ('/usr/bin/bash', '/bin/bash'), ('/usr/bin/bash', '/usr/bin/bash'),
                 ('/usr/bin/bash', '/bin/sh')]
     expected += [('/usr/bin/' + name, '/usr/bin/' + name) for name in UTILITIES]
+    expected += list(CROSS_RUNTIME)
     rows = data['executables']
     if (not isinstance(rows, list) or any(not isinstance(r, dict) or
             set(r) != {'source', 'destination'} for r in rows) or
@@ -290,6 +311,10 @@ def _runtime_entries():
         raise IsolationBlocked('Runtime policy differs from fixed allowlist')
     entries = []
     for source, destination in expected:
+        if (source, destination) in CROSS_RUNTIME:
+            _ordinary_runtime_identity(Path(source))
+            entries.append(RuntimeFile(Path(source), destination, 'elf'))
+            continue  # exact ordinary source; never canonicalize a new alias
         # Only fixed runtime aliases are canonicalized. No repo source follows
         # links. Canonical targets must remain in the approved binary directory.
         try:

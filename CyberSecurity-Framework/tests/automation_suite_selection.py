@@ -58,6 +58,29 @@ def classify(cases):
     return list(cases), {}
 
 
+def case_disposable_allowed(case_id: str) -> bool:
+    """Selection-bound local diagnostic; never OS authority or an env token."""
+    import __main__ as controller
+    if (getattr(controller, '__file__', None) !=
+            '/source/CyberSecurity-Framework/tests/automation_sandbox_inside.py' or
+            not getattr(controller, 'validated_diagnostic_context', lambda: False)()):
+        return False
+    selector = getattr(controller, 'validated_selection', lambda: None)()
+    if selector in ('--suite', '--races'):
+        return case_id in preservation_inventory()['authorization']['case_ids']
+    if selector == '--cross-consent':
+        from cross_module_selection import group_grants
+        return case_id in group_grants(selector)
+    return False
+
+
+def legacy_modules(names):
+    # This prefix is intentionally NOT test_*: cross modules never enter09.
+    return sorted(Path(name).stem for name in names
+                  if name.startswith('CyberSecurity-Framework/tests/test_automation_')
+                  and name.endswith('.py'))
+
+
 class RecordedResult(unittest.TextTestResult):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -92,15 +115,14 @@ _CASE_INDEX = 0
 
 
 def _run(cases):
-    """Legacy only: no test setup/run before Landlock; fresh scratch per case."""
+    """Closed workers: no test setup/run before Landlock; fresh scratch per case."""
     global _CASE_INDEX
     from automation_case_worker import WorkerBlocked, run_case
-    permission = set(preservation_inventory()['authorization']['case_ids'])
     results = []
     for case in cases:
         _CASE_INDEX += 1
         try:
-            result = run_case(case, case.id() in permission, _CASE_INDEX)
+            result = run_case(case, case_disposable_allowed(case.id()), _CASE_INDEX)
         except WorkerBlocked as exc:
             result = {'id': case.id(), 'state': 'BLOCKED', 'reason': str(exc)}
         results.append(result)
@@ -138,22 +160,37 @@ def run_selection(selector, write_receipt):
     if (getattr(controller, '__file__', None) != str(HERE / 'automation_sandbox_inside.py') or
             not getattr(controller, 'validated_diagnostic_context', lambda: False)()):
         raise ValueError('BLOCKED: only validated fixed inside controller may discover')
-    if selector not in ('--suite', '--races'):
+    if selector not in ('--suite', '--races', '--cross-consent'):
         raise ValueError('Unknown closed selection')
+    if getattr(controller, 'validated_selection', lambda: None)() != selector:
+        raise ValueError('Selection differs from validated controller memory')
     from automation_sandbox_prepare import source_names
-    modules = sorted(Path(name).stem for name in source_names()
-                     if name.startswith('CyberSecurity-Framework/tests/test_automation_')
-                     and name.endswith('.py'))
+    modules = legacy_modules(source_names())
     if not set(UNIT_MODULES) <= set(modules):
         raise ValueError('Missing sandbox unit source')
     # Load Task3 units first; no legacy fixture imported until after their run.
     units = unittest.defaultTestLoader.loadTestsFromNames(UNIT_MODULES)
     unit_result = _run_inline(list(flatten(units)))
-    write_receipt('/evidence/sandbox-units.json', unit_result)
+    prefix = 'cross-consent-' if selector == '--cross-consent' else ''
+    write_receipt('/evidence/' + prefix + 'sandbox-units.json', unit_result)
     if not unit_result['successful']:
         return 'FAIL', 1, 'Sandbox unit contracts failed; legacy selection not started'
     from automation_test_guard import install
     install('/source')  # redundant controller diagnostics, never OS authority
+    if selector == '--cross-consent':
+        from cross_module_selection import group_cases, group_grants, validate_cases
+        names = group_cases(selector)
+        cases = list(flatten(unittest.defaultTestLoader.loadTestsFromNames(names)))
+        validate_cases(selector, cases)  # includes loader _FailedTest IDs
+        if any(not case_disposable_allowed(case.id()) for case in cases):
+            raise ValueError('Cross grant unavailable before fork')
+        write_receipt('/evidence/cross-consent-selection.json', {
+            'version': 1, 'selector': selector, 'eligible': list(names),
+            'grants': sorted(group_grants(selector)), 'state': 'WORKER-GATE-REQUIRED'})
+        result = _run(cases)
+        write_receipt('/evidence/cross-consent.json', result)
+        return selection_outcome(result, 'cross-consent') or (
+            'PASS', 0, 'All selected cross-consent tests passed')
     legacy = [name for name in modules if name not in UNIT_MODULES]
     cases = list(flatten(unittest.defaultTestLoader.loadTestsFromNames(legacy)))
     allowed, blocked = classify(cases)

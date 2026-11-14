@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "selector": "--cross-consent",
+  "grant": "explicit-user-new-synthetic-disposables-only",
+  "scope": "registered-current-case-fixture-only",
+  "required_observer": "landlock-abi3-current-case-worker",
+  "disposable_states": "new-synthetic-intermediate-states",
+  "case_ids": [
+    "test_cross_consent.ConsentTests.test_cleanup_nonexecution_is_inert",
+    "test_cross_consent.ConsentTests.test_cleanup_requires_both_flags",
+    "test_cross_consent.ConsentTests.test_cleanup_local_plan_and_partial_failure",
+    "test_cross_consent.ConsentTests.test_cleanup_refuses_links",
+    "test_cross_consent.ConsentTests.test_burp_open_is_not_network_consent",
+    "test_cross_consent.ConsentTests.test_burp_status_has_no_side_effects",
+    "test_cross_consent.ConsentTests.test_burp_verify_explicit_url",
+    "test_cross_consent.ConsentTests.test_burp_stop_pins_owned_identity",
+    "test_cross_consent.ConsentTests.test_menu_cancel_and_coordinator_exclusions"
+  ]
+}

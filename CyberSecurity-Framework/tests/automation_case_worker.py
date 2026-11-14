@@ -310,10 +310,16 @@ def run_case(case, permitted, index):
             '/source/CyberSecurity-Framework/tests/automation_sandbox_inside.py' or
             not getattr(controller, 'validated_diagnostic_context', lambda: False)() or in_worker()):
         raise WorkerBlocked('Only validated inside controller may fork case')
-    from automation_suite_selection import preservation_inventory
-    ids = preservation_inventory()['authorization']['case_ids']
-    if permitted != (case.id() in ids) or type(permitted) is not bool:
+    from automation_suite_selection import case_disposable_allowed
+    if permitted != case_disposable_allowed(case.id()) or type(permitted) is not bool:
         raise WorkerBlocked('Case permission does not match closed inventory')
+    selector = getattr(controller, 'validated_selection', lambda: None)()
+    if selector == '--cross-consent':
+        from cross_module_selection import group_cases
+        if case.id() not in group_cases(selector):
+            raise WorkerBlocked('Cross case identity outside validated selection')
+    elif selector not in ('--suite', '--races'):
+        raise WorkerBlocked('No validated worker selection')
     _prctl(36, 1)
     root = Path(mkdtemp(prefix='case-', dir='/work/fixtures'))
     (root / 'fixtures').mkdir(mode=0o700)

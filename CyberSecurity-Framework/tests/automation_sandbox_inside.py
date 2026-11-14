@@ -21,6 +21,7 @@ SELF = '/source/CyberSecurity-Framework/tests/automation_sandbox_inside.py'
 TESTS = '/source/CyberSecurity-Framework/tests'
 NAMESPACES = ('mnt', 'pid', 'net', 'user', 'ipc', 'uts', 'cgroup')
 _VALIDATED = False
+_SELECTION = None
 _NPROC_ENTRY = None
 
 
@@ -181,7 +182,7 @@ def _entry_nproc_gate(argv):
     if list(argv) in (['--probe-child'], ['--probe-grandchild'],
                      ['--probe-bash'], ['--probe-cancel']):
         return _inherited_nproc_gate()
-    if list(argv) in (['--probes'], ['--suite'], ['--races']):
+    if list(argv) in (['--probes'], ['--suite'], ['--races'], ['--cross-consent']):
         return _workload_nproc_gate()
     raise NprocBlocked('Unknown entry selector')
 
@@ -457,9 +458,10 @@ def run_probes(run_id: str) -> dict[str, object]:
 
 
 def inside_main(argv: Sequence[str]) -> int:
-    global _VALIDATED
+    global _VALIDATED, _SELECTION
     _VALIDATED = False
-    if list(argv) not in (['--probes'], ['--suite'], ['--races']):
+    _SELECTION = None
+    if list(argv) not in (['--probes'], ['--suite'], ['--races'], ['--cross-consent']):
         return 2
     state, code, reason = 'BLOCKED', 2, 'Probe prerequisites unavailable'
     previous = None
@@ -484,9 +486,10 @@ def inside_main(argv: Sequence[str]) -> int:
             state, code, reason = 'PASS', 0, 'Synthetic probes passed; no legacy tests started'
         else:
             _VALIDATED = True
+            _SELECTION = argv[0]
             # Stop the probe budget; selection has its own fixed budget. This
             # is direct discovery, never run_automation/launcher/nested bwrap.
-            signal.setitimer(signal.ITIMER_REAL, 600 if argv[0] == '--suite' else 240)
+            signal.setitimer(signal.ITIMER_REAL, 240 if argv[0] == '--races' else 600)
             from automation_suite_selection import run_selection
             tests_started = True
             state, code, reason = run_selection(argv[0], write_json)
@@ -509,6 +512,11 @@ def validated_diagnostic_context():
     """Local diagnostic state, never authority to launch on host."""
     return (_VALIDATED and str(Path(__file__)) == SELF and
             all(namespaces()[n] != _context()['host_namespaces'][n] for n in NAMESPACES))
+
+
+def validated_selection() -> str | None:
+    """Memory set only after probes; no test argv/environment interpretation."""
+    return _SELECTION if validated_diagnostic_context() else None
 
 
 if __name__ == '__main__':
