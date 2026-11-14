@@ -154,3 +154,100 @@ independiente o prueba de sandbox/hostil/compatibilidad operacional.
 5. Revisiones finales y cierre acotado siguen pendientes. No se afirma validez
    de credenciales, auditoría real, compatibilidad universal, custodia legal ni
    cierre global. No push/merge/limpieza/descartes ni cambios de configuración.
+
+## Phase2 WM1 — implementación estática tras RED real (2026-11-14)
+
+**Entrega de código: implementado, revisión independiente/nuevo GREEN pendientes.**
+Base autorizada `18cb1f2`. Esta sección actualiza el estado; la entrega INITIAL
+anterior permanece como historia exacta de aquella fase. No se ejecutó runtime
+nuevo en esta reanudación. El commit de esta fase contiene esta sección, el
+arreglo manual y tres actualizaciones documentales; su SHA se comunica al devolver.
+
+### RED del controlador inspeccionado como datos
+
+Raíz conservada:
+`/tmp/opencode/automation-isolated-41fb611a6a694e69a279dd09570cab8b/`.
+Se leyeron `evidence/host-wait.json`, `cross-web.json`,
+`cross-web-sandbox-units.json`, `cross-web-selection.json`, los stderr de casos3/4
+y metadata `launch.json`; manifiesto y tres fuentes staged solo para procedencia.
+
+- `host-wait.json`: EXIT/rc1.65units PASS.7casos web,4 fallos de aserción,
+  0errores/0skips/0BLOCKED. Puros, `.req`, rate y preservación sin fallo observado.
+- Caso3: tres subcasos manuales fallaron. Candidato `a&b=+%` produjo
+  `a{password}b=+%`; candidato literal `{usuario}` se convirtió en `plain-user`;
+  usuario `a&b=+%` produjo `a{usuario}b=+%`. Los restantes subcasos no figuran
+  fallidos. Son diferencias de body del doble obligatorio, no fallos de política.
+- Caso4: cuarto fallo, smoke manual: cuerpo `password=a{password}b=+%` en vez
+  de `password=a&b=+%`. El segundo cuerpo con comilla/Unicode coincidió.
+- Esto acredita el RED de las expectativas fortalecidas, **no** el nuevo GREEN.
+  Ninguna evidencia anterior se modifica ni se atribuye a la fuente nueva.
+
+SHA256 de recibos leídos:
+
+| Archivo bajo evidence | SHA256 |
+|---|---|
+| `cross-web.json` | `44168c52a86527feb7dca4247589525cc59af109c385c6f9b433730265d841cf` |
+| `cross-web-sandbox-units.json` | `97e00e885f2ef975cf586cce6d4231a9f23c77e31e11f9b22665ebba7cfbf14a` |
+| `case-00003.stderr.log` | `4d9b40bec6dad081d3f67ef1daafdba99494b469022f549f1d28b54ea2439535` |
+| `case-00004.stderr.log` | `f5ab2f538429ff091628f77c23cd4d0198edf3e2c2ad8b43e5bf094efdb63333` |
+
+Se compararon SHA256 del manifiesto, bytes staged y `git show 18cb1f2:<ruta>`:
+
+| Fuente | SHA256 del RED/base |
+|---|---|
+| `05_Exploitation/web/web_login_bruteforce.sh` | `5141da17f9714193b10ad060dfb117ced0e92202ab410086a134fc7b249d4503` |
+| `tests/test_cross_web.py` | `1acaf4b8d5cd0820bdd00c042961f415aa00810db6f9443243ab051decb70b8e` |
+| `tests/test_automation_contract.py` | `cf088c2b184a0e8dfa38b89f211768b7b4fd52dd6509be087e604dd6421dc2c0` |
+
+Las rutas son relativas a `CyberSecurity-Framework/`. Ambos tests siguen
+byte-idénticos al RED; ninguna aserción debilitada o expectativa regenerada.
+
+### Implementación e interfaces exactas
+
+Solo cambia la construcción de `cuerpo` dentro de `enviar_manual`:
+`plantilla` local toma `BRUTE_CUERPO` original, un índice local avanza1/9/10
+caracteres y un `case` de hasta10 caracteres reconoce `{usuario}`/`{password}`.
+Añade el usuario/candidato con asignación append entrecomillada, o un carácter
+original. Solo recorre la plantilla, nunca el resultado/valores insertados.
+No usa RHS de sustitución Bash, `eval`, regex de sustitución, subprocess,
+intérprete, archivo/helper nuevo, datos en código/argv de un helper ni stdout
+intermedio. No recodifica, escapa o serializa el cuerpo manual crudo, ni pierde
+saltos finales por command substitution. La fuente original/variables de entrada
+no se mutan. No depende de `patsub_replacement` ni cambia opciones del shell.
+
+No cambian firma, CLI, precedencias de usuario/diccionario, gates, caps, candidatos,
+método, URL, cabeceras, transporte, clasificación o artefactos. Todo lo anterior
+a la antigua asignación de cuerpo y todo lo posterior a `local -a args=(-skS`
+se comparó byte a byte con base: idéntico. `.req`, compositor y rate intactos.
+SHA256 de la hoja nueva:
+`4a5411b0290a3f88672b36c01f6650883e4efafbe111a323ac9aa3dd18d9098c`.
+
+README05/manual/MENU ahora describen RED observado y arreglo implementado,
+revisión/GREEN pendientes. M1 de `task-4-static-review.md` reconciliado en README:
+rc0 de login puede ser candidato heurístico **o cancelación genuina sin intentos**,
+no acreditación de autenticación. No se reescribe el review histórico.
+
+### Verificación estática y límites de esta fase
+
+- `git status --short` inicial vacío; `git rev-parse --short HEAD` → `18cb1f2`.
+- `bash -n CyberSecurity-Framework/05_Exploitation/web/web_login_bruteforce.sh 2>&1`
+  → rc0, sin salida ni warnings; no ejecuta el cuerpo.
+- `git diff --check` → rc0, sin salida. Diff de producción leído completo:
+  único hunk local de sustitución manual; self-review de offsets y datos literales.
+- `python3 -I -B -c` solo con `ast,hashlib,json,pathlib,subprocess` estándar:
+  comparación de prefijo/sufijo inalterados de hoja; procedencia manifiesto/
+  staged/base de las tres fuentes; AST y bytes inalterados de ambos tests;
+  JSON de recibos con conteos exactos; hashes anteriores; allowlist de cuatro
+  archivos de código/docs antes de anexar este informe. Todo rc0, sin imports
+  del repo ni ejecución de helpers/producto/tests. Solo se usó subprocess para
+  lecturas Git de texto/bytes, no para Bash/producto.
+- Las fuentes runtime/fixture/doble/manifiestos/selectores y7IDs/5grants no
+  cambian. Sin baselines refrescados, nuevas concesiones, skips u omisiones.
+
+**Runtime de la fuente nueva NOT RUN.** Falta revisión independiente de este
+SHA combinado y nueva autorización exacta del controlador para `--cross-web`
+completo. Solo ese run podrá acreditar GREEN; el RED retenido no lo sustituye.
+`--cross-consent`, `--suite`, revisiones finales y cierre acotado siguen pendientes.
+No hay cierre global ni claim de credencial válida/compatibilidad operacional.
+Sin subagentes, red, configuración del operador, instalaciones, limpieza,
+eliminación de artefactos, push, merge o reset.

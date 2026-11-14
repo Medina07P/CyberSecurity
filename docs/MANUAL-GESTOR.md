@@ -249,8 +249,9 @@ Todas las opciones piden confirmación antes de ejecutar y no elevan privilegios
 ni inferencia por puerto. Una URL absoluta capturada aporta esquema solo con
 autoridad idéntica a `Host:`; override definido manda y vacío/inválido rechaza.
 El modo manual usa `BRUTE_URL` explícita y cuerpo crudo, no el compositor `.req`.
-WM1 de sustitución manual permanece pendiente de RED/arreglo; no se acredita
-su cuerpo por el antiguo smoke. Campos ambiguos se rechazan localmente; `.req`
+WM1 tuvo RED observado; el arreglo literal de una pasada está implementado,
+pendiente de revisión y GREEN autorizado. No se acredita su cuerpo por el antiguo
+smoke. Campos ambiguos se rechazan localmente; `.req`
 codifica valores nuevos una vez, con presupuesto total1MiB de composición.
 Login conserva default200/tope1000 y produce candidatos heurísticos, no prueba
 de credencial válida. Rate conserva20/tope200 y `wrong-N`:403 sin señal explícita
