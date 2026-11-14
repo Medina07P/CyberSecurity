@@ -33,7 +33,8 @@
     {"source": "/usr/bin/cut", "destination": "/usr/bin/cut"},
     {"source": "/usr/bin/seq", "destination": "/usr/bin/seq"},
     {"source": "/usr/bin/sleep", "destination": "/usr/bin/sleep"},
-    {"source": "/usr/bin/tee", "destination": "/usr/bin/tee"}
+    {"source": "/usr/bin/tee", "destination": "/usr/bin/tee"},
+    {"source": "/usr/bin/rm", "destination": "/usr/bin/rm"}
   ],
   "stdlib": "/usr/lib/python3.13",
   "yaml": "/usr/lib/python3/dist-packages/yaml",

@@ -252,6 +252,64 @@ hr_request_pair form password literal
                                      [['401', '10'], ['200', '20']])
 
     def test_login_has_no_preconsent_transport(self):
+        # Verify the zero-call oracle itself without touching product business:
+        # all failures must leave a raw receipt before any fallible input access.
+        for failure, stage, error_type in (
+                ('unreadable-body', 'body', 'PermissionError'),
+                ('missing-body', 'body', 'FileNotFoundError'),
+                ('missing-program', 'program', 'FileNotFoundError'),
+                ('invalid-program', 'program', 'JSONDecodeError')):
+            with self.subTest(double_failure=failure):
+                f = self.fixture()
+                body = f.repo / 'synthetic-file-body.bin'
+                if failure == 'unreadable-body':
+                    with body.open('xb') as stream:
+                        stream.write(b'private synthetic body\r\n')
+                    body.chmod(0o000)  # current new scratch only; cap-drop ALL is mandatory
+                if failure == 'missing-program':
+                    f.env['CROSS_CURL_PROGRAM'] = str(f.output / 'absent-program.json')
+                elif failure == 'invalid-program':
+                    program = self.new_text(f.output / 'invalid-program.json', 'not-json')
+                    f.env['CROSS_CURL_PROGRAM'] = str(program)
+                argv = [str(f.bin / 'curl'), '--data-binary', '@' + str(body),
+                        'https://example.test/synthetic-transport-only']
+                result = f._run(argv, '')
+                self.assertNotEqual(result.returncode, 0)
+                raw, = f.curl_invocations()
+                self.assertEqual(raw['argv'], argv[1:])
+                self.assertEqual(raw['program'], f.env['CROSS_CURL_PROGRAM'])
+                self.assertEqual(raw['state'], 'INVOKED')
+                self.assertTrue(raw['invocation_id'])
+                record, = f.curl_records()
+                self.assertEqual(record['invocation_id'], raw['invocation_id'])
+                self.assertEqual(record['state'], 'ERROR')
+                self.assertEqual(record['failure']['stage'], stage)
+                self.assertEqual(record['failure']['type'], error_type)
+                self.assertEqual(result.stdout, '')
+                self.assertIn('Synthetic curl failure:', result.stderr)
+                terminal = f.output / ('curl-result-' + raw['invocation_id'] + '.json')
+                self.assertEqual(json.loads(terminal.read_text())['failure'], record['failure'])
+        # File data are never executed or decoded with newline replacement. The
+        # literal byte oracle is independent of the double's base64 producer.
+        import base64
+        for payload, text in ((b'first\r\nsecond\r\n', 'first\r\nsecond\r\n'),
+                              (b'first\r\n\xff\x00\x80last', None)):
+            with self.subTest(file_body=payload):
+                f = self.fixture()
+                body = f.repo / 'synthetic-file-body.bin'
+                with body.open('xb') as stream:
+                    stream.write(payload)
+                argv = [str(f.bin / 'curl'), '--data-binary', '@' + str(body),
+                        'https://example.test/synthetic-transport-only']
+                result = f._run(argv, '')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                raw, = f.curl_invocations()
+                self.assertEqual(raw['argv'], argv[1:])
+                record, = f.curl_records()
+                self.assertEqual(record['state'], 'DONE')
+                self.assertEqual(base64.b64decode(record['body_base64'], validate=True), payload)
+                self.assertEqual(record['body'], text)
+                self.assertEqual(body.read_bytes(), payload)
         scenarios = (
             ({'BRUTE_SI': '1'}, 'example.test', 'username=a&password=b', 'local'),
             ({'BRUTE_SI': '1'}, 'example.test:443', 'username=a&password=b', 'local'),
@@ -292,27 +350,49 @@ hr_request_pair form password literal
         self.assertTrue(all(row['urls'] == ['http://example.test:8080/login'] for row in f.curl_records()))
 
     def test_rate_has_no_scheme_probe(self):
-        for host in ('example.test:443', 'example.test:8443', 'example.test:8080', 'example.test'):
-            f = self.fixture()
-            request = self.capture(f, host=host)
-            result = self.rate(f, request)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            calls = f.curl_records()
-            self.assertEqual(len(calls), 2)
-            for n, row in enumerate(calls, 1):
-                self.assertEqual(row['method'], 'PATCH')
-                self.assertEqual(self.logical(row, 'form', 'password'), 'wrong-' + str(n))
-                self.assertEqual(self.logical(row, 'form', 'username'), 'alice@example.test')
-            for env, count in (({'RATE_LIMIT_SI': '1'}, '2'),
-                               ({'RATE_LIMIT_SI': '1', 'RATE_LIMIT_ESQUEMA': 'ftp'}, '2'),
-                               ({'RATE_LIMIT_ESQUEMA': 'https'}, '2'),
-                               ({}, '2'), ({'RATE_LIMIT_SI': '1'}, '201'),
-                               ({'RATE_LIMIT_SI': '1'}, 'bad')):
+        # Literal URLs, not generated by hr_url/rl_url/the tested port policy.
+        # HTTP on443/8443 and HTTPS on8080 explicitly contradict port inference.
+        for scheme, host, expected_url in (
+                ('http', 'example.test:443', 'http://example.test:443/login?nonce=%2f+'),
+                ('http', 'example.test:8443', 'http://example.test:8443/login?nonce=%2f+'),
+                ('http', 'example.test:8080', 'http://example.test:8080/login?nonce=%2f+'),
+                ('http', 'example.test', 'http://example.test/login?nonce=%2f+'),
+                ('https', 'example.test:443', 'https://example.test/login?nonce=%2f+'),
+                ('https', 'example.test:8443', 'https://example.test:8443/login?nonce=%2f+'),
+                ('https', 'example.test:8080', 'https://example.test:8080/login?nonce=%2f+'),
+                ('https', 'example.test', 'https://example.test/login?nonce=%2f+')):
+            with self.subTest(scheme=scheme, host=host):
                 f = self.fixture()
-                request = self.capture(f, host=host)
-                f.env.update(env)
-                result = f.run_leaf(RATE, (str(request), count), stdin='')
-                self.assertEqual(f.curl_records(), [], result.stdout + result.stderr)
+                request = self.capture(f, target='/login?nonce=%2f+', host=host)
+                f.env.update(RATE_LIMIT_SI='1', RATE_LIMIT_ESQUEMA=scheme, RATE_LIMIT_RETARDO='0')
+                result = f.run_leaf(RATE, (str(request), '2'))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                calls = f.curl_records()
+                self.assertEqual(len(calls), 2)
+                for n, row in enumerate(calls, 1):
+                    self.assertEqual(row['urls'], [expected_url])
+                    self.assertEqual(row['method'], 'PATCH')
+                    self.assertEqual(self.logical(row, 'form', 'password'), 'wrong-' + str(n))
+                    self.assertEqual(self.logical(row, 'form', 'username'), 'alice@example.test')
+        for host in ('example.test:443', 'example.test:8443', 'example.test:8080', 'example.test'):
+            for env, count, must_error in (
+                    ({'RATE_LIMIT_SI': '1'}, '2', True),
+                    ({'RATE_LIMIT_SI': '1', 'RATE_LIMIT_ESQUEMA': 'ftp'}, '2', True),
+                    ({'RATE_LIMIT_ESQUEMA': 'https'}, '2', False),  # cancellation/EOF, not invalid input
+                    ({}, '2', None),  # missing scheme + EOF: require only zero transport
+                    ({'RATE_LIMIT_SI': '1', 'RATE_LIMIT_ESQUEMA': 'https'}, '201', True),
+                    ({'RATE_LIMIT_SI': '1', 'RATE_LIMIT_ESQUEMA': 'https'}, '0', True),
+                    ({'RATE_LIMIT_SI': '1', 'RATE_LIMIT_ESQUEMA': 'https'}, 'bad', True)):
+                with self.subTest(host=host, env=env, count=count):
+                    f = self.fixture()
+                    request = self.capture(f, host=host)
+                    f.env.update(env)
+                    result = f.run_leaf(RATE, (str(request), count), stdin='')
+                    if must_error is True:
+                        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    elif must_error is False:
+                        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(f.curl_invocations(), [], result.stdout + result.stderr)
         f = self.fixture()
         request = self.new_text(f.repo / 'invalid.req', 'not an HTTP request')
         result = self.rate(f, request)

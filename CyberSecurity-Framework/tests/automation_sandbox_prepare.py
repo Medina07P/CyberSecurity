@@ -51,7 +51,7 @@ UTILITIES = ('basename', 'cat', 'chmod', 'cp', 'date', 'dirname', 'env',
 CROSS_RUNTIME = (
     ('/usr/bin/mawk', '/usr/bin/awk'), ('/usr/bin/cut', '/usr/bin/cut'),
     ('/usr/bin/seq', '/usr/bin/seq'), ('/usr/bin/sleep', '/usr/bin/sleep'),
-    ('/usr/bin/tee', '/usr/bin/tee'))
+    ('/usr/bin/tee', '/usr/bin/tee'), ('/usr/bin/rm', '/usr/bin/rm'))
 
 
 def _identity(info):
