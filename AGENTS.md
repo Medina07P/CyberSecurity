@@ -1,5 +1,17 @@
 # AGENTS.md
 
+**Integración local 11, 2026-11-14:** por petición expresa del usuario, los dos
+bloques de informes se consolidaron en `1682fa1` y se integraron por fast-forward
+en develop desde `e558207`. Posmerge desde develop:
+`tests/run_reports_evidence.sh`175tests/rc0/GUARD OK; hash y modo de scope.yaml/
+targets.txt locales intactos. Se conservó el plan inicial no versionado en
+`/tmp/opencode/merge-reports-6di_p716/untracked-initial-plan.md` antes de incorporar
+su versión actual. Evidencia y límites en `docs/INTEGRACION-11-2026-11-14.md`;
+guía `11_Reports/USE.md`. Worktree, rama de informes y logs conservados; sin push.
+Revisión propia, no independiente; run_tests global heredada mantiene sus cuatro
+fallos observados/timeout. No declarar rama completa verde, compatibilidad
+operacional universal ni custodia legal. No iniciar siguiente módulo sin petición.
+
 **Integración local 10, 2026-11-13:** usuario confirmó merge; `develop`
 avanzó por fast-forward de `3a63550` a `1979d7f` (código revisado `8518c91`,
 último commit solo documentación). Verificación posmerge desde develop:
