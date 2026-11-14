@@ -17,6 +17,7 @@ from tempfile import mkdtemp
 
 SYSCALLS = (444, 445, 446)
 HANDLED = sum(1 << bit for bit in (1, *range(4, 15)))
+DEVNULL_ALLOWED = 1 << 1  # WRITE_FILE only; no TRUNCATE/REMOVE/MAKE/REFER.
 MAX_RESULT = 65536
 
 
@@ -52,18 +53,66 @@ def landlock(root_fd):
         abi = _syscall(444, 0, 0, 1)  # LANDLOCK_CREATE_RULESET_VERSION
         if abi < 3:
             raise WorkerBlocked('Landlock ABI>=3 (TRUNCATE) required')
-        handled = ctypes.c_uint64(HANDLED)  # ABI1 ruleset layout,8bytes.
-        ruleset = _syscall(444, ctypes.byref(handled), ctypes.c_size_t(8), 0)
+        dev_fd, null_fd, pinned_null = pin_devnull()
+        ruleset = None
         try:
+            handled = ctypes.c_uint64(HANDLED)  # ABI1 ruleset layout,8bytes.
+            ruleset = _syscall(444, ctypes.byref(handled), ctypes.c_size_t(8), 0)
             rule = PathRule(HANDLED, root_fd)
             _syscall(445, ruleset, 1, ctypes.byref(rule), 0)
+            special = PathRule(DEVNULL_ALLOWED, null_fd)
+            _syscall(445, ruleset, 1, ctypes.byref(special), 0)
+            if devnull_identity(dev_fd, null_fd) != pinned_null:
+                raise WorkerBlocked('Private /dev/null changed before restriction')
             _prctl(38, 1)  # PR_SET_NO_NEW_PRIVS, never reversible.
             _syscall(446, ruleset, 0)
+            if devnull_identity(dev_fd, null_fd) != pinned_null:
+                raise WorkerBlocked('Private /dev/null changed after restriction')
         finally:
-            os.close(ruleset)
+            try:
+                if ruleset is not None:
+                    os.close(ruleset)
+            finally:
+                try:
+                    os.close(null_fd)
+                finally:
+                    os.close(dev_fd)
         return abi
     except OSError as exc:
         raise WorkerBlocked('Landlock unavailable; no case run: ' + str(exc)) from exc
+
+
+def devnull_identity(dev_fd, null_fd):
+    """Metadata only: exact no-follow private-bwrap /dev/null char1:3."""
+    def fields(value):
+        return (value.st_dev, value.st_ino, value.st_mode, value.st_rdev,
+                value.st_uid, value.st_gid, value.st_nlink)
+    directory = os.fstat(dev_fd)
+    if (not stat.S_ISDIR(directory.st_mode) or
+            fields(directory) != fields(os.stat('/dev', follow_symlinks=False))):
+        raise WorkerBlocked('Private /dev directory identity differs')
+    node = os.fstat(null_fd)
+    named = os.stat('null', dir_fd=dev_fd, follow_symlinks=False)
+    if (not stat.S_ISCHR(node.st_mode) or
+            (os.major(node.st_rdev), os.minor(node.st_rdev)) != (1, 3) or
+            fields(node) != fields(named)):
+        raise WorkerBlocked('Private /dev/null is not the pinned char1:3')
+    return fields(directory), fields(node)
+
+
+def pin_devnull():
+    directory = os.open('/dev', os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    node = None
+    try:
+        node = os.open('null', os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory)
+        return directory, node, devnull_identity(directory, node)
+    except BaseException:
+        try:
+            if node is not None:
+                os.close(node)
+        finally:
+            os.close(directory)
+        raise
 
 
 def identity(root, fd):

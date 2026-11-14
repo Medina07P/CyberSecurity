@@ -25,23 +25,115 @@ class LandlockContracts(unittest.TestCase):
             with self.assertRaises(worker.WorkerBlocked):
                 worker.landlock(42)
 
-    def test_rule_is_only_pinned_case_root_and_restriction_follows_no_new_privs(self):
+    def test_two_rules_exact_scratch_and_null_write_only_before_restriction(self):
         import automation_case_worker as worker
         events = []
+        rules = []
         def syscall(number, *args):
             events.append(('syscall', number))
             if number == 444:
                 return 3 if args[-1] == 1 else 51
             if number == 445:
+                self.assertEqual((args[0], args[1], args[3]), (51, 1, 0))
                 rule = ctypes.cast(args[2], ctypes.POINTER(worker.PathRule)).contents
-                self.assertEqual((rule.parent_fd, rule.allowed_access), (42, worker.HANDLED))
+                rules.append((rule.parent_fd, rule.allowed_access))
             return 0
         with mock.patch.object(worker, '_syscall', side_effect=syscall), \
                 mock.patch.object(worker, '_prctl', side_effect=lambda *args: events.append(('prctl', *args))), \
+                mock.patch.object(worker, 'pin_devnull', return_value=(43, 44, ('pinned',))), \
+                mock.patch.object(worker, 'devnull_identity', return_value=('pinned',)) as identity, \
                 mock.patch.object(worker.os, 'close') as close:
             self.assertEqual(worker.landlock(42), 3)
         self.assertLess(events.index(('prctl', 38, 1)), events.index(('syscall', 446)))
-        close.assert_called_once_with(51)
+        self.assertEqual(rules, [(42, worker.HANDLED), (44, 1 << 1)])
+        self.assertEqual(worker.DEVNULL_ALLOWED, 2)
+        self.assertEqual(identity.call_count, 2)  # before restrict and after
+        self.assertEqual(close.call_args_list, [mock.call(51), mock.call(44), mock.call(43)])
+
+    def test_private_devnull_identity_rejects_symlink_foreign_or_wrong_device(self):
+        import stat
+        import os
+        import automation_case_worker as worker
+        directory = mock.Mock(st_dev=7, st_ino=10, st_mode=stat.S_IFDIR | 0o755,
+                              st_rdev=0, st_uid=1000, st_gid=1000, st_nlink=2)
+        node = mock.Mock(st_dev=7, st_ino=11, st_mode=stat.S_IFCHR | 0o666,
+                         st_rdev=os.makedev(1, 3), st_uid=1000, st_gid=1000, st_nlink=1)
+        for mode, device, inode in ((stat.S_IFLNK | 0o777, os.makedev(1, 3), 11),
+                                    (stat.S_IFREG | 0o600, os.makedev(1, 3), 11),
+                                    (stat.S_IFCHR | 0o666, os.makedev(1, 5), 11),
+                                    (stat.S_IFCHR | 0o666, os.makedev(2, 3), 11),
+                                    (stat.S_IFCHR | 0o666, os.makedev(1, 3), 12)):
+            named = mock.Mock(st_dev=7, st_ino=inode, st_mode=mode, st_rdev=device,
+                              st_uid=1000, st_gid=1000, st_nlink=1)
+            opened_node = node if inode != 11 else named
+            with self.subTest(mode=mode, device=device, inode=inode), \
+                    mock.patch.object(worker.os, 'fstat', side_effect=[directory, opened_node]), \
+                    mock.patch.object(worker.os, 'stat', side_effect=[directory, named]):
+                with self.assertRaises(worker.WorkerBlocked):
+                    worker.devnull_identity(43, 44)
+        with mock.patch.object(worker.os, 'fstat', side_effect=[directory, node]), \
+                mock.patch.object(worker.os, 'stat', side_effect=[directory, node]):
+            pinned = worker.devnull_identity(43, 44)
+        self.assertEqual(pinned[1][3], os.makedev(1, 3))
+        alias_directory = mock.Mock(st_dev=7, st_ino=99, st_mode=stat.S_IFDIR | 0o755,
+                                    st_rdev=0, st_uid=1000, st_gid=1000, st_nlink=2)
+        with mock.patch.object(worker.os, 'fstat', return_value=directory), \
+                mock.patch.object(worker.os, 'stat', return_value=alias_directory):
+            with self.assertRaises(worker.WorkerBlocked):
+                worker.devnull_identity(43, 44)
+
+    def test_devnull_pin_uses_only_nofollow_dev_directory_and_exact_null_name(self):
+        import os
+        import automation_case_worker as worker
+        with mock.patch.object(worker.os, 'open', side_effect=[43, 44]) as opened, \
+                mock.patch.object(worker, 'devnull_identity', return_value=('pinned',)), \
+                mock.patch.object(worker.os, 'close') as close:
+            self.assertEqual(worker.pin_devnull(), (43, 44, ('pinned',)))
+        self.assertEqual(opened.call_args_list, [
+            mock.call('/dev', os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC),
+            mock.call('null', os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=43)])
+        close.assert_not_called()  # owned by caller until rules installed
+
+    def test_devnull_pin_failure_and_identity_race_close_owned_handles(self):
+        import automation_case_worker as worker
+        with mock.patch.object(worker.os, 'open', side_effect=[43, 44]), \
+                mock.patch.object(worker, 'devnull_identity', side_effect=worker.WorkerBlocked('foreign node')), \
+                mock.patch.object(worker.os, 'close') as close:
+            with self.assertRaises(worker.WorkerBlocked):
+                worker.pin_devnull()
+        self.assertEqual(close.call_args_list, [mock.call(44), mock.call(43)])
+        for observations in ([('changed',)], [('pinned',), ('changed',)]):
+            def syscall(number, *args):
+                return (3 if args[-1] == 1 else 51) if number == 444 else 0
+            with self.subTest(observations=observations), \
+                    mock.patch.object(worker, '_syscall', side_effect=syscall), \
+                    mock.patch.object(worker, '_prctl'), \
+                    mock.patch.object(worker, 'pin_devnull', return_value=(43, 44, ('pinned',))), \
+                    mock.patch.object(worker, 'devnull_identity', side_effect=observations), \
+                    mock.patch.object(worker.os, 'close') as close:
+                with self.assertRaises(worker.WorkerBlocked):
+                    worker.landlock(42)
+                self.assertEqual(close.call_args_list, [mock.call(51), mock.call(44), mock.call(43)])
+
+    def test_private_devnull_supports_subprocess_but_outside_evidence_remains_denied(self):
+        # Future inside-worker regression. No backend/network; NOT RUN here.
+        import os
+        import stat
+        import subprocess
+        import sys
+        import automation_case_worker as worker
+        fd = os.open('/dev/null', os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            info = os.fstat(fd)
+            self.assertTrue(stat.S_ISCHR(info.st_mode))
+            self.assertEqual((os.major(info.st_rdev), os.minor(info.st_rdev)), (1, 3))
+        finally:
+            os.close(fd)
+        result = subprocess.run([sys.executable, '-I', '-B', '-c', 'pass'],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, timeout=5)
+        self.assertEqual(result.returncode, 0)
+        worker.verify_outside_write_denied(os.readlink('/proc/self/fd/2'))
 
     def test_case_identity_rejects_alias_root_and_wrong_owner_mode(self):
         import automation_case_worker as worker
