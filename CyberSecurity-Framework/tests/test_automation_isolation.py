@@ -16,7 +16,7 @@ import unittest
 class BlockedLauncherTests(unittest.TestCase):
     def test_child_and_grandchild_payloads_cannot_be_launched(self):
         source = Path(__file__).resolve().parent / 'run_automation.sh'
-        with nullcontext(mkdtemp(prefix='automation-blocked-', dir='/tmp/opencode')) as temporary:
+        with nullcontext(mkdtemp(prefix='automation-blocked-', dir='/work/fixtures')) as temporary:
             root = Path(temporary)
             runner = root / 'run_automation.sh'
             runner.write_text(source.read_text())

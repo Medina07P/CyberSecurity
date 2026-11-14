@@ -7,6 +7,48 @@ from unittest import mock
 
 
 class IntegrationTests(unittest.TestCase):
+    def test_all_case_roots_use_persistent_work_fixtures(self):
+        # Source regression only; no launcher/prepare call or nested bwrap.
+        here = Path(__file__).parent
+        for filename in ('automation_fixture.py', 'test_automation_isolation.py'):
+            tree = ast.parse((here / filename).read_text())
+            calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                     and isinstance(n.func, ast.Name) and n.func.id == 'mkdtemp']
+            directories = [ast.literal_eval(k.value) for n in calls for k in n.keywords
+                           if k.arg == 'dir' and isinstance(k.value, ast.Constant)]
+            self.assertIn('/work/fixtures', directories, filename)
+            self.assertNotIn('/tmp/opencode', directories, filename)
+        tree = ast.parse((here / 'test_automation_sandbox_prepare.py').read_text())
+        case = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                    and n.name == 'persistent_case')
+        roots = [n.args[0].value for n in ast.walk(case) if isinstance(n, ast.Call)
+                 and isinstance(n.func, ast.Name) and n.func.id == 'Path'
+                 and n.args and isinstance(n.args[0], ast.Constant)]
+        self.assertEqual(roots, ['/work/fixtures'])
+        tree = ast.parse((here / 'automation_sandbox_launch.py').read_text())
+        loop = next(n for n in ast.walk(tree) if isinstance(n, ast.For)
+                    and ast.unparse(n.target) == 'name' and
+                    isinstance(n.iter, ast.Tuple) and
+                    all(isinstance(item, ast.Constant) for item in n.iter.elts) and
+                    'fixtures' in ast.literal_eval(n.iter))
+        self.assertEqual(ast.unparse(loop.body[0]),
+                         '(run.work / name).mkdir(mode=448)')
+
+    def test_previous_stub_bytes_and_receipt_are_under_bin(self):
+        from automation_fixture import AutomationFixture
+        fixture = AutomationFixture()
+        self.assertEqual(fixture.repo.parent, Path('/work/fixtures'))
+        previous = fixture.stub('synthetic', 17).read_bytes()
+        current = fixture.stub('synthetic', 19)
+        archives = list(fixture.bin.glob('.preserved-*/synthetic'))
+        self.assertEqual(len(archives), 1)
+        self.assertEqual(archives[0].read_bytes(), previous)
+        self.assertNotEqual(current.read_bytes(), previous)
+        receipt = json.loads((archives[0].parent / 'preservation.json').read_text())
+        self.assertEqual(receipt['original'], str(fixture.bin / 'synthetic'))
+        self.assertEqual(receipt['retained'], str(archives[0]))
+        self.assertEqual(receipt['before'], receipt['after'])
+
     def test_preservation_diagnostic_never_allows_delete_or_overwrite(self):
         import os
         from automation_test_guard import preservation_event
@@ -38,7 +80,7 @@ class IntegrationTests(unittest.TestCase):
         first = fixture.stub('synthetic', 17).read_bytes()
         fixture.stub('synthetic', 19)
         self.assertTrue(any(p.read_bytes() == first for p in
-                            fixture.repo.glob('.preserved-*/synthetic')))
+                            fixture.bin.glob('.preserved-*/synthetic')))
         link = fixture.repo / 'dangling'
         link.symlink_to('not-created')
         archived = preserve(link)

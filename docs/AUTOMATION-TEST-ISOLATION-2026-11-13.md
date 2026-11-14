@@ -78,8 +78,11 @@ seguridad frente a exploits hostiles, compatibilidad Windows/Docker o auditoría
 ## Preservación literal y casos bloqueados antes de ejecutar
 
 Cada staging nuevo `/tmp/opencode/automation-isolated-<uuid>/`700 conserva source,
-runtime, work y evidence, aun fallando. Fixtures usan mkdtemp persistente y close
-no borra nada; atexit antiguo solo llama ese close inerte. Un helper test-only
+runtime, work y evidence, aun fallando. El launcher crea `work/fixtures`700;
+fixtures, negativos y casos unitarios crean únicamente bajo `/work/fixtures`,
+dentro del mismo work persistente ya montado. No requieren `/tmp/opencode`
+interior ni proyección de `/tmp` host. Close no borra nada; atexit antiguo solo
+llama ese close inerte. Un helper test-only
 renombra objetos sintéticos a `.preserved-<único>/nombre` antes de sustitución:
 bytes y enlaces anteriores permanecen; recibo exclusivo `preservation.json`
 registra origen/destino e identidad anterior/posterior, no se sustituye cleanup
