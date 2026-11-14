@@ -312,6 +312,38 @@ hr_request_pair form password literal
                     table, = (f.repo / 'scans/web').glob('bruteforce_*.tsv')
                     self.assertEqual([line.split('\t')[2:4] for line in table.read_text().splitlines()[1:]],
                                      [['401', '10'], ['200', '20']])
+        # Absolute capture supplies its own scheme; override still wins without
+        # a probe, including HTTP on a port commonly assumed to mean TLS.
+        for override, expected in ((None, 'https://example.test:8443/login'),
+                                   ('http', 'http://example.test:8443/login')):
+            f = self.fixture()
+            request = self.capture(f, target='https://example.test:8443/login')
+            words = self.dictionary(f)
+            f.env.update(BRUTE_SI='1', BRUTE_MAX='2')
+            if override is not None:
+                f.env['BRUTE_ESQUEMA'] = override
+            result = f.run_leaf(LOGIN, (str(request), str(words)))
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            calls = f.curl_records()
+            self.assertEqual(len(calls), 2)
+            self.assertEqual([row['urls'] for row in calls], [[expected], [expected]])
+            self.assertEqual([self.logical(row, 'form', 'password') for row in calls],
+                             ['a&b=+%', 'quote" /ñ'])
+        # Inspect exact numeric lexemes on the wire, not rounded float equality.
+        f = self.fixture()
+        request = self.capture(f, body='{"username":"alice","password":"old","tiny":1e-400,"precise":0.12345678901234567890123456789}',
+                               content_type='application/json')
+        words = self.dictionary(f)
+        f.env['BRUTE_USUARIO'] = 'environment'
+        result = self.login(f, request, words, 'argument')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        calls = f.curl_records()
+        self.assertEqual(len(calls), 2)
+        for row in calls:
+            parsed = json.loads(row['body'], parse_float=lambda token: token)
+            self.assertEqual(parsed['username'], 'environment')
+            self.assertEqual(parsed['tiny'], '1e-400')
+            self.assertEqual(parsed['precise'], '0.12345678901234567890123456789')
 
     def test_login_has_no_preconsent_transport(self):
         # Verify the zero-call oracle itself without touching product business:
@@ -381,6 +413,9 @@ hr_request_pair form password literal
             ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https'}, 'example.test', 'username=a&password=b&%70assword=c', 'local'),
             ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https', 'BRUTE_USUARIO_CAMPO': 'password'}, 'example.test', 'username=a&password=b', 'local'),
             ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https', 'BRUTE_MAX': '1001'}, 'example.test', 'username=a&password=b', 'remote'),
+            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': ''}, 'example.test', 'username=a&password=b', 'remote'),
+            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https'}, 'example.test', 'username=a&password=b&%70assword=c', 'remote'),
+            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https', 'BRUTE_USUARIO_CAMPO': 'absent'}, 'example.test', 'username=a&password=b', 'remote'),
         )
         for env, host, body, dictionary in scenarios:
             with self.subTest(env=env, host=host, dictionary=dictionary):
@@ -389,7 +424,7 @@ hr_request_pair form password literal
                 words = self.dictionary(f) if dictionary == 'local' else 'https://example.test/synthetic-words'
                 f.env.update(env)
                 result = f.run_leaf(LOGIN, (str(request), str(words)), stdin='')
-                self.assertEqual(f.curl_records(), [], result.stdout + result.stderr)
+                self.assertEqual(f.curl_invocations(), [], result.stdout + result.stderr)
         f = self.fixture()
         request = self.new_text(f.repo / 'invalid.req', 'not an HTTP request')
         words = self.dictionary(f)
@@ -397,6 +432,30 @@ hr_request_pair form password literal
         result = f.run_leaf(LOGIN, (str(request), str(words)))
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(f.curl_records(), [])
+        # Per-candidate composition can fail after local preflight. No partial
+        # request, response attribution or subsequent candidate may escape.
+        f = self.fixture()
+        request = self.capture(f)
+        words = self.new_text(f.repo / 'oversized-words.txt', 'x' * (1024 * 1024) + '\nnext\n')
+        result = self.login(f, request, words)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(f.curl_invocations(), [], result.stdout + result.stderr)
+        table, = (f.repo / 'scans/web').glob('bruteforce_*.tsv')
+        self.assertEqual(len(table.read_text().splitlines()), 1)
+        # Even a success-looking response is not evaluated when curl fails.
+        f = self.fixture()
+        request = self.capture(f)
+        words = self.dictionary(f)
+        f.configure_curl([{'code': '200', 'time': '0.010', 'headers': {},
+                           'body': 'accepted-synthetic', 'rc': 7}])
+        f.env['BRUTE_EXITO_PATRON'] = 'accepted-synthetic'
+        result = self.login(f, request, words)
+        self.assertNotEqual(result.returncode, 0)
+        calls = f.curl_records()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]['returncode'], 7)
+        table, = (f.repo / 'scans/web').glob('bruteforce_*.tsv')
+        self.assertEqual(len(table.read_text().splitlines()), 1)
         f = self.fixture()
         words = self.dictionary(f)
         f.env.update(BRUTE_URL='https://example.test/login', BRUTE_CUERPO='password={password}')
