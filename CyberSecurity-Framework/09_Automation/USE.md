@@ -1,10 +1,14 @@
 # Uso de 09 — contratos, no autorización
 
-**Verificación integral pendiente.** Aislador exclusivo de pruebas: seis probes
-sintéticos PASS en367b9db, sin ejecutar suite ni unit tests. Integración Task4
-escrita SIN ejecutar, pendiente de revisión independiente y permiso explícito;
-hay casos nominales BLOCKED-preservation. Audithook no protege hijos/nietos ni
-un prefijo temporal prueba identidad. Los conteos anteriores son históricos.
+**Verificación integral pendiente — NEEDS_CONTEXT.** El controlador registró
+60unit tests y109casos elegibles sin fallos enea414a9 (un SKIP dinámico pwsh,
+rc2 por25exclusiones; no suite completa verde). El usuario ya autorizó delete/
+replace de descartables sintéticos NUEVOS por caso dentro del aislador.
+La habilitación sigue bloqueada por falta de observación heredada de before-images
+y frontera de fixture propia para hijos, NO por falta de permiso. El audithook
+local y un prefijo temporal no acreditan esas garantías. Fuentes/config real,
+evidencias/logs y runs previos quedan fuera de la excepción. Esta enmienda es
+estática NOT RUN, pendiente de revisión independiente; sin nuevas flags/bypass.
 [Uso, selectores y límites del aislador de pruebas](../../docs/AUTOMATION-TEST-ISOLATION-2026-11-13.md).
 
 [Inventario completo del gestor, módulos 00–13 y todas sus entradas](../../docs/MENU-OPCIONES.md).

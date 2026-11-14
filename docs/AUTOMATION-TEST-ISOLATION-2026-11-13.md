@@ -2,9 +2,14 @@
 
 ## Estado y autorización
 
-Task4 es **implementación estática NOT RUN**, pendiente de revisión independiente
-del diff completo y permiso explícito del controlador. No ejecutar los comandos
-de esta guía por su mera existencia. Tasks1/2 tienen revisión estática. En
+Esta enmienda sobreea414a9 es **estática NOT RUN — NEEDS_CONTEXT**, pendiente de
+revisión independiente. El usuario YA concedió la excepción acotada para25IDs;
+no repetir la petición de ese permiso ni inferir uno más amplio. Falta observador
+heredado de before-images y frontera propia por caso, no autorización humana.
+Según ledger, el controlador ejecutó ea414a9:60unit tests y109elegibles sin
+fallos, un SKIP pwsh yrc2 esperado por25exclusiones; no toda la suite verde.
+El RED anterior826ca17rc1 y todos sus artefactos se conservan. No ejecutar los
+comandos de esta guía por su existencia. Tasks1/2 tienen revisión estática. En
 367b9db el controlador observó rc0 y seis checks PASS de probes en
 `/tmp/opencode/automation-isolated-fbdac899a3cd48daa8870d192c25d105/evidence/`:
 fds iniciales, NPROC/identidad, hijo Python, hijo Bash, nieto Bash y cancelación
@@ -24,8 +29,8 @@ Launcher y wrapper rechazan reentrada desde `/source`; discovery no los invoca.
 |---|---|---|
 | sin selector | Equivale a `--suite` | Mismos gates, nunca fallback al host. No autorización implícita. |
 | `--probes` | Solo observaciones sintéticas de frontera | Preparación nueva y seis checks; no importa tests/producto. |
-| `--suite` | Probes frescos, unit tests prepare/policy/boundary y después suite09 | Selección de módulos exactos desde manifiesto, sin git. Los casos bloqueados no se ejecutan ni se cuentan PASS/SKIP; rc2 incluso si pasa el subconjunto elegible. |
-| `--races` | Probes frescos, mismos unit tests y ocho casos internos fijos ×20 | Recibo propio por repetición; hoy los ocho tienen bloqueo de preservación y no deben contarse como160 ejecuciones verdes. No scripts externos/nested bwrap. |
+| `--suite` | Probes frescos, unit tests prepare/policy/boundary y después suite09 | Selección exacta sin git. Los25IDs tienen permiso registrado pero gate NEEDS_CONTEXT por cobertura heredada ausente; no se ejecutan ni cuentan PASS/SKIP. rc2 si el subconjunto pasa; habilitación completa pendiente. |
+| `--races` | Probes frescos, mismos unit tests y ocho casos internos fijos ×20 | Los ocho están autorizados en principio, pero aún bloqueados por el mismo gate técnico; recibos por repetición no son160ejecuciones verdes. No scripts externos/nested bwrap. |
 | cualquier otro argumento | Rechazo cerrado | rc2 antes de discovery; no `--unsafe`, token/env-bypass ni intérprete elegido por el usuario. |
 
 Códigos:0 PASS de lo seleccionado y sin bloqueos,1 fallo real de probes/tests,
@@ -92,7 +97,11 @@ delete y reemplazos/truncados existentes; **no son barrera heredada ni permiso**
 
 Lista nominal autoritativa, preparada por lectura/AST antes de cualquier run:
 `CyberSecurity-Framework/tests/automation_preservation_cases.json` (25casos).
-Contiene nombres completos y razón; se valida que no desaparezcan del discovery.
+Versión2 conserva íntegramente25nombres y razones históricas bajo `blocked` y
+añade `authorization`: los mismos25IDs, excepción explícita, scope únicamente
+fixture registrada del caso actual y observador heredado obligatorio. No es un
+switch de ejecución ni token/env/CLI. Se valida que los IDs no desaparezcan,
+no se dupliquen ni difieran entre autorización e historia.
 Incluye16casos RunnerTests, siete ReportTests y los casos de ejecución real-core
 de AdapterTests/CliTests (revisar por nombre, no inferir un conteo verde).
 RunStore reemplaza run.json y elimina temporales; publicación
@@ -100,9 +109,37 @@ limpia stage al fallar. Renombrarlos desde mocks cambiaría la semántica/aserci
 **prohibido**. Casos que rechazan antes de escribir (lock ocupado, SIGCHLD,
 symlinks) y publicación con stage ya renombrado se conservan elegibles, sin mocks
 nuevos de producto. Fuentes/pruebas originales siguen
-presentes, sin eliminar ni convertir a skip general. Para ampliar esa frontera
-haría falta permiso específico del usuario para operaciones sobre descartables
-sintéticos, seguido de revisión; esta guía no lo concede.
+presentes, sin eliminar ni convertir a skip general. El permiso específico YA se
+concedió: delete/replace solo de temporales sintéticos NUEVOS descartables dentro
+del caso actual, sin borrar fuentes/config real/evidencias/logs ni runs previos.
+No permite limpieza global de fixtures/runlogs. Close sigue persistente.
+
+### Gate técnico que NO está implementado: NEEDS_CONTEXT
+
+No se ha creado un registro fiable de raíces CURRENT ni un observador heredado:
+implementar solo un registro Python no resolvería la garantía para hijos. Antes
+de habilitar los25casos hacen falta caseID cerrado, raíz recién creada con
+descriptor/dev/ino/owner/mode fijados y revalidación de ancestros/enlaces; rechazo
+de rutas de otros casos o previas, /source y /evidence. Los before-images de
+estados/logs/evidencia importantes deben guardarse como objetos nuevos antes de
+la operación, sin reemplazar cleanup/rename/unlink del producto por mocks.
+
+La barrera revisada actual separa host/datos reales, NO casos entre sí: monta
+todo work en `/work` y evidence writeable en `/evidence`. Los hijos Python `-I`
+no heredan sys.addaudithook del controlador; pueden sustituir run.json o limpiar
+stage sin generar before-image en el padre. Un snapshot final o entre pasos
+NO recupera estados intermedios ya sustituidos. La ubicación fuente read-only
+y ausencia de runs host previos no equivalen a aislar fixtures previas del mismo
+run. Tampoco se acredita protección de recibos actuales frente a hijos solo por
+nombrarlos /evidence.
+
+Por ello no se afloja guard ni se activa registry ficticio por prefijo. Los25
+casos/race8×20 permanecen técnicamente bloqueados con razón explícita
+NEEDS_CONTEXT-descendant-boundary, no con «usuario no autorizó». Se requiere
+decisión/revisión arquitectónica del controlador para observación síncrona
+heredada y confinamiento por caso compatibles con pipeline fijo y sin nested
+bwrap, monkeypatch operacional ni flag arbitraria. No se propone desactivar
+before-images o ampliar la excepción para sortearlo. No certificado kernel.
 
 PowerShell dinámico: SKIP explícito si falta pwsh en runtime (no se incluye ni se
 instala); fuentes PS, AST/contratos estáticos y fixture se mantienen. No confundir
@@ -124,9 +161,10 @@ manifiesto exacto y explicación/review. `automation_operational_baseline.json`
 fija hashes solo de fuentes operacionales de BASE367b9db, nunca config/evidencia.
 Docker conserva allowlist exacta: ninguna infraestructura sandbox entra al producto.
 
-Pendientes: primer RED/GREEN diferido de nuevos unit tests y Task4, ejecución
-segura del subconjunto, evidencia externa de cancelación, decisión de usuario
-sobre25bloqueos, review global del aislador y global09. Task9/I1 no se cierran por
+Pendientes: nuevas regresiones de esta enmienda NOT RUN, registro/observación y
+frontera por caso heredados antes de habilitar25IDs y race8×20, evidencia externa
+de cancelación y review global del aislador/global09. La excepción humana ya
+está concedida, no pendiente. Task9/I1 no se cierran por
 probes verdes; minors diferidos permanecen en el ledger09 de
 `.superpowers/sdd/2026-11-13-automation-integral/` (consultar ledger original al
 retomar, sin recrear logs). No repetir Tasks1–8/otros módulos. Operación autorizada
