@@ -123,7 +123,7 @@ class ModuleIntroTests(unittest.TestCase):
             "06_PostExploitation": ("posteriores", "explícita", "impacto", "no"),
             "07_Wireless": ("mantenimiento", "disponibilidad", "guía", "WiFi", "Bluetooth"),
             "08_Forensics": ("offline", "fuentes", "adquisición", "legal", "no IP"),
-            "09_Automation": ("scripts", "adaptador", "declarativos", "no consumidos"),
+            "09_Automation": ("planes", "YAML", "preview", "ejecución", "permisos explícitos"),
             "10_Evidence": ("evidencia", "escanean", "tráfico", "explícitas", "presencia", "no integridad"),
             "11_Reports": ("existentes", "no", "ausencia"),
             "12_Knowledge_Base": ("guías", "locales", "no se ejecutan"),
@@ -152,7 +152,7 @@ PURPOSES = dict(zip(MODULES, (
     "Preparar la configuración", "Recopilar información pública", "Hacer reconocimiento inicial",
     "Realizar escaneo de puertos", "Profundizar en servicios concretos", "Probar explotación controlada",
     "Acceder a acciones posteriores", "Consultar mantenimiento inalámbrico",
-    "Analizar fuentes explícitas offline", "Consultar scripts de automatización presentes",
+    "Analizar fuentes explícitas offline", "Preparar planes de automatización",
     "Gestionar y capturar evidencia", "Elaborar informes desde resultados existentes",
     "Buscar y consultar guías locales", "Organizar laboratorios",
 )))
@@ -160,6 +160,18 @@ PURPOSES = dict(zip(MODULES, (
 
 class ModuleIntroIntegrationTests(unittest.TestCase):
     """Menús reales; únicamente fuentes UI y hojas inertes en copia sintética."""
+
+    # 09 is NOT a generic discover/redraw menu. Its real bridge/CLI, including
+    # standalone zero/EOF/original-list entry, is exercised ONLY by the existing
+    # authorized09 selector's CliTests.test_manager_dispatch_09, not this runner.
+    def test_automation_keeps_specific_bridge_contract(self):
+        manager = (FRAMEWORK / 'cyber_framework.sh').read_text()
+        body = manager.split('module_automation() {', 1)[1].split('\n}', 1)[0]
+        self.assertIn('automation_menu', body)
+        self.assertNotIn('run_module_scripts', body)
+        bridge = (FRAMEWORK / '00_Config/lib/automation_menu.bash').read_text()
+        self.assertIn('module_intro 09_Automation', bridge)
+        self.assertNotIn('session_target', bridge)
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="module-intro-ui-", dir="/tmp/opencode")
@@ -255,6 +267,8 @@ pause() { printf 'PAUSE\\n'; }
     # Detecta ficha fuera del dibujo, después de opciones, lecturas/pausas nuevas.
     def test_each_entry_card_precedes_options(self):
         for module, function in zip(MODULES, FUNCTIONS):
+            if function == 'automation':
+                continue  # Specific09 real-bridge behavior lives in the09 selector.
             with self.subTest(module=module):
                 inputs = "11\n" if function == "labs" else "0\nsentinela\n"
                 command = "module_" + function
@@ -272,6 +286,8 @@ pause() { printf 'PAUSE\\n'; }
     # Detecta ficha impresa una sola vez fuera del bucle; conserva pausas heredadas.
     def test_redraw_keeps_card(self):
         for module, function in zip(MODULES[:-1], FUNCTIONS[:-1]):
+            if function == 'automation':
+                continue  # No inherited generic R/redraw contract for09.
             with self.subTest(module=module):
                 choice = "invalida" if module in SPECIALIZED else "R"
                 result = self.run_ui("module_" + function, choice + "\n0\n")
@@ -306,6 +322,8 @@ pause() { printf 'PAUSE\\n'; }
     # Detecta lectura o acción al recibir EOF; Labs conserva su bucle heredado.
     def test_eof_preserved_for_manager_menus(self):
         for module, function in zip(MODULES[:-1], FUNCTIONS[:-1]):
+            if function == 'automation':
+                continue  # EOF covered by CliTests.test_manager_dispatch_09.
             with self.subTest(module=module):
                 result = self.run_ui("module_" + function, "")
                 self.assert_card_before_options(result.stderr if function in ("forensics", "evidence")

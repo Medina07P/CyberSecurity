@@ -166,7 +166,7 @@ class CliTests(unittest.TestCase):
         manager = self.fx.framework / 'cyber_framework.sh'
         import re
         for name in re.findall(r'source "\$LIB_DIR/([^"\n]+)"', manager.read_text()):
-            if name != 'automation_menu.bash':
+            if name not in ('automation_menu.bash', 'module_intro.bash'):
                 preserve(self.fx.framework / '00_Config/lib' / name)
                 (self.fx.framework / '00_Config/lib' / name).write_text('true\n')
         # Trap all accidental backends, while interpreter/path utilities are explicit.
@@ -175,15 +175,56 @@ class CliTests(unittest.TestCase):
         (self.fx.bin / 'python3').symlink_to(sys.executable)
         (self.fx.bin / 'bash').symlink_to('/bin/bash')
         (self.fx.bin / 'dirname').symlink_to('/usr/bin/dirname')
-        result = subprocess.run(['/bin/bash', '-c', 'source "$1"; main_menu() { :; }; main',
-                                 'test', str(manager)], input='09\n11\n0\nQ\n', text=True,
-                                capture_output=True, cwd=self.fx.framework,
-                                env={'PATH': str(self.fx.bin), 'HOME': str(self.fx.home),
-                                     'TERM': 'dumb'})
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('python/auto_audit.py', result.stdout)
-        self.assertIn('powershell/auto_enum.ps1', result.stdout)
-        self.assertIn('docker/Dockerfile', result.stdout)
+        def snapshot():
+            # File bytes AND layout/modes, including synthetic config, session
+            # absence and bytecode. Fixtures and final trees remain preserved.
+            return {str(p.relative_to(self.fx.repo)): (p.lstat().st_mode,
+                    p.read_bytes() if p.is_file() and not p.is_symlink() else None)
+                    for p in self.fx.repo.rglob('*')}
+        before = snapshot()
+        env = {'PATH': str(self.fx.bin), 'HOME': str(self.fx.home), 'TERM': 'dumb'}
+        denied_session = '''
+session_target() { printf 'FORBIDDEN session read\n' >&2; return 99; }
+session_set_target() { printf 'FORBIDDEN session write\n' >&2; return 99; }
+run_module_scripts() { printf 'FORBIDDEN generic discovery\n' >&2; return 99; }
+'''
+        bridge = self.fx.framework / '00_Config/lib/automation_menu.bash'
+        # Same selected case, real copied bridge/wrapper/CLI: no new runner,
+        # discovery, grant, imported manager session, or mocked ficha helper.
+        for standalone in (False, True):
+            for text in ('', '0\n', '11\n0\n'):
+                with self.subTest(standalone=standalone, input=text):
+                    if standalone:
+                        code = 'source "$1" || exit; ' + denied_session + 'automation_menu'
+                        source, inputs, cwd = bridge, text, self.fx.home
+                    else:
+                        code = ('source "$1" || exit; declare -F module_intro >/dev/null || exit 98; '
+                                'main_menu() { :; }; ' + denied_session + 'main')
+                        source, inputs, cwd = manager, '09\n' + text, self.fx.framework
+                    result = subprocess.run(['/bin/bash', '-c', code, 'test', str(source)],
+                                            input=inputs, text=True, capture_output=True,
+                                            cwd=cwd, env=env, timeout=10)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    # Missing helper/source errors must never be hidden with
+                    # 2>/dev/null or a true-only module_intro double.
+                    self.assertEqual(result.stderr, '')
+                    self.assertEqual(snapshot(), before)
+                    self.assertEqual(self.fx.records(), [])
+                    self.assertFalse((self.fx.framework / '00_Config/.session').exists())
+                    self.assertEqual(list(self.fx.repo.rglob('__pycache__')), [])
+                    output = result.stdout
+                    self.assertEqual(output.count('Para qué sirve:'), 1)
+                    first_choice = output.index('1 Disponibilidad:')
+                    for field in ('Para qué sirve:', 'Entrada:', 'Incluye:', 'Precauciones:'):
+                        self.assertLess(output.index(field), first_choice)
+                    card = output[output.index('Para qué sirve:'):first_choice]
+                    for token in ('planes', 'YAML', 'preview', 'ejecución', 'permisos explícitos'):
+                        self.assertIn(token, card)
+                    for stale in ('no consumidos', 'solo declarativos'):
+                        self.assertNotIn(stale, card)
+                    if text.startswith('11'):
+                        for entry in ('python/auto_audit.py', 'powershell/auto_enum.ps1', 'docker/Dockerfile'):
+                            self.assertIn(entry, output)
         self.assertEqual(self.fx.records(), [])
 
 

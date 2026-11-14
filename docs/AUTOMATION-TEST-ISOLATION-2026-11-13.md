@@ -2,7 +2,24 @@
 
 ## Estado y autorización
 
-**Sobre1fde308: implementación/verificación lista PARA revisión final
+**Combinación actual,2026-11-14 (Task3 Phase A sobre fdf578f):** datos del run
+del controlador conservado en
+`/tmp/opencode/automation-isolated-4c408f2a815143d99afa09605769f2c3/evidence/`:
+60units PASS;179integration,10fallos0errores1SKIP; host/inside rc1, estado FAIL,
+tests_started=true. Los únicos tres casos fallidos son contratos10legacy:
+`test_every_menu_option_explained`(1), `test_new_special_source_options_require_rows`(8),
+`test_special_namespace_row_deletion_mutations`(1). Los25casos de informes GREEN
+son evidencia previa del controlador, no una ejecución nueva de esta entrega.
+
+Phase A reconcilia esas fuentes/docs y amplía el caso CLI09 existente para
+exigir ficha antes de opciones en puente real, cero/EOF/lista original inertes.
+El nuevo comportamiento aún requiere RED observado y Phase B productiva tras
+revisión independiente. No se lanza runner/discovery de module_intro ni se cambia
+manifiesto/selector/worker/grant25. Ningún comando de esta guía autoriza runs.
+
+### Historia del aislador (no acredita esta combinación)
+
+**Sobre1fde308: implementación/verificación histórica lista PARA revisión final
 independiente, NO aprobación global.** El controlador verificó suite rc0:
 60sandbox units PASS y159legacy/integration,0fallos0errores1SKIP dinámico pwsh;
 los25IDs con permiso ejecutados y workers Landlock ABI7. Carreras rc0:

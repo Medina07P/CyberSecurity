@@ -70,10 +70,54 @@ def selector_equalities(body, variable):
     return set(re.findall(r'["\']?\$' + re.escape(variable) + r'["\']?\s*==\s*["\']?([\w?]+)', body))
 
 
+def evidence_manage_flags(source):
+    """Literal registrations on the manage parser only, AST as data, no imports.
+
+    Reject dynamic flags/aliases rather than losing them. Root and capture/run
+    registrations belong to different interfaces, not the manage namespace.
+    """
+    tree = ast.parse(source)
+    main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_main')
+    registrations = [n for n in main.body if isinstance(n, ast.Assign)
+                     and any(isinstance(t, ast.Name) and t.id == 'manage' for t in n.targets)]
+    if len(registrations) != 1:
+        raise AssertionError('Expected one explicit manage parser')
+    call = registrations[0].value
+    if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name) and call.func.value.id == 'commands'
+            and call.func.attr == 'add_parser' and len(call.args) == 1
+            and isinstance(call.args[0], ast.Constant) and call.args[0].value == 'manage'):
+        raise AssertionError('Manage parser ownership changed; review source')
+    flags = set()
+    for node in ast.walk(main):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == 'manage'
+                and node.func.attr == 'add_argument'):
+            continue
+        if not node.args:
+            raise AssertionError('Missing manage flags')
+        for arg in node.args:
+            if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+                    and re.fullmatch(r'--[a-z][a-z-]*|-h', arg.value)):
+                raise AssertionError('Dynamic/unknown manage flag alias needs source review')
+            if arg.value in flags:
+                raise AssertionError('Duplicate manage flag: ' + arg.value)
+            flags.add(arg.value)
+    if not flags:
+        raise AssertionError('Missing manage registrations')
+    return frozenset(flags)
+
+
+def evidence_menu_options(source):
+    choices = literal_options(function_body(source, 'evidence_menu'), 'choice')
+    return frozenset('0' if value == '!' else value for value in choices)
+
+
 def special_options(sources):
     """All non-module namespaces from source dispatch or pinned dynamic contract.
 
-    sources keys: manager, wizard, keys, evidence. No configuration/HOME reads.
+    sources keys: manager, wizard, keys, evidence_cli, evidence_menu.
+    No configuration/HOME reads; the Bash wrapper is not a flag dispatcher.
     Dynamic list indices are one documented action, not one row per target.
     """
     manager = sources['manager']
@@ -147,11 +191,12 @@ def special_options(sources):
             rows.add('00.keys.' + call.args[0].value)
 
     aliases = {'-h': 'help'}
-    for flag in literal_options(sources['evidence'], '1'):
+    for flag in evidence_manage_flags(sources['evidence_cli']):
         if flag.startswith('--'):
             rows.add('10.' + flag[2:])
         elif flag in aliases:
             rows.add('10.' + aliases[flag])
         else:
             raise AssertionError('Unknown evidence alias needs explicit contract: ' + flag)
+    rows.update('10.' + value for value in evidence_menu_options(sources['evidence_menu']))
     return frozenset(rows)

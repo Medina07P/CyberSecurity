@@ -305,6 +305,13 @@ conserva sus documentos y recibo `run.json`, sin sobrescribir informes anteriore
 `--todos` usa raíz `_todos`, sin tratar el host de sesión como alcance agregado.
 `--salida`/`REPORT_OUT_DIR` seleccionan raíz: se añade `runs/<id>/` dentro.
 Las automatizaciones deben usar `salida`/`archivos` del recibo `--json`.
+En09 cada paso de informe reserva `report-<id_paso>/report-profile` y `reports/`
+privados; el motor crea otra generación en `reports/runs/<id>/`.09 valida el
+recibo stdout y `run.json` concordante antes de consumir/publicar documentos;
+no busca HTML plano antiguo ni `latest`. El shim obsoleto conserva nombres
+externos fijos al publicar y los rc raw0/3 del motor. No implica que el input
+histórico proceda del plan actual. Véase `09_Automation/USE.md` para el estado
+acotado de la combinación y la ficha09 aún pendiente de Phase B.
 
 Masscan JSON y RustScan texto estructurado aportan observaciones de puertos,
 combinadas con Nmap sin duplicados TCP/UDP. No acreditan último intento ni

@@ -1,6 +1,7 @@
 # Gestor: todas las opciones y entradas (00–13)
 
-Inventario verificado por lectura de fuentes, 2026-11-13. No se ejecutaron
+Inventario por lectura de fuentes, 2026-11-13; reconciliación acotada09/10/11
+2026-11-14 sobre fdf578f (Phase A: contratos/docs, ficha09 pendiente). No se ejecutaron
 menús ni herramientas reales para redactarlo. Rutas relativas a
 `CyberSecurity-Framework/`. Una entrada presente **no** equivale a capacidad
 integrada operacional, resultado válido, autorización ni instalación comprobada.
@@ -42,8 +43,8 @@ En el principal se acepta un dígito como alias de00–09; `?` admite también
 | `07` | Wireless y radio | opción de mantenimiento | entrar no transmite ni modifica interfaces; lista original conserva hojas peligrosas |
 | `08` | Forense | fuente explícita, nunca IP de sesión | análisis offline por copias; local/adquisición/instalación solo explícitos; sin custodia legal certificada |
 | `09` | Automatización | target explícito y plan | menú sin heredar sesión; preview primero, ejecución y permisos nuevos; [USE](../CyberSecurity-Framework/09_Automation/USE.md) |
-| `10` | Evidencia | archivos o target según hoja | lista genérica; copia/captura/empaqueta, no valida automáticamente custodia |
-| `11` | Informes | tipo/objetivo/input | lista genérica; motor11 lee resultados existentes, incluidos históricos atribuibles |
+| `10` | Evidencia | selección explícita, archivos y etiqueta opcional | menú específico0–9; no adopta sesión; importación/captura/exportación separadas, no custodia legal |
+| `11` | Informes | tipo/objetivo/input | lista genérica; motor11 lee existentes e históricos atribuibles; cada generación conserva runs/id y recibo propio |
 | `12` | Base de conocimiento | término de búsqueda | lista genérica; lectura local, no auditoría ni explotación |
 | `13` | Laboratorios | menú Labs/nombre/ruta | abre main.sh; plantillas locales y acciones rápidas/VPN/borrado, no despliegue automático de infraestructura |
 | `99` | Flujo heredado completo | objetivo de sesión y confirmación | encadena00/01/02/03/04/05/06/10/11, incluye fuerza bruta/persistencia/limpieza; no incluye09 ni prueba éxito por fase; no ejecutar como validación |
@@ -202,11 +203,22 @@ siguen disponibles en la lista completa. Ver entradas para sus límites.
 | `00.keys.pedir` | Entrada interactiva | herramienta/campo opcional | pide campos, Enter mantiene y '-' borra; no valida API remota |
 | `00.keys.sincronizar` | Aplicar registro | herramienta opcional | conserva valor externo no vacío ausente del registro; no crea BD ficticia |
 | `00.keys.importar` | Importación local | herramienta explícita | lee claves ya instaladas al registro; no escanea red |
-| `10.add` | Añadir evidencia | --add tipo archivo descripción | copia a screenshot/pcap/credential/finding/proof y metadataMD5; no custodia legal |
-| `10.verify` | Verificar hashes | --verify sin objetivo | compara .meta locales; contador heredado en pipeline no acredita un rc fiable de integridad |
-| `10.list` | Listar evidencia | --list sin objetivo | muestra hasta diez rutas por categoría y total; lectura no validación |
-| `10.package` | Empaquetar | --package nombre opcional | tar hacia11_Reports/evidence, excluye .meta; puede incluir secretos, no publicación automática |
-| `10.help` | Ayuda | --help o -h | explica tipos/comandos sin adquisición nueva |
+| `10.0` | Volver | 0, ! o EOF | cancela sin ejecutar hojas ni adoptar objetivo de sesión |
+| `10.1` | Disponibilidad local | ninguna adicional | command -v de python3/cutycapt/tcpdump/nmap; no ejecuta ni acredita funcionamiento |
+| `10.2` | Importar | tipo y archivo; descripción/etiqueta opcionales | copia privada con SHA-256; no captura ni valida semánticamente el contenido |
+| `10.3` | Listar | ninguna adicional | inventario local y problemas de metadata; no recalcula hashes ni prueba integridad |
+| `10.4` | Verificar | ninguna adicional | lee contenido y contrasta hashes; vacío/parcial retorna fallo; MD5 legacy no acredita autenticidad |
+| `10.5` | Empaquetar | nombre opcional y confirmación de exportación | verifica antes de exportar datos/metadata/manifiesto a11_Reports/evidence; confidencial SIN CIFRAR, sin sobrescribir |
+| `10.6` | Captura seleccionada | web/tráfico/scan/contexto local explícitos | solicita selecciones y autorización nueva para red; no adquiere por entrar, sin sudo automático |
+| `10.7` | Flujo offline | ninguna adicional | run_all_evidence --offline lista/verifica; no captura ni empaqueta |
+| `10.8` | Guía local | ninguna adicional | imprime orientación a USE y límites; presencia no significa integridad ni custodia legal |
+| `10.9` | Tres entradas originales | selección guiada posterior | conserva wrappers de importar/capturar/flujo; lista no ejecuta, confirmaciones no se eluden |
+| `10.add` | Añadir evidencia | --add TIPO ARCHIVO [DESCRIPCION] | copia privada de screenshot/pcap/credential/finding/proof con metadata SHA-256; tipo no valida contenido, no custodia legal |
+| `10.target` | Etiquetar importación | --target ETIQUETA solo con --add | etiqueta explícita opcional, una vez; no adopta sesión ni modifica scope/targets ni atribuye vulnerabilidades |
+| `10.verify` | Verificar hashes | --verify como única operación | contrasta SHA-256 nuevo/MD5 legacy; vacío/problemas rc1; MD5 coincidente no demuestra autenticidad |
+| `10.list` | Listar evidencia | --list como única operación | inventario sin recalcular hashes; vacío rc0, problemas rc1; listado no validación |
+| `10.package` | Empaquetar | --package [NOMBRE] como única operación | verifica antes de exportar datos/metadata/manifiesto a11_Reports/evidence; confidencial SIN CIFRAR; CLI requiere decisión explícita del operador |
+| `10.help` | Ayuda | --help o -h sin operación | muestra ayuda manage sin adquisición; no admite combinar con una operación |
 
 ### 13: menú Labs y todos sus submenús
 
@@ -403,14 +415,14 @@ antes de operar: no se ha verificado aquí compatibilidad operacional.
 | `09_Automation/bash/auto_exploit.sh` | target y action explícita | sin acción muestra catálogo; con acción delega al núcleo | no Hydra/SQLmap por defecto, límites y gates en USE |
 | `09_Automation/python/orchestrator.py` | selectores/inputs/execute/permisos | CLI común de catálogo cerrado y supervisor secuencial | sin shell strings, preview no lee datos, no objetivo de sesión |
 | `09_Automation/python/auto_audit.py` | target/fase opcional/flags | compatibilidad recon/scan/enum/web sobre núcleo | perfiles conservadores, no auditoría completa por mensaje |
-| `09_Automation/python/report_generator.py` | input/output/target y execute/report_read | shim preview, motor11 y publicación nombres fijos | históricos explícitos; Linux renameat2 mismo filesystem, EXDEV conserva originales |
+| `09_Automation/python/report_generator.py` | input/output/target y execute/report_read | shim preview; motor11 --json, valida generación propia y publica nombres fijos externos | no consume HTML legacy/latest; históricos del input explícito; Linux renameat2 mismo filesystem, EXDEV conserva originales |
 | `09_Automation/powershell/auto_enum.ps1` | OutputDirectory y Execute | cinco fuentes locales Windows a subdir privado nuevo | padre controlado, no anti-TOCTOU ni probado en Windows |
-| `10_Evidence/auto_capture.sh` | target explícito | cutycapt HTTP, tcpdump any100paquetes/10s, Nmap TCP completo/versiones y metadata host local | captura tráfico sensible, requiere permisos; mensajes no prueban éxito |
-| `10_Evidence/evidence_manager.sh` | add/verify/list/package/help | copia/metadataMD5/lista/tar de datos locales | no custodia legal; ver fallo contador pipeline en10.verify |
-| `10_Evidence/run_all_evidence.sh` | target explícito | coordina auto_capture, listado y verificación de hashes | no empaqueta automáticamente; genera datos sensibles, no validación legal |
-| `11_Reports/report_engine.py` | objetivo/tipo/scans-dir/output-dir según CLI | findings.json y técnico/cliente md/html deterministas | atribución/cobertura, rc3 sin evidencia evaluable; puede leer históricos |
-| `11_Reports/report_generator.sh` | tipo opcional | wrapper motor11 con objetivo/perfil del gestor | informes existentes no prueban fases actuales ni ausencia de fallos |
-| `11_Reports/run_all_reports.sh` | objetivo explícito | genera informes con wrapper/motor | no ejecuta herramientas de auditoría ni certifica cobertura integral |
+| `10_Evidence/auto_capture.sh` | --web URL; --traffic HOST --interface IFACE; --scan HOST --scan-profile basic/full; --system | captura solo selecciones explícitas; --authorize-network para red; --duration 1–300 y --packet-limit 1–10000 solo tráfico; --help sin efectos | sin sudo/instalación; contexto system del operador; diagnósticos privados, fallo/parcial no acredita adquisición |
+| `10_Evidence/evidence_manager.sh` | --add/--list/--verify/--package o --help/-h; --target solo add | delega manage al núcleo Python, copia SHA-256, inventario/verificación/exportación | una operación; conserva MD5 legacy sin migración; paquetes confidenciales sin cifrar, no custodia legal |
+| `10_Evidence/run_all_evidence.sh` | --offline o --capture con selecciones; --help | offline lista/verifica; capture adquiere solo selecciones explícitas y después lista/verifica | --web/--traffic/--interface/--scan/--scan-profile/--system/--duration/--packet-limit como auto_capture y --authorize-network para red; TARGET antiguo rc2 sin adquirir; no empaqueta ni repara99 |
+| `11_Reports/report_engine.py` | --objetivo/--tipo/--scans/--fuentes/--salida; --json para recibo | findings.json y técnico/cliente md/html por generación runs/id con run.json | atribución/cobertura, rc3 sin evidencia evaluable; input puede incluir históricos; automatizar por recibo, no archivos planos |
+| `11_Reports/report_generator.sh` | tipo opcional y flags del motor | wrapper motor11 con objetivo/perfil explícito o sesión según CLI11 | cada generación propia; recibo --json identifica salida; informes no prueban fases actuales ni ausencia de fallos |
+| `11_Reports/run_all_reports.sh` | objetivo explícito | genera ambos con wrapper/motor y enumera archivos del recibo actual --json | rc0/3 conservados; no presenta histórico tras fallo, ni ejecuta auditoría o empaquetado automático |
 | `12_Knowledge_Base/run_all_kb.sh` | término opcional | lista contenido o busca término | documentación local, no técnicas ejecutadas |
 | `12_Knowledge_Base/search_kb.sh` | término explícito | grep/búsqueda en guías y cheatsheets | coincidencias son referencias, no hallazgos de objetivo |
 | `13_Labs/main.sh` | menú interactivo | gestión carpetas/notas, herramientas, VPN y borrado | no despliegue integral; comandos activos no tienen gates09 |
@@ -424,11 +436,21 @@ antes de operar: no se ha verificado aquí compatibilidad operacional.
 
 ## Verificación y alcance documental
 
-**Round1: ejecución BLOQUEADA.** Las pruebas nuevas/modificadas se escribieron
+**Historia Round1 (superada, no describe el runner actual): ejecución BLOQUEADA.** Las pruebas nuevas/modificadas se escribieron
 sin ejecutarlas. No hay nueva validación RED/GREEN ni aislamiento SO heredado
 acreditado. `tests/run_automation.sh` solo contiene un diagnóstico builtin y
 exit2; no discovery, intérpretes, probes ni fallback. Los resultados anteriores
 son históricos, no autorización para reanudar.
+
+**Combinación actual, Task3 Phase A (2026-11-14):** el controlador ya observó
+sobre fdf578f60units PASS y179integration con10fallos,0errores,1SKIP;
+los10fallos restantes eran tres casos del contrato10 antiguo (1+8+1), no fallos
+de sus backends. Los25casos de informes quedaron GREEN. Esta entrega cambia
+extracción/docs10 y exige ficha09 en el puente real; NO ejecuta pruebas nuevas,
+no observa aún su RED ni implementa la ficha en el puente. Solo el controlador,
+tras revisión estática independiente, puede autorizar el selector exacto09.
+No se descubre/ejecuta test_module_intro ni se amplían los25permisos. El antiguo
+conteo130hojas/217filas no acredita semántica de la combinación ni cierre global.
 
 Cobertura **estructural** diseñada en `tests/test_automation_contract.py` y
 `tests/automation_menu_inventory.py`: cada ruta/opción requerida tiene una fila
@@ -449,7 +471,8 @@ o una prueba estructural verde nunca certifican veracidad semántica global.
 | K.* y K.herramienta.* | keys_menu y keys_elegir_herramienta | case/etiquetas y selector dinámico; elegir4 escribe directamente, sin añadir un gate ficticio |
 | 00.wizard.* | config_wizard.sh:main | case de modos y conjunto de prompts de confirmar/duplicados/otro/guardar; cambio de prompts exige revisar contrato |
 | 00.keys.* | api_keys.py:main/add_parser (AST como dato) | comandos derivados del parser, no lista fija; firmas de argumentos requieren revisión semántica separada (M1 diferido) |
-| 10.* | evidence_manager.sh:case "$1" | comandos largos derivados y alias -h→help explícito; nuevo comando/alias exige fila/contrato |
+| 10.add/list/verify/package/help/target | evidence/cli.py:_main/manage.add_argument (AST como dato), wrapper delega manage | flags literales y alias -h→help explícito; root y capture/run excluidos; filas exactas en ambas direcciones, adición/eliminación y alias desconocido exigen revisión |
+| 10.0–10.9 | evidence_menu.bash:evidence_menu/case choice | despacho real; ! alias de0, EOF cancela; mutaciones de alta/baja de opciones, namespace distinto de CLI manage |
 | 03–08/09/13 submenús | *_menu.bash, CLI09 y main.sh Labs | branches/etiquetas/contratos de fuente; incluye timeline y shell_opt, no ejecución de menús |
 
 Las bibliotecas no son herramientas. La matriz09 cubre ORIGINAL y catálogo,
