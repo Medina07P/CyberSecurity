@@ -12,6 +12,71 @@ import automation_sandbox_inside as inside
 
 
 class SandboxBoundaryTests(unittest.TestCase):
+    def test_cross_selector_is_closed(self):
+        from cross_module_selection import group_cases, group_grants, validate_cases
+        names = group_cases('--cross-consent')
+        self.assertEqual(len(names), 9)
+        self.assertEqual(len(set(names)), 9)
+        for selector in ('--cross-web', '--cross-local', '--suite', '', '--unsafe'):
+            with self.assertRaises(ValueError):
+                group_cases(selector)
+            with self.assertRaises(ValueError):
+                group_grants(selector)
+        for changed in ((), names[:-1], names + names[:1],
+                        names[:-1] + ('test_cross_consent.ConsentTests.test_changed',)):
+            with self.assertRaises(ValueError):
+                validate_cases('--cross-consent', [mock.Mock(id=lambda n=n: n) for n in changed])
+        validate_cases('--cross-consent', [mock.Mock(id=lambda n=n: n) for n in names])
+
+    def test_cross_grants_are_selection_bound(self):
+        from cross_module_selection import group_cases, group_grants
+        import automation_suite_selection as selection
+        cross = group_cases('--cross-consent')[0]
+        old = selection.preservation_inventory()['authorization']['case_ids']
+        self.assertEqual(len(old), 25)
+        self.assertEqual(group_grants('--cross-consent'), frozenset(group_cases('--cross-consent')))
+        self.assertTrue(set(old).isdisjoint(group_grants('--cross-consent')))
+        controller = mock.Mock(__file__=inside.SELF)
+        for selector in ('--suite', '--races', '--cross-consent', None):
+            controller.validated_selection.return_value = selector
+            with mock.patch.dict('sys.modules', {'__main__': controller}):
+                self.assertEqual(selection.case_disposable_allowed(cross), selector == '--cross-consent')
+                self.assertEqual(selection.case_disposable_allowed(old[0]), selector in ('--suite', '--races'))
+                self.assertFalse(selection.case_disposable_allowed(cross + '_changed'))
+        with mock.patch.dict('sys.modules', {'__main__': None}):
+            self.assertFalse(selection.case_disposable_allowed(cross))
+
+    def test_cross_root_and_protected_paths_remain_blocked(self):
+        import automation_case_scope as scope
+        root = Path('/work/fixtures/case-synthetic')
+        info = mock.Mock(st_dev=1, st_ino=2, st_uid=1000, st_mode=0o40700)
+        pinned = (1, 2, 1000, 0o40700)
+        with mock.patch.object(scope, '_SCOPE', None), \
+                mock.patch('automation_suite_selection.case_disposable_allowed', return_value=True), \
+                mock.patch.object(Path, 'stat', return_value=info), \
+                mock.patch.object(Path, 'resolve', autospec=True, side_effect=lambda p, **kw: p):
+            scope.configure_worker(root, pinned, 'synthetic-cross', True, 3)
+            for path in (root, '/source/file', '/evidence/file', '/work/fixtures/case-other/file'):
+                self.assertFalse(scope.destructive_path(path))
+            self.assertTrue(scope.destructive_path(root / 'new'))
+            info.st_ino = 3
+            self.assertFalse(scope.destructive_path(root / 'new'))
+        with mock.patch.object(scope, '_SCOPE', None), \
+                mock.patch('automation_suite_selection.case_disposable_allowed', return_value=False):
+            with self.assertRaises(ValueError):
+                scope.configure_worker(root, pinned, 'changed-case', True, 3)
+
+    def test_suite_excludes_cross_modules(self):
+        import automation_suite_selection as selection
+        from automation_sandbox_prepare import source_names
+        modules = selection.legacy_modules(source_names())
+        self.assertTrue(modules)
+        self.assertFalse(any(name.startswith('test_cross_') for name in modules))
+        self.assertEqual(len(selection.preservation_inventory()['authorization']['case_ids']), 25)
+        with mock.patch.object(inside, '_VALIDATED', False), \
+                mock.patch.object(inside, '_SELECTION', '--cross-consent'):
+            self.assertIsNone(inside.validated_selection())
+
     def test_parent_scope_mapping_requires_vfs_composition_not_parent_uid_guess(self):
         host = {'dev': 11, 'ino': 22, 'mode': 0o100400, 'size': 52,
                 'uid': 1000, 'gid': 1000, 'nlink': 1, 'mtime_ns': 5, 'ctime_ns': 6}
