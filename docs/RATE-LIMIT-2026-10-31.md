@@ -6,6 +6,16 @@
 - **Origen:** hallazgo ALTO de la prueba real de esta jornada, en
   `CyberSecurity-Framework/11_Reports/final_report/` (git-ignored: aquí no se repite el objetivo)
 
+**Contrato actualizado 2026-11-14:** esquema elegido localmente, sin GET de
+autodetección. Captura con ruta relativa requiere `RATE_LIMIT_ESQUEMA=http|https`;
+URL absoluta requiere autoridad idéntica a `Host:` (incluido puerto). Override
+definido manda; vacío/inválido rechaza. Puerto443/8443 no acredita TLS.403 sin
+Retry-After/cuota agotada corta inmediatamente con NO DETERMINADO/rc1, incluso
+lento o como primera respuesta. No hay nuevo reintento. Contrato completo de
+campos, composición y presupuestos: `CyberSecurity-Framework/05_Exploitation/README.md`.
+Los resultados de verificación de octubre abajo son históricos, no validan esta
+combinación nueva. La actualización Task4 es estática, sin ejecutar suites.
+
 ## Qué se construyó y por qué
 
 El informe de la prueba real (una SPA de cobros recurrentes, autorizada por su titular)
@@ -33,11 +43,13 @@ una contraseña, sino contar cuántos fallos acepta el servidor seguidos. Aun as
 en `00_Config/lib/dangerous.txt`: pide confirmación con el número de intentos y el aviso de que
 la cuenta puede quedar bloqueada, y no acepta el valor del ejemplo como atajo.
 
-## El fixture: ocho endpoints, no cuatro
+## Fixture histórico: ocho endpoints, no cuatro
 
 El diseño hablaba de cuatro endpoints de prueba; al implementarlos hicieron falta ocho para
 cubrir cada veredicto sin trampas. Están en `tests/fixtures/http_target.py`, y las suites los
-levantan en un puerto efímero:
+levantaban en un puerto efímero. No ejecutar esas suites/servidores para verificar
+este bloque: los equivalentes actuales usan curl doble obligatorio en los siete
+IDs existentes de `tests/test_cross_web.py`, con gate separado del controlador:
 
 | Endpoint | Qué hace | Veredicto que produce |
 |---|---|---|
@@ -62,10 +74,10 @@ reportan sin llamarlos `FRENADO` ni `SIN FRENO`.
 
 # 2. Repite el intento variando solo la contraseña (20 por defecto)
 cd CyberSecurity-Framework
-./05_Exploitation/web/rate_limit_probe.sh ../scans/web/login.req
+RATE_LIMIT_ESQUEMA=https ./05_Exploitation/web/rate_limit_probe.sh ../scans/web/login.req
 
 # 3. O con otro número de intentos (tope duro 200)
-./05_Exploitation/web/rate_limit_probe.sh ../scans/web/login.req 50
+RATE_LIMIT_ESQUEMA=https ./05_Exploitation/web/rate_limit_probe.sh ../scans/web/login.req 50
 ```
 
 El objetivo —host, puerto y ruta— sale de la propia petición (`Host:` y línea de petición): no
@@ -73,6 +85,13 @@ se le pasa por argumento ni se adivina. Una petición sin `Host:` se rechaza. El
 contraseña se detecta por nombre (`pass`, `clave`, `secret`, `contras`, sin distinguir
 mayúsculas) entre los parámetros de query, de formulario o de JSON; si no hay ninguno el script
 se para, y si hay dos avisa de cuál usa y de cuál ha descartado.
+Esto último se refiere a nombres distintos: un nombre seleccionado repetido o
+equivalente percent-encoded en su ubicación se rechaza antes del transporte,
+igual que rutas JSON ambiguas. Solo se cambia el campo seleccionado; overrides
+literales se codifican una vez, sin alterar pares ajenos. El presupuesto de
+composición es1MiB UTF-8 total, no1MiB por campo; JSON conserva valores/tipos y
+tokens numéricos ajenos, no formato blanco. Sin consentimiento o ante EOF no se
+envía nada; `RATE_LIMIT_SI=1` conserva el consentimiento específico existente.
 
 ### Opciones por entorno
 
@@ -82,8 +101,8 @@ se para, y si hay dos avisa de cuál usa y de cuál ha descartado.
 | `RATE_LIMIT_RETARDO` | `0` | Segundos entre peticiones (0 = tan rápido como responda el servidor) |
 | `RATE_LIMIT_CAMPO` | autodetectado | Campo a variar cuando la detección por nombre no sirve |
 | `RATE_LIMIT_SI=1` | — | No pide confirmación (suites y automatización) |
-| `RATE_LIMIT_MAX_SEG` | `30` | Tope de reloj de **cada** petición |
-| `RATE_LIMIT_ESQUEMA` | deducido del puerto | `http` o `https`, para cuando el puerto engaña |
+| `RATE_LIMIT_MAX_SEG` | `30` | Tope de reloj de **cada** petición;0 sin tope, no presupuesto global |
+| `RATE_LIMIT_ESQUEMA` | esquema de URL absoluta inequívoca, si existe | `http` o `https`; obligatorio con ruta relativa, precede a captura absoluta, sin sondeo |
 
 Los valores de `RETARDO` y `MAX_SEG` se validan antes de enviar nada: un valor con unidad
 (`5s`) haría fallar la tanda a mitad dejando media evidencia. El tope de 200 se rechaza en voz
@@ -95,8 +114,8 @@ alta en vez de recortarse en silencio: quien pide 500 tiene que saber que no se 
 |---|---|---|
 | `FRENADO` | Una respuesta frenó: `429`/`503`, o cabecera `Retry-After`, o `X-RateLimit-Remaining: 0`. Se corta ahí y no se envía el intento siguiente | No dice si el freno es por IP, por cuenta o global, ni cuánto dura: `Retry-After` se copia tal cual, no se duerme ni se interpreta. Un `503` en una ruta puede ser sobrecarga, no un límite |
 | `FRENADO (por retardo)` | Mismo código en todos los intentos, pero la mediana de los 5 últimos supera 2× la de los 5 primeros y hay más de 100 ms de diferencia (exige ≥10 intentos) | Puede ser carga del servidor, no un backoff: se midió una vez. Hay que repetir la tanda para descartarlo antes de darlo por defensa |
-| `SIN FRENO` | Todos los intentos con el mismo código no-2xx y sin ralentizarse | No dice que el login no tenga límite: dice que en N intentos seguidos no apareció. Puede llegar más tarde, por IP o por cuenta, y N puede ser pequeño para ese servidor |
-| `NO DETERMINADO` | No hay veredicto: `000` (sin respuesta), un código distinto que no es freno (`403` de WAF, sesión que caduca) o un `2xx`/`3xx` con la contraseña falsa aceptada | No es «limpio» ni «vulnerable»: es «no se pudo medir». Los tres casos cortan la tanda, y el `2xx` es además otro hallazgo (login que no valida, o catch-all) |
+| `SIN FRENO` | Código estable sin señal explícita, sin403/000/2xx/3xx ambiguos y sin ralentizarse;401 estable es el caso cubierto | No dice que el login no tenga límite: dice que en N intentos seguidos no apareció. Puede llegar más tarde, por IP o por cuenta, y N puede ser pequeño para ese servidor |
+| `NO DETERMINADO` |403 sin señal explícita (rápido o lento),000, cambio sin freno o2xx/3xx ambiguo | Corte inmediato, no «limpio» ni credencial válida demostrada. Retry-After no vacío/cuota0 y429/503 se evalúan antes; retardo no convierte403 en freno |
 
 Códigos de salida: `0` cuando hay veredicto (`FRENADO`, `FRENADO (por retardo)`, `SIN FRENO`) o
 el operador cancela; `1` cuando no lo hay (`NO DETERMINADO`) o por error de uso, de lectura o de
@@ -110,15 +129,17 @@ En `scans/web/` (git-ignored), con el objetivo y el puerto en el nombre:
   enviados, códigos vistos, avisos, veredicto, motivo, alcance y la tabla de intentos.
 - `rate_limit_<host>_<puerto>.tsv` — máquina: `n codigo ms tamano retry_after señal`, una fila
   por intento. La contraseña no se guarda en ninguna columna.
-- `rate_limit_<host>_<puerto>/intento_001.resp` — cuerpo de la respuesta del primer intento, que
+- `rate_limit_<host>_<puerto>/run_<fecha>_<aleatorio>/intento_001.resp` — cuerpo de la respuesta del primer intento, que
   es la línea base que se compara con el resto.
-- `rate_limit_<host>_<puerto>/freno_<nnn>.resp` — cuerpo de la respuesta que frenó, con el
+- `rate_limit_<host>_<puerto>/run_<fecha>_<aleatorio>/freno_<nnn>.resp` — cuerpo de la respuesta que frenó, con el
   número del intento delante para que la evidencia se ordene por nombre.
 
 Solo se guarda el cuerpo del primer intento y el del freno: veinte cuerpos idénticos no añaden
 nada y el `.tsv` ya cuenta qué pasó en cada uno.
+Cada ejecución crea un run nuevo y conserva los anteriores; los resúmenes `.txt`
+y `.tsv` por objetivo sí se regeneran. Son datos privados, no versionables.
 
-## Verificación
+## Verificación histórica (2026-10-31, no ejecución actual)
 
 - `tests/run_tests.sh` → **311 asserts, 0 fallos**, de los que **37** son de esta pieza:
   arranque (13, incluidos `dangerous.txt` y el modo slots del gestor), sonda contra
@@ -136,9 +157,9 @@ nada y el `.tsv` ya cuenta qué pasó en cada uno.
   capturada. No distingue un límite por IP de uno por cuenta ni de uno global, y el informe lo
   dice en «Alcance» en vez de insinuarlo.
 - **Un `403` a todo no se llama freno.** Un WAF que contesta `403` a cualquier cosa, o una
-  sesión que caduca a mitad, producen `NO DETERMINADO` (cambio de código), no `FRENADO`. Es el
-  mismo hueco anotado desde la fase Burp: se confirma con las cabeceras y repitiendo desde otra
-  IP.
+  sesión que caduca a mitad, producen `NO DETERMINADO`, no `FRENADO`, si no traen
+  señal explícita. No hace falta cambio de código: también se corta en el primer403.
+  Con Retry-After/cuota agotada prevalece la señal; ni eso certifica su origen.
 - **El criterio de retardo es sensible a la carga.** «Mediana de los últimos 5 > 2× la de los
   primeros 5 y >100 ms» describe un backoff, pero un servidor ocupado se parece. Con menos de
   10 intentos no se evalúa, y una sola tanda no basta para acusar: hay que repetirla.

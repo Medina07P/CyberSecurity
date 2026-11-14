@@ -22,7 +22,7 @@ Cerrar las brechas de cobertura y las integraciones diferidas del módulo 05 sin
 |---|---|---|---|---|---|
 | Petición capturada (http_inject) | `http_inject.sh <fichero> [objetivo]` | Inyección en query/form/JSON con sesión, eco y catch-all | Validado en loopback (http_target.py) | `scans/web/http_inject_*` | CONFIRMADO/FUERTE/DÉBIL |
 | Petición capturada (sqlmap) | `sqlmap_request.sh <fichero> [objetivo]` | Tres fases: detección, enumeración, volcado (50 filas) | Validado en loopback; host real no inyectable | `scans/sqlmap/<host>_<puerto>/run_*` | INYECTABLE/NO INYECTABLE/NO DETERMINADO |
-| Rate limit probe | `rate_limit_probe.sh <fichero> [objetivo]` | N intentos variando solo contraseña | No ejecutado contra host real (sin petición válida) | `scans/web/rate_limit_*` | FRENADO/SIN FRENO/NO DETERMINADO |
+| Rate limit probe | `rate_limit_probe.sh <fichero> [intentos]` | N intentos variando solo contraseña | No ejecutado contra host real (sin petición válida) | `scans/web/rate_limit_*` | FRENADO/SIN FRENO/NO DETERMINADO |
 | Fuerza bruta SSH/FTP | `ssh_attack.sh`, `ftp_bruteforce.sh` | hydra con usuarios/wordlists | No ejecutado (sin objetivo autorizado) | `scans/.../exploitation_*` | CONFIRMADO/DENEGADO/NO DETERMINADO |
 | Kerberos | `kerberos_attack.sh` | kinit con tickets aislados | No ejecutado (sin objetivo autorizado) | `scans/.../exploitation_*` | CONFIRMADO/DENEGADO/NO DETERMINADO |
 | CVE 2024-6387 | `cve_2024_6387.sh` | Sonda de versión (sin payload) | No ejecutado (sin objetivo autorizado) | `scans/.../exploitation_*` | Candidato/no confirmado |
