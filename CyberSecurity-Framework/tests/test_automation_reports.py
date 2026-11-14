@@ -15,6 +15,20 @@ from automation.model import Permissions, Plan, PlanError, PreflightError, Runti
 from automation.planner import build_plan
 
 
+# Literal wire fixtures, independent of 11's parser and 09's future resolver.
+REPORT_NAMES = ('findings.json', 'informe_tecnico.md', 'informe_tecnico.html',
+                'informe_cliente.md', 'informe_cliente.html')
+RUN_ID = 'run-20261114T120000000000Z-' + 'a' * 32
+NEW_ENGINE_SOURCES = (
+    '11_Reports/lib/coverage.py', '11_Reports/lib/exploitation_metadata.py',
+    '11_Reports/lib/history.py', '11_Reports/lib/publication.py',
+    '11_Reports/lib/validation.py', '11_Reports/lib/parsers/prior_modules.py',
+    '11_Reports/lib/parsers/scanner_ports.py',
+    '00_Config/lib/evidence/__init__.py', '00_Config/lib/evidence/inventory.py',
+    '00_Config/lib/evidence/model.py', '00_Config/lib/evidence/storage.py',
+)
+
+
 class ReportTests(unittest.TestCase):
     def setUp(self):
         self.f = AutomationFixture()
@@ -37,21 +51,41 @@ class ReportTests(unittest.TestCase):
             '--output', str(self.output / 'report.html'), *extra], env=env,
             cwd=self.f.home, text=True, capture_output=True)
 
-    def stub_engine(self, rc=3):
-        (self.f.framework / '11_Reports/report_engine.py').write_text('''import argparse, json, os
+    def stub_engine(self, rc=3, markers=False):
+        engine = self.f.framework / '11_Reports/report_engine.py'
+        preserve(engine)
+        engine.write_text('''import argparse, json, os
 from pathlib import Path
 p = argparse.ArgumentParser()
 for name in ('objetivo', 'scans', 'salida', 'tipo', 'cliente', 'auditor'):
     p.add_argument('--' + name, required=True)
+p.add_argument('--json', action='store_true', required=True)
 a = p.parse_args()
-assert a.objetivo == 'example.test' and a.tipo == 'ambos'
+assert a.tipo == 'ambos'
 assert a.cliente == 'No indicado' and a.auditor == 'No indicado'
-assert Path(os.environ['REPORT_PROFILE']).read_bytes() == b''
+profile = Path(os.environ['REPORT_PROFILE'])
+assert profile.read_bytes() == b''
 assert 'PYTHONPATH' not in os.environ and 'SESSION_FILE' not in os.environ
-out = Path(a.salida)
-out.mkdir(exist_ok=True)
-for name in ('findings.json', 'informe_tecnico.md', 'informe_tecnico.html', 'informe_cliente.md', 'informe_cliente.html'):
-    (out / name).write_text('{}')
+''' + ('profile.write_text(a.objetivo)\n' if markers else '') + '''
+run_id = 'run-20261114T120000000000Z-' + 'a' * 32
+out = Path(a.salida) / 'runs' / run_id
+out.parent.mkdir(mode=0o700)
+out.mkdir(mode=0o700)
+names = ['findings.json', 'informe_tecnico.md', 'informe_tecnico.html', 'informe_cliente.md', 'informe_cliente.html']
+for name in names:
+    with (out / name).open('x') as stream:
+        json.dump(''' + ("{'target': a.objetivo, 'input': (Path(a.scans) / 'marker').read_text()}" if markers else '{}') + ''', stream)
+    (out / name).chmod(0o600)
+receipt = {'schema_version': 1, 'module': '11', 'run_id': run_id,
+    'started_at': '2026-11-14T12:00:00+00:00', 'finished_at': '2026-11-14T12:00:01+00:00',
+    'objetivo': a.objetivo, 'modo': 'objetivo', 'tipo': 'ambos', 'entrada': 'scans',
+    'estado': ''' + repr('COMPLETADO' if rc == 0 else 'NO_EVALUABLE') + ''', 'rc': ''' + str(rc) + ''', 'archivos': names}
+with (out / 'run.json').open('x') as stream:
+    json.dump(receipt, stream)
+(out / 'run.json').chmod(0o600)
+print(json.dumps({'objetivo': a.objetivo, 'hallazgos': 0, 'criticos': 0,
+    'no_evaluable': ''' + str(int(rc == 3)) + ''', 'salida': str(out), 'run_id': run_id,
+    'archivos': [str(out / name) for name in names + ['run.json']]}))
 raise SystemExit(''' + str(rc) + ')\n')
 
     def test_report_requires_target_input(self):
@@ -67,7 +101,7 @@ raise SystemExit(''' + str(rc) + ')\n')
         run = self.f.repo / 'run'
         run.mkdir(mode=0o700)
         cmd = report_command(self.plan().steps[0], run, self.ctx)
-        for flag in ('--objetivo', '--scans', '--salida', '--tipo', '--cliente', '--auditor'):
+        for flag in ('--objetivo', '--scans', '--salida', '--tipo', '--cliente', '--auditor', '--json'):
             self.assertIn(flag, cmd.argv)
         for flag in ('--todos', '--incluir-sin-objetivo', '--abrir'):
             self.assertNotIn(flag, cmd.argv)
@@ -86,21 +120,7 @@ raise SystemExit(''' + str(rc) + ')\n')
             Step('first', 'report', {'target': 'first.test', 'report_input': self.input}, ()),
             Step('second', 'report', {'target': 'second.test', 'report_input': second}, ()),
         ), 600))
-        engine = self.f.framework / '11_Reports/report_engine.py'
-        preserve(engine)
-        engine.write_text('''import argparse, json, os
-from pathlib import Path
-p = argparse.ArgumentParser()
-for name in ('objetivo', 'scans', 'salida', 'tipo', 'cliente', 'auditor'):
-    p.add_argument('--' + name, required=True)
-a = p.parse_args()
-profile = Path(os.environ['REPORT_PROFILE'])
-assert profile.read_bytes() == b''
-profile.write_text(a.objetivo)
-out = Path(a.salida)
-with (out / 'findings.json').open('x') as stream:
-    json.dump({'target': a.objetivo, 'input': (Path(a.scans) / 'marker').read_text()}, stream)
-''')
+        self.stub_engine(0, markers=True)
         preflight(plan, self.ctx, Permissions(frozenset(), frozenset({
             ('first', 'report_read'), ('second', 'report_read')})))
         run = self.f.repo / 'run'
@@ -113,7 +133,7 @@ with (out / 'findings.json').open('x') as stream:
             result = subprocess.run(command.argv, cwd=command.cwd, env=command.env,
                                     text=True, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
-            output = Path(command.argv[command.argv.index('--salida') + 1])
+            output = Path(json.loads(result.stdout)['salida'])
             snapshots.append((output, (output / 'findings.json').read_bytes()))
         self.assertNotEqual(snapshots[0][0], snapshots[1][0])
         self.assertNotEqual(commands[0].env['REPORT_PROFILE'], commands[1].env['REPORT_PROFILE'])
@@ -137,8 +157,12 @@ with (out / 'findings.json').open('x') as stream:
         self.assertEqual(result.rc, 1)
         self.assertEqual(result.steps[0].rc, 3)
         self.assertEqual(result.steps[0].state, 'fallido')
-        self.assertEqual(self.shim('--target', 'example.test', '--execute',
-                                  '--allow', 'report:report_read').returncode, 3)
+        from automation.reporting import report_generation
+        generation = report_generation(result.run_dir, 'report', 'example.test', 3)
+        self.assertEqual(json.loads((generation / 'run.json').read_text())['estado'], 'NO_EVALUABLE')
+        shim = self.shim('--target', 'example.test', '--execute', '--allow', 'report:report_read')
+        self.assertEqual(shim.returncode, 3, shim.stderr)
+        self.assertEqual({p.name for p in self.output.iterdir()}, set(REPORT_NAMES))
 
     def test_legacy_output_names(self):
         self.stub_engine(0)
@@ -146,7 +170,8 @@ with (out / 'findings.json').open('x') as stream:
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('obsoleto', result.stdout)
         self.assertFalse((self.output / 'report.html').exists())
-        for name in ('findings.json', 'informe_tecnico.html', 'informe_cliente.html'):
+        self.assertEqual({p.name for p in self.output.iterdir()}, set(REPORT_NAMES))
+        for name in REPORT_NAMES:
             self.assertTrue((self.output / name).is_file())
             self.assertIn(name, result.stdout)
         again = self.shim('--target', 'example.test', '--execute', '--allow', 'report:report_read')
@@ -163,20 +188,27 @@ with (out / 'findings.json').open('x') as stream:
     def test_preflight_input_and_all_engine_imports_before_run(self):
         from automation.reporting import ENGINE_SOURCES
         ping = build_plan('ping', {'target': 'example.test'}).steps[0]
-        plan = Plan('all-before-any', (ping, *self.plan().steps), 300)
         permissions = Permissions(frozenset({'example.test'}), self.permissions.grants)
-        self.f.stub('ping')
-        for relative in ENGINE_SOURCES:
-            original = self.f.framework / relative
-            backup = original.with_suffix('.missing')
-            original.rename(backup)
-            try:
-                with self.subTest(source=relative), self.assertRaises(PreflightError):
-                    execute_plan(plan, self.ctx, permissions)
-            finally:
-                backup.rename(original)
-        self.assertFalse((self.f.repo / 'scans').exists())
-        self.assertEqual(self.f.records(), [])
+        # Independent literal closure: deriving this solely from ENGINE_SOURCES
+        # would silently omit exactly the missing transitive dependencies.
+        for relative in dict.fromkeys((*ENGINE_SOURCES, *NEW_ENGINE_SOURCES)):
+            with self.subTest(source=relative):
+                # Separate preserved fixtures keep an actual RED from polluting
+                # the remaining missing-source checks with a prior run/log.
+                fixture = AutomationFixture()
+                self.addCleanup(fixture.close)
+                fixture.stub('python3')
+                fixture.stub('ping')
+                scans = fixture.repo / 'synthetic input'
+                scans.mkdir()
+                report = build_plan('report', {'target': 'example.test', 'report_input': scans})
+                plan = Plan('all-before-any', (ping, *report.steps), 300)
+                ctx = RuntimeContext(fixture.framework, fixture.repo, Path(sys.executable), str(fixture.bin))
+                self.assertIsNotNone(preserve(fixture.framework / relative), relative)
+                with self.assertRaises(PreflightError):
+                    execute_plan(plan, ctx, permissions)
+                self.assertFalse((fixture.repo / 'scans').exists(), relative)
+                self.assertEqual(fixture.records(), [], relative)
 
     def test_preflight_rejects_missing_input_and_symlinks(self):
         preserve(self.input)
@@ -209,6 +241,18 @@ with (out / 'findings.json').open('x') as stream:
         result = self.shim('--target', 'example.test', '--execute', '--allow', 'report:report_read')
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertFalse((self.output / 'findings.json').exists())
+        preserve(self.f.framework / '11_Reports/report_engine.py')
+        (self.f.framework / '11_Reports/report_engine.py').write_text('''import argparse
+from pathlib import Path
+p = argparse.ArgumentParser()
+p.add_argument('--salida')
+a, _ = p.parse_known_args()
+for name in ('findings.json', 'informe_tecnico.md', 'informe_tecnico.html', 'informe_cliente.md', 'informe_cliente.html'):
+    (Path(a.salida) / name).write_text('stale flat output is not a generation')
+''')
+        result = self.shim('--target', 'example.test', '--execute', '--allow', 'report:report_read')
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertFalse(self.output.exists())
 
     def test_destination_ancestor_swap_and_symlink_are_rejected(self):
         from automation.reporting import check_report_destination, publish_reports
@@ -311,6 +355,7 @@ with (out / 'findings.json').open('x') as stream:
                                   'output': self.output})
 
     def test_real_copied_engine_filters_target_and_no_evaluable_rc3(self):
+        from automation.reporting import report_generation
         nmap = self.input / 'nmap'
         nmap.mkdir()
         (nmap / 'nmap_example.test.xml').write_text('''<nmaprun><host><status state="up"/>
@@ -339,7 +384,12 @@ with (out / 'findings.json').open('x') as stream:
         for step_id, target, other in (('first', '192.0.2.1', '192.0.2.2'),
                                       ('second', '192.0.2.2', '192.0.2.1')):
             private = repeated_result.run_dir / ('report-' + step_id)
-            data = json.loads((private / 'reports/findings.json').read_text())
+            generation = report_generation(repeated_result.run_dir, step_id, target, 0)
+            self.assertEqual(generation.parent, private / 'reports/runs')
+            receipt = json.loads((generation / 'run.json').read_text())
+            self.assertEqual((receipt['objetivo'], receipt['estado'], receipt['rc']),
+                             (target, 'COMPLETADO', 0))
+            data = json.loads((generation / 'findings.json').read_text())
             self.assertEqual(data['meta']['objetivo'], target)
             self.assertIn(target, data['activos'])
             self.assertNotIn(other, data['activos'])
@@ -349,7 +399,8 @@ with (out / 'findings.json').open('x') as stream:
         plan = build_plan('report', {'target': '192.0.2.1', 'report_input': self.input})
         result = execute_plan(plan, self.ctx, self.permissions)
         self.assertEqual(result.rc, 0, result.steps)
-        data = json.loads((result.run_dir / 'report-report/reports/findings.json').read_text())
+        generation = report_generation(result.run_dir, 'report', '192.0.2.1', 0)
+        data = json.loads((generation / 'findings.json').read_text())
         self.assertEqual(data['meta']['objetivo'], '192.0.2.1')
         self.assertEqual(data['meta']['modo'], 'objetivo')
         self.assertNotIn('other.test', json.dumps(data.get('hallazgos')))
@@ -360,6 +411,182 @@ with (out / 'findings.json').open('x') as stream:
         result = execute_plan(plan, self.ctx, self.permissions)
         self.assertEqual(result.rc, 1)
         self.assertEqual(result.steps[0].rc, 3)
+        generation = report_generation(result.run_dir, 'report', '192.0.2.1', 3)
+        self.assertEqual(json.loads((generation / 'run.json').read_text())['estado'], 'NO_EVALUABLE')
+
+
+class ReportGenerationTests(unittest.TestCase):
+    """Parser-only fresh synthetic trees: no RunStore, replacement or cleanup.
+
+    Catches adopting latest/flat/foreign generations, trusting stdout alone,
+    accepting partial or non-final receipts and following untrusted links.
+    """
+
+    def setUp(self):
+        self.f = AutomationFixture()
+        self.addCleanup(self.f.close)
+        self.sequence = 0
+
+    def fixture(self, *, summary_changes=None, receipt_changes=None, stdout=None,
+                disk=None, omit=(), link=None):
+        self.sequence += 1
+        run = self.f.repo / ('parser-' + str(self.sequence))
+        run.mkdir(mode=0o700)
+        parent = run
+        for component in ('report-report', 'reports', 'runs', RUN_ID):
+            directory = parent / component
+            if link == component:
+                target = self.f.repo / ('linked-directory-' + str(self.sequence))
+                target.mkdir(mode=0o700)
+                directory.symlink_to(target, target_is_directory=True)
+            else:
+                directory.mkdir(mode=0o700)
+            parent = directory
+        generation = parent
+        receipt = {'schema_version': 1, 'module': '11', 'run_id': RUN_ID,
+                   'started_at': '2026-11-14T12:00:00+00:00',
+                   'finished_at': '2026-11-14T12:00:01+00:00',
+                   'objetivo': 'example.test', 'modo': 'objetivo', 'tipo': 'ambos',
+                   'entrada': 'scans', 'estado': 'COMPLETADO', 'rc': 0,
+                   'archivos': list(REPORT_NAMES)}
+        receipt.update(receipt_changes or {})
+        summary = {'objetivo': 'example.test', 'hallazgos': 0, 'criticos': 0,
+                   'no_evaluable': 0, 'salida': str(generation), 'run_id': RUN_ID,
+                   'archivos': [str(generation / name) for name in (*REPORT_NAMES, 'run.json')]}
+        summary.update(summary_changes(generation) if callable(summary_changes) else summary_changes or {})
+        for name in (*REPORT_NAMES, 'run.json'):
+            if name in omit:
+                continue
+            path = generation / name
+            if name == link:
+                foreign = self.f.repo / ('foreign-' + str(self.sequence))
+                foreign.write_text('{}')
+                path.symlink_to(foreign)
+            else:
+                with path.open('x') as stream:
+                    stream.write((disk(receipt) if callable(disk) else disk if disk is not None else json.dumps(receipt))
+                                 if name == 'run.json' else '{}')
+                path.chmod(0o600)
+        logs = run / 'logs'
+        logs.mkdir(mode=0o700)
+        if 'stdout' not in omit:
+            log = logs / 'report.stdout.log'
+            if link == 'stdout':
+                log.symlink_to(generation / 'run.json')
+            else:
+                with log.open('x') as stream:
+                    stream.write(stdout(summary) if callable(stdout) else
+                                 json.dumps(summary) + '\n' if stdout is None else stdout)
+                log.chmod(0o600)
+        return run, generation
+
+    def test_current_generation_rc0_and_rc3(self):
+        from automation.reporting import report_generation
+        run, generation = self.fixture()
+        self.assertEqual(report_generation(run, 'report', 'example.test', 0), generation)
+        run, generation = self.fixture(receipt_changes={'rc': 3, 'estado': 'NO_EVALUABLE'},
+                                       summary_changes={'no_evaluable': 1})
+        self.assertEqual(report_generation(run, 'report', 'example.test', 3), generation)
+
+    def test_receipt_selects_current_generation_not_unreferenced_history(self):
+        from automation.reporting import report_generation
+        run, generation = self.fixture()
+        decoy = generation.parent / ('run-20261114T130000000000Z-' + 'b' * 32)
+        decoy.mkdir(mode=0o700)
+        receipt = json.loads((generation / 'run.json').read_text())
+        receipt.update(run_id=decoy.name, objetivo='other.test')
+        for name in REPORT_NAMES:
+            with (decoy / name).open('x') as stream:
+                stream.write('foreign historical report')
+        with (decoy / 'run.json').open('x') as stream:
+            json.dump(receipt, stream)
+        self.assertEqual(report_generation(run, 'report', 'example.test', 0), generation)
+
+    def test_absent_invalid_duplicate_or_oversized_stdout(self):
+        from automation.reporting import report_generation
+        variants = ({'omit': ('stdout',)}, {'stdout': ''}, {'stdout': '{'},
+                    {'stdout': '[]'}, {'stdout': '{}'}, {'stdout': '{}\n{}\n'},
+                    {'stdout': lambda s: json.dumps(s)[:-1] + ',"run_id":"foreign"}'},
+                    {'stdout': ' ' * (1024 * 1024 + 1)})
+        for variant in variants:
+            with self.subTest(variant=str(variant)[:100]):
+                run, _ = self.fixture(**variant)
+                with self.assertRaises(PreflightError):
+                    report_generation(run, 'report', 'example.test', 0)
+
+    def test_stdout_target_identity_and_paths_are_bound_to_step(self):
+        from automation.reporting import report_generation
+        variants = (
+            {'objetivo': 'other.test'}, {'run_id': 'foreign'},
+            {'salida': '/tmp/foreign/reports/runs/' + RUN_ID},
+            lambda p: {'salida': str(p).replace('report-report/', 'report-other/')},
+            lambda p: {'salida': str(p / '..' / p.name)},
+            lambda p: {'archivos': [str(p / n) for n in REPORT_NAMES]},
+            lambda p: {'archivos': [str(p / n) for n in (*REPORT_NAMES, 'run.json', 'run.json')]},
+            lambda p: {'archivos': ['/tmp/foreign/findings.json'] +
+                       [str(p / n) for n in (*REPORT_NAMES[1:], 'run.json')]},
+            lambda p: {'archivos': [str(p / '..' / p.name / n) for n in (*REPORT_NAMES, 'run.json')]},
+        )
+        for variant in variants:
+            with self.subTest(variant=variant):
+                run, _ = self.fixture(summary_changes=variant)
+                with self.assertRaises(PreflightError):
+                    report_generation(run, 'report', 'example.test', 0)
+
+    def test_final_disk_receipt_must_match_identity_target_type_mode_and_rc(self):
+        from automation.reporting import report_generation
+        variants = ({'objetivo': 'other.test'}, {'run_id': 'foreign'}, {'module': '10'},
+                    {'schema_version': True}, {'modo': 'todos'}, {'tipo': 'cliente'},
+                    {'entrada': 'unknown'}, {'finished_at': None},
+                    {'finished_at': '2026-11-14T11:00:00+00:00'},
+                    {'estado': 'ESCRIBIENDO', 'finished_at': None, 'rc': None, 'archivos': []},
+                    {'estado': 'NO_EVALUABLE', 'rc': 3}, {'rc': True},
+                    {'archivos': list(REPORT_NAMES[:-1])},
+                    {'archivos': ['../findings.json', *REPORT_NAMES[1:]]})
+        for variant in variants:
+            with self.subTest(variant=variant):
+                run, _ = self.fixture(receipt_changes=variant)
+                with self.assertRaises(PreflightError):
+                    report_generation(run, 'report', 'example.test', 0)
+
+    def test_missing_malformed_or_incomplete_disk_generation(self):
+        from automation.reporting import report_generation
+        variants = [{'omit': (name,)} for name in (*REPORT_NAMES, 'run.json')]
+        variants += [{'disk': '{'}, {'disk': '[]'},
+                     {'disk': lambda r: json.dumps(r)[:-1] + ',"rc":3}'},
+                     {'disk': ' ' * (1024 * 1024 + 1)}]
+        for variant in variants:
+            with self.subTest(variant=str(variant)[:100]):
+                run, _ = self.fixture(**variant)
+                with self.assertRaises(PreflightError):
+                    report_generation(run, 'report', 'example.test', 0)
+
+    def test_symlinked_files_and_generation_ancestors_are_rejected(self):
+        from automation.reporting import report_generation
+        for name in (*REPORT_NAMES, 'run.json', 'stdout', 'report-report', 'reports', 'runs', RUN_ID):
+            with self.subTest(link=name):
+                run, _ = self.fixture(link=name)
+                with self.assertRaises(PreflightError):
+                    report_generation(run, 'report', 'example.test', 0)
+        run, generation = self.fixture()
+        alias = self.f.repo / 'run-alias'
+        alias.symlink_to(run, target_is_directory=True)
+        with self.assertRaises(PreflightError):
+            report_generation(alias, 'report', 'example.test', 0)
+        # Fresh name aliases the existing private step: no replacement/removal.
+        (run / 'report-alias').symlink_to(generation.parent.parent.parent, target_is_directory=True)
+        with self.assertRaises(PreflightError):
+            report_generation(run, 'alias', 'example.test', 0)
+
+    def test_invalid_step_ids_and_process_rc_are_rejected(self):
+        from automation.reporting import report_generation
+        run, _ = self.fixture()
+        for step_id in ('', '.', '..', '../report', 'report/child', '/report'):
+            with self.subTest(step_id=step_id), self.assertRaises(PreflightError):
+                report_generation(run, step_id, 'example.test', 0)
+        for rc in (1, 2, -1, True, '0'):
+            with self.subTest(rc=rc), self.assertRaises(PreflightError):
+                report_generation(run, 'report', 'example.test', rc)
 
 
 if __name__ == '__main__':
