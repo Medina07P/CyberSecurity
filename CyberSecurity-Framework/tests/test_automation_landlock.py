@@ -149,6 +149,85 @@ class LandlockContracts(unittest.TestCase):
         self.assertEqual(result['blocked'], {name: 'synthetic ABI2'})
         self.assertFalse(result['successful'])
 
+    def aggregate_worker_results(self, rows):
+        """Doubles only: future regression must not fork/install Landlock."""
+        import automation_suite_selection as selection
+        cases = []
+        for row in rows:
+            case = mock.Mock()
+            case.id.return_value = row['id']
+            cases.append(case)
+        with mock.patch('automation_case_worker.run_case', side_effect=rows):
+            return selection._run(cases)
+
+    def assert_both_selector_outcomes(self, result, expected):
+        import automation_suite_selection as selection
+        for label in ('suite', 'race'):
+            with self.subTest(selector=label):
+                self.assertEqual(selection.selection_outcome(result, label)[:2], expected)
+
+    def test_failure_then_block_retains_real_failure_precedence_and_full_history(self):
+        rows = [dict(id='case.fail', state='DONE', tests_run=1, successful=False,
+                     failures=1, errors=0, skipped=0, records=[{'state': 'FAIL'}]),
+                dict(id='case.block', state='BLOCKED', reason='synthetic ABI unavailable')]
+        result = self.aggregate_worker_results(rows)
+        self.assertEqual(result['workers'], rows)
+        self.assertEqual(result['failures'], 1)
+        self.assertEqual(result['blocked'], {'case.block': 'synthetic ABI unavailable'})
+        self.assertTrue(result['observed_failure'])
+        self.assert_both_selector_outcomes(result, ('FAIL', 1))
+
+    def test_error_then_block_is_rc1_including_worker_setup_or_reap_failure(self):
+        for first in (dict(id='case.error', state='DONE', tests_run=1, successful=False,
+                           failures=0, errors=1, skipped=0),
+                      dict(id='case.setup', state='FAIL', reason='synthetic reap failure')):
+            with self.subTest(first=first):
+                rows = [first, dict(id='case.block', state='BLOCKED', reason='synthetic missing rule')]
+                result = self.aggregate_worker_results(rows)
+                self.assertEqual(result['workers'], rows)
+                self.assertTrue(result['observed_failure'])
+                self.assert_both_selector_outcomes(result, ('FAIL', 1))
+
+    def test_block_only_is_rc2_not_a_real_failure(self):
+        rows = [dict(id='case.block', state='BLOCKED', reason='synthetic ABI2')]
+        result = self.aggregate_worker_results(rows)
+        self.assertEqual(result['workers'], rows)
+        self.assertEqual((result['failures'], result['errors'], result['tests_run']), (0, 0, 0))
+        self.assertFalse(result['observed_failure'])
+        self.assertFalse(result['successful'])  # not sufficient to infer failure
+        self.assert_both_selector_outcomes(result, ('BLOCKED', 2))
+
+    def test_skip_then_block_remains_rc2_and_skip_history_is_retained(self):
+        rows = [dict(id='case.skip', state='DONE', tests_run=1, successful=True,
+                     failures=0, errors=0, skipped=1, records=[{'state': 'SKIP'}]),
+                dict(id='case.block', state='BLOCKED', reason='synthetic unavailable')]
+        result = self.aggregate_worker_results(rows)
+        self.assertEqual(result['workers'], rows)
+        self.assertEqual(result['skipped'], 1)
+        self.assertFalse(result['observed_failure'])
+        self.assert_both_selector_outcomes(result, ('BLOCKED', 2))
+
+    def test_multiple_failures_and_errors_before_block_keep_counts_and_rc1(self):
+        rows = [dict(id='case.fail', state='DONE', tests_run=1, successful=False,
+                     failures=2, errors=0, skipped=0),
+                dict(id='case.error', state='DONE', tests_run=1, successful=False,
+                     failures=0, errors=3, skipped=0),
+                dict(id='case.block', state='BLOCKED', reason='synthetic unavailable')]
+        result = self.aggregate_worker_results(rows)
+        self.assertEqual(result['workers'], rows)
+        self.assertEqual((result['failures'], result['errors'], result['tests_run']), (2, 3, 2))
+        self.assertEqual(len(result['blocked']), 1)
+        self.assert_both_selector_outcomes(result, ('FAIL', 1))
+
+    def test_suite_and_race_dispatch_use_same_outcome_before_any_return(self):
+        import automation_suite_selection as selection
+        tree = ast.parse(Path(selection.__file__).read_text())
+        function = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                        and n.name == 'run_selection')
+        decisions = [n for n in ast.walk(function) if isinstance(n, ast.Call)
+                     and isinstance(n.func, ast.Name) and n.func.id == 'selection_outcome']
+        self.assertEqual(sorted(n.args[1].value for n in decisions), ['race', 'suite'])
+
 
 if __name__ == '__main__':
     unittest.main()

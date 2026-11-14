@@ -108,12 +108,28 @@ def _run(cases):
             break  # unavailable kernel is not a reason to try remaining cases
     blocked = {row['id']: row.get('reason', 'Worker prerequisite blocked')
                for row in results if row['state'] == 'BLOCKED'}
+    observed_failure = any(
+        row['state'] == 'FAIL' or row.get('failures', 0) > 0 or row.get('errors', 0) > 0 or
+        (row['state'] == 'DONE' and row.get('successful') is not True)
+        for row in results)
     return {'tests_run': sum(row.get('tests_run', 0) for row in results),
             'successful': not blocked and all(row.get('successful') is True for row in results),
+            'observed_failure': observed_failure,
             'blocked': blocked, 'workers': results,
             'failures': sum(row.get('failures', row['state'] == 'FAIL') for row in results),
             'errors': sum(row.get('errors', 0) for row in results),
             'skipped': sum(row.get('skipped', 0) for row in results)}
+
+
+def selection_outcome(result, label):
+    """Real failures dominate later prerequisite blocks; keep both in receipts."""
+    if result['observed_failure'] or result['failures'] or result['errors']:
+        return 'FAIL', 1, 'Observed ' + label + ' failure; worker/block history retained'
+    if result['blocked']:
+        return 'BLOCKED', 2, 'Landlock ' + label + ' prerequisite blocked; no fallback'
+    if not result['successful']:
+        return 'FAIL', 1, 'Inconsistent ' + label + ' aggregate; history retained'
+    return None
 
 
 def run_selection(selector, write_receipt):
@@ -150,10 +166,9 @@ def run_selection(selector, write_receipt):
     if selector == '--suite':
         result = _run(allowed)
         write_receipt('/evidence/suite.json', result)
-        if result['blocked']:
-            return 'BLOCKED', 2, 'Landlock worker prerequisite blocked; no fallback'
-        if not result['successful']:
-            return 'FAIL', 1, 'Eligible subset failed; see named preservation blocks too'
+        outcome = selection_outcome(result, 'suite')
+        if outcome is not None:
+            return outcome
     else:
         available = {case.id(): case for case in cases}
         if not set(RACES) <= set(available):
@@ -165,8 +180,7 @@ def run_selection(selector, write_receipt):
             result = _run(list(flatten(unittest.defaultTestLoader.loadTestsFromNames(selected))))
             result['repetition'] = repetition
             write_receipt('/evidence/races-' + str(repetition).zfill(2) + '.json', result)
-            if result['blocked']:
-                return 'BLOCKED', 2, 'Landlock race worker prerequisite blocked; no fallback'
-            if result['successful'] is False:
-                return 'FAIL', 1, 'Eligible race repetition failed'
+            outcome = selection_outcome(result, 'race')
+            if outcome is not None:
+                return outcome
     return 'PASS', 0, 'All selected tests passed'
