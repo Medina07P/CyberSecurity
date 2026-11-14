@@ -24,6 +24,13 @@ class FieldChange:
     value: str
 
 
+@dataclass(frozen=True)
+class _JsonNumber:
+    # Constructed only by the JSON decoder's numeric-token callbacks. Never
+    # convert to float/int or substitute tokens into a serialized text template.
+    token: str
+
+
 def _text(value):
     if not isinstance(value, str) or '\0' in value:
         raise ValueError('Expected NUL-free text')
@@ -67,9 +74,37 @@ def _invalid_constant(_value):
 
 def _json_load(text):
     try:
-        return json.loads(text, object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
+        return json.loads(text, object_pairs_hook=_unique_object, parse_constant=_invalid_constant,
+                          parse_int=_JsonNumber, parse_float=_JsonNumber)
     except (ValueError, RecursionError):
         raise ValueError('Invalid or ambiguous JSON') from None
+
+
+def _dump_json(value):
+    """Serialize the parsed tree structurally, retaining exact numeric lexemes.
+
+    Only decoder-validated number tokens are emitted unquoted. All strings/keys
+    use the real JSON string encoder; lone surrogates reject before any output.
+    This supports finite JSON numbers independent of binary-float precision,
+    exponent range, or Python's integer digit conversion limit.
+    """
+    if isinstance(value, _JsonNumber):
+        return value.token
+    if isinstance(value, str):
+        value.encode('utf-8')
+        return json.dumps(value, ensure_ascii=False)
+    if value is None:
+        return 'null'
+    if value is True:
+        return 'true'
+    if value is False:
+        return 'false'
+    if isinstance(value, list):
+        return '[' + ', '.join(_dump_json(child) for child in value) + ']'
+    if isinstance(value, dict):
+        return '{' + ', '.join(_dump_json(key) + ': ' + _dump_json(child)
+                               for key, child in value.items()) + '}'
+    raise ValueError('Unsupported parsed JSON value')
 
 
 def _scalar_routes(value, route=(), paths=None):
@@ -153,7 +188,7 @@ def compose_request(target: str, body: str, content_type: str,
         result_body = '&'.join(form_pairs)
     if any(c.location == 'json' for c in changes):
         try:
-            result_body = json.dumps(json_value, ensure_ascii=False, allow_nan=False)
+            result_body = _dump_json(json_value)
         except (ValueError, RecursionError):
             raise ValueError('JSON serialization failed') from None
     return result_target, result_body
@@ -197,10 +232,11 @@ def main(argv=None):
             output.encode('utf-8')
         else:
             raise ValueError('Unknown fixed composition command')
+        encoded = output.encode('utf-8')  # guarded, before emitting ANY bytes
     except (ValueError, UnicodeError, OSError, RecursionError):
         print('No se pudo componer/extraer la petición: entrada inválida o ambigua.', file=sys.stderr)
         return 2  # diagnostics never echo request values or partial JSON
-    sys.stdout.buffer.write(output.encode('utf-8'))
+    sys.stdout.buffer.write(encoded)
     return 0
 
 
