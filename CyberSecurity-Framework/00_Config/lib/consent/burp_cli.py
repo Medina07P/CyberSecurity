@@ -96,6 +96,13 @@ def main(argv=None, *, framework: Path | None = None, ops: BurpOps | None = None
         observation = observe_burp(root, instance.instance_id, ops)
         if observation.listening is not True:
             ops.assist_gui()
+            observation = observe_burp(root, instance.instance_id, ops)
+        print('Listener local: ' + {None: 'NO_DETERMINADO', True: 'OCUPADO',
+                                    False: 'NO_OBSERVADO'}[observation.listening])
+        if observation.listening is not True:
+            print('Community puede ignorar el puerto solicitado. Revise Settings → Proxy → Proxy settings.')
+            print(f'Consulte de nuevo: ./burp_launcher.sh --estado --instance {instance.instance_id}')
+            print('Sin conexión de prueba ni verificación automática de captura.')
         print(f'Puerto solicitado: {instance.port}; propietario NO_DETERMINADO; captura NO_VERIFICADA.')
         print('GUI no autoriza tráfico al objetivo. Burp puede realizar su propio tráfico.')
         print(f'1. Configure manualmente navegador y proxy 127.0.0.1:{instance.port}.')

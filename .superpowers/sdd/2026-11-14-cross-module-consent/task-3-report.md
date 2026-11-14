@@ -229,3 +229,110 @@ This is implementer self-review, NOT the required independent review.
 * No real operator configuration, evidence, logs or client data was inspected.
   No installs, sudo, cleanup, network/download, merge, push or workspace removal.
   All supplied historical evidence and all existing artifacts are preserved.
+
+## Fix round1/5 — I1 Important and M1/M2 Minor, base99d00c0
+
+**STATIC DONE_WITH_CONCERNS; amended tests NOT RUN.** Read the complete
+`task-3-static-review.md` (71 lines) before this amendment. The controller
+explicitly ruled that the single-request requirement overrides the incomplete
+earlier exact-argv contract. This appendix supersedes the earlier argv and the
+claim that `/dev/null` environment homes alone disable curl configuration;
+the earlier delivery text is preserved as historical provenance, not silently
+rewritten or treated as a valid guarantee.
+
+### Findings addressed in source and covering oracles (unexecuted)
+
+* **I1:** `BurpOps.request` now passes `--disable` as the FIRST argument after
+  `curl`, explicitly disabling default configuration discovery, including its
+  passwd-home fallback. The fixed environment values remain defense in depth,
+  not the configuration-disabling boundary. Both the mandatory curl-double
+  wrapper assertion and the real request-construction/subprocess-double
+  assertion now require the complete updated argv, including first-position
+  `--disable`. No operator curlrc/passwd-home files were inspected and curl was
+  not executed. Independent review's manual evidence was read in the review
+  document, not reproduced with backend execution.
+* **M1:** Within `test_burp_open_is_not_network_consent`, added transport-only
+  assertions through the actual `BurpOps.assist_gui`: TTY EOF, refusal and generic
+  yes cause zero subprocess calls; a non-TTY exact phrase also causes none;
+  exact consent with absent/ambiguous windows causes only the window search;
+  accepted unique-window data exercises geometry parsing and asserts the exact
+  search/xwininfo/raise/activate/mousemove-click sequence. Only stdin/stderr,
+  executable availability and subprocess transport are doubled; GUI business
+  functions are not replaced. No real display/executable/process was invoked.
+  Within `test_burp_stop_pins_owned_identity`, added wait=True through the real
+  public parser and stop function: exact identity/open/identity/TERM/wait5/close
+  sequence with no KILL, and receipt bytes unchanged. Existing wait=False/KILL
+  assertions remain; all identity/signal/wait/close transport stays synthetic.
+* **M2:** After wait and optional assistance the CLI now passively reobserves,
+  reports `Listener local: NO_OBSERVADO` or `NO_DETERMINADO` when applicable,
+  warns Community may ignore the requested port, and gives Settings → Proxy →
+  Proxy settings plus an instance-specific `--estado` command. A positive
+  observation says only `OCUPADO`; it still does not establish owner/capture.
+  No socket/curl fallback or additional wait loop is introduced. The manual
+  browser/CA/Repeater/export guidance remains. Within the existing opening ID,
+  actual parser/start/receipt/observation business logic is exercised with
+  synthetic launch/identity/listener/wait/assistance transports: assert passive
+  post-assistance observation order and output for absent, unknown and occupied
+  final listener, actionable advice on negative/unknown results, retained
+  Repeater guide and NO_VERIFICADA capture statement. The fixture's real/stub
+  GUI and production60s wait are not needed by these new assertions.
+
+Updated argv (supersedes the earlier reconciled argv in this report):
+
+```text
+curl --disable --request GET --max-time 5 --noproxy ''
+     --proxy http://127.0.0.1:N --output /dev/null
+     --write-out %{http_code} -- URL
+```
+
+No redirects/retries/`-k`, URL expansion, session-derived permission or new
+requests were added. URL argv visibility and all previous same-UID receipt,
+daemon/process-tree, GUI geometry, Linux/procfd/pidfd and operational-compatibility
+limits remain. This is a written implementation correction, not an observed
+single-request runtime certificate. GUI assistance tests describe local UI
+transport behavior, not a guarantee that third-party Burp itself is network inert.
+
+### Exact static commands and results
+
+Only three source paths amended: `consent/burp.py`, `consent/burp_cli.py` and
+`tests/test_cross_consent.py`, plus this report. No menus, selectors, case IDs,
+runtime/source manifests, fixture grants, permissions or baselines changed.
+Existing artifacts and the independent review are preserved.
+
+Actual commands in this round:
+
+* `git status --short`: initial output empty at the supplied base.
+* Scoped `git diff -- CyberSecurity-Framework/00_Config/lib/consent/burp.py
+  CyberSecurity-Framework/00_Config/lib/consent/burp_cli.py
+  CyberSecurity-Framework/tests/test_cross_consent.py`: read the entire patch
+  for self-review, including first-argument ordering, listener observation
+  sequence, transport-only GUI oracles and graceful wait fd closure.
+* Data-only inline script: `python3 -I -B - <<'PY'`, importing only stdlib
+  `ast`, `json`, `Path`, `subprocess`; no repo imports or product execution.
+  It ran these exact checks:
+  - `ast.parse(data, filename=name)` and `assert b'\r' not in data` on the
+    three amended Python sources: all three `AST/LF OK`.
+  - `git show 99d00c0:CyberSecurity-Framework/tests/test_cross_consent.py`
+    via captured subprocess; compare test function names and `ast.dump` bodies:
+    nine unchanged IDs, changed bodies exactly opening/verification/stop.
+    Output: `TEST IDS OK: nine unchanged IDs; only open/verify/stop bodies amended`.
+  - Locate `BurpOps.request` and its subprocess.run first argv AST list;
+    `ast.literal_eval` of its first two elements equals `['curl','--disable']`.
+    Output: `ARGV AST OK: curl --disable first; no module import/execution`.
+  - `json.loads` both `automation_sandbox_sources.json` and
+    `automation_sandbox_manifest.json`; compare bytes against captured
+    `git show 99d00c0:<path>`: unchanged. Output:
+    `JSON OK: source/runtime manifests unchanged`.
+  - Captured `bash -n CyberSecurity-Framework/03_Scanners/web_scanners/burpsuite/burp_launcher.sh`:
+    rc0, stdout `''`, stderr `''`.
+  - Captured `git diff --check`: rc0, stdout `''`, stderr `''`.
+  The inline script exited0. Bash stderr was explicitly captured, not inferred
+  from rc alone. These checks parse source data, not execute test assertions.
+
+No repo imports/helpers/tests/probes/launcher/product/backends/stubs were run,
+even sandboxed. No network, display, real process signal, sudo, installation,
+download, cleanup, subagent, merge or push. Self-review is not independent
+rereview. All three findings are addressed in source and covering written
+oracles; **runtime correctness remains unverified** until independent static
+rereview and separate exact controller authorization. Task4 remains untouched
+and pending. No GREEN or global closure is asserted.

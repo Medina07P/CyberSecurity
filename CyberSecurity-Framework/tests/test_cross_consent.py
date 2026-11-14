@@ -370,6 +370,81 @@ class ConsentTests(unittest.TestCase):
             for path in instance.directory.iterdir():
                 self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
+        # Real GUI consent/disambiguation/geometry business, subprocess transport
+        # only doubled: no display, GUI executable, sleep or network invocation.
+        class TTY(io.StringIO):
+            def isatty(self):
+                return True
+        for answer in ('', 'no\n', 'si\n'):
+            with mock.patch('sys.stdin', TTY(answer)), mock.patch('sys.stderr', TTY()), \
+                    mock.patch.object(burp.shutil, 'which', return_value='/synthetic/gui'), \
+                    mock.patch.object(burp.subprocess, 'run') as run:
+                burp.BurpOps().assist_gui()
+            run.assert_not_called()
+        with mock.patch('sys.stdin', io.StringIO('INICIAR GUI\n')), \
+                mock.patch('sys.stderr', TTY()), \
+                mock.patch.object(burp.subprocess, 'run') as run:
+            burp.BurpOps().assist_gui()
+        run.assert_not_called()  # exact phrase alone cannot bypass non-TTY gate
+        for windows in ('', '123\n456\n'):
+            with mock.patch('sys.stdin', TTY('INICIAR GUI\n')), \
+                    mock.patch('sys.stderr', TTY()), \
+                    mock.patch.object(burp.shutil, 'which', return_value='/synthetic/gui'), \
+                    mock.patch.object(burp.subprocess, 'run', return_value=
+                                      subprocess.CompletedProcess([], 0, windows, '')) as run:
+                burp.BurpOps().assist_gui()
+            self.assertEqual([call.args[0] for call in run.call_args_list],
+                             [['xdotool', 'search', '--name', 'Burp Suite Community']])
+        geometry = ('Absolute upper-left X: 10\nAbsolute upper-left Y: 20\n'
+                    'Width: 800\nHeight: 600\n')
+        responses = [subprocess.CompletedProcess([], 0, '123\n', ''),
+                     subprocess.CompletedProcess([], 0, geometry, '')] + [
+                         subprocess.CompletedProcess([], 0, '', '') for _ in range(3)]
+        with mock.patch('sys.stdin', TTY('INICIAR GUI\n')), \
+                mock.patch('sys.stderr', TTY()), \
+                mock.patch.object(burp.shutil, 'which', return_value='/synthetic/gui'), \
+                mock.patch.object(burp.subprocess, 'run', side_effect=responses) as run:
+            burp.BurpOps().assist_gui()
+        self.assertEqual([call.args[0] for call in run.call_args_list], [
+            ['xdotool', 'search', '--name', 'Burp Suite Community'],
+            ['xwininfo', '-id', '123'], ['xdotool', 'windowraise', '123'],
+            ['xdotool', 'windowactivate', '--sync', '123'],
+            ['xdotool', 'mousemove', '748', '587', 'click', '1']])
+
+        # CLI diagnosis uses actual start/receipt/observe logic. Only launch,
+        # identity, listener and wait/assistance transports are synthetic.
+        cli = self.core(f, 'burp_cli')
+        class OpeningOps(LaunchOps):
+            def __init__(self, final_ports):
+                self.observations = iter((set(), set(), final_ports))
+                self.events = []
+            def listening_ports(self):
+                self.events.append('observe')
+                return next(self.observations)
+            def await_listener(self, port):
+                self.events.append(('wait', port))
+            def assist_gui(self):
+                self.events.append('assist')
+        for final_ports, diagnosis in ((set(), 'NO_OBSERVADO'),
+                                       (None, 'NO_DETERMINADO'),
+                                       ({8081}, 'OCUPADO')):
+            ops = OpeningOps(final_ports)
+            stdout = io.StringIO()
+            with mock.patch.object(cli.sys, 'stdout', stdout), \
+                    mock.patch.object(burp.shutil, 'which',
+                                      return_value=str(f.bin / 'burpsuite')):
+                self.assertEqual(cli.main(['8081'], framework=f.framework, ops=ops), 0)
+            self.assertEqual(ops.events, ['observe', ('wait', 8081), 'observe', 'assist', 'observe'])
+            output = stdout.getvalue()
+            self.assertIn('Listener local: ' + diagnosis, output)
+            self.assertIn('Repeater', output)
+            self.assertIn('captura NO_VERIFICADA', output)
+            if final_ports != {8081}:
+                self.assertIn('Settings → Proxy → Proxy settings', output)
+                self.assertIn('--estado --instance burp-', output)
+            else:
+                self.assertNotIn('puede ignorar el puerto', output)
+
     def test_burp_status_has_no_side_effects(self):
         for args, rc in ((('--help',), 0), (('--unknown',), 2),
                          (('--help', '--execute'), 2), (('--estado', '--execute'), 2),
@@ -429,7 +504,7 @@ class ConsentTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [r for r in f.records() if r[0] == 'curl']
         self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][1:], ['--request', 'GET', '--max-time', '5', '--noproxy', '',
+        self.assertEqual(calls[0][1:], ['--disable', '--request', 'GET', '--max-time', '5', '--noproxy', '',
                                       '--proxy', 'http://127.0.0.1:8080', '--output', '/dev/null',
                                       '--write-out', '%{http_code}', '--',
                                       'https://example.test/a?token=secret'])
@@ -471,6 +546,10 @@ class ConsentTests(unittest.TestCase):
         response = subprocess.CompletedProcess([], 0, '200', '')
         with mock.patch.object(burp.subprocess, 'run', return_value=response) as run:
             self.assertEqual(burp.BurpOps().request('https://example.test/a', 8080), (0, '200'))
+        self.assertEqual(run.call_args.args[0], [
+            'curl', '--disable', '--request', 'GET', '--max-time', '5', '--noproxy', '',
+            '--proxy', 'http://127.0.0.1:8080', '--output', '/dev/null',
+            '--write-out', '%{http_code}', '--', 'https://example.test/a'])
         environment = run.call_args.kwargs['env']
         for variable in ('CURL_HOME', 'XDG_CONFIG_HOME', 'HOME'):
             self.assertEqual(environment[variable], '/dev/null')
@@ -491,6 +570,7 @@ class ConsentTests(unittest.TestCase):
                 self.ticks = 20
                 self.uid = 1000
                 self.boot_id = 'synthetic-boot'
+                self.exited = False
             def identity(self, pid):
                 self.events.append(('identity', pid))
                 return {'pid': 123, 'start_ticks': self.ticks, 'uid': self.uid, 'boot_id': self.boot_id}
@@ -501,7 +581,7 @@ class ConsentTests(unittest.TestCase):
                 self.events.append(('signal', fd, number))
             def wait(self, fd, timeout):
                 self.events.append(('wait', fd, timeout))
-                return False
+                return self.exited
             def close(self, fd):
                 self.events.append(('close', fd))
         instance = 'burp-' + 'a' * 32
@@ -533,6 +613,14 @@ class ConsentTests(unittest.TestCase):
         self.assertEqual(ops.events, [('identity', 123), ('open', 123), ('identity', 123),
                                      ('signal', 42, signal.SIGTERM), ('wait', 42, 5),
                                      ('signal', 42, signal.SIGKILL), ('close', 42)])
+        self.assertEqual(receipt.read_bytes(), before)
+        ops = Ops()
+        ops.exited = True
+        self.assertEqual(cli.main(['--parar', '--instance', instance, '--execute'],
+                                  framework=f.framework, ops=ops), 0)
+        self.assertEqual(ops.events, [('identity', 123), ('open', 123), ('identity', 123),
+                                     ('signal', 42, signal.SIGTERM), ('wait', 42, 5),
+                                     ('close', 42)])
         self.assertEqual(receipt.read_bytes(), before)
         for ticks in (21, None):
             ops = Ops()
