@@ -12,6 +12,54 @@ import automation_sandbox_inside as inside
 
 
 class SandboxBoundaryTests(unittest.TestCase):
+    def test_identity_mapping_failure_reports_exact_metadata_before_any_probe(self):
+        for mapping, namespace in (('1000 0 1\n', 'user:[private]'),
+                                   ('1000 0 1\n', 'user:[private]\n\tescaped'),
+                                   ('1000 1000 65536\n', 'user:[private]'),
+                                   ('1000 1000 1\n', 'user:[host]')):
+            with self.subTest(mapping=mapping, namespace=namespace), \
+                    mock.patch.object(inside.resource, 'getrlimit', return_value=(256, 256)), \
+                    mock.patch.object(inside.os, 'getuid', return_value=1000), \
+                    mock.patch.object(inside.os, 'geteuid', return_value=1000), \
+                    mock.patch.object(inside, 'read_json', return_value={
+                        'host_uid': 1000, 'host_namespaces': {'user': 'user:[host]'}}), \
+                    mock.patch.object(Path, 'read_text', return_value=mapping), \
+                    mock.patch.object(inside.os, 'readlink', return_value=namespace), \
+                    mock.patch('builtins.open') as metadata_after_failure, \
+                    mock.patch.object(inside, 'run_probes') as probes, \
+                    mock.patch.object(inside.subprocess, 'Popen') as spawn:
+                with self.assertRaises(inside.NprocBlocked) as failure:
+                    inside._nproc_observation()
+                text = str(failure.exception)
+                self.assertIn('NPROC accounting identity/user namespace not demonstrable', text)
+                self.assertNotIn('\n', text)
+                observed = inside.json.loads(text.split('identity_metadata=', 1)[1])
+                self.assertEqual(observed, {
+                    'uid': 1000, 'euid': 1000, 'host_uid': 1000,
+                    'uid_map': [[int(p) for p in line.split()] for line in mapping.splitlines()],
+                    'user_namespace': namespace, 'expected_user_namespace': 'user:[host]'})
+                metadata_after_failure.assert_not_called()
+                probes.assert_not_called()
+                spawn.assert_not_called()
+
+    def test_identity_diagnostic_is_retained_in_blocked_receipt_without_probe(self):
+        reason = ('NPROC accounting identity/user namespace not demonstrable; '
+                  'identity_metadata={"uid":1000,"euid":1000,"host_uid":1000,'
+                  '"uid_map":[[1000,0,1]],"user_namespace":"user:[private]",'
+                  '"expected_user_namespace":"user:[host]"}')
+        with mock.patch.object(inside, '_NPROC_ENTRY', None), \
+                mock.patch.object(inside, '_workload_nproc_gate',
+                                  side_effect=inside.NprocBlocked(reason)), \
+                mock.patch.object(inside, '_context') as context, \
+                mock.patch.object(inside, 'run_probes') as probes, \
+                mock.patch.object(inside, 'write_json') as receipt:
+            self.assertEqual(inside.inside_main(['--probes']), 2)
+        context.assert_not_called()
+        probes.assert_not_called()
+        self.assertEqual(receipt.call_args.args[1]['reason'], reason)
+        self.assertEqual(receipt.call_args.args[1]['state'], 'BLOCKED')
+        self.assertIs(receipt.call_args.args[1]['tests_started'], False)
+
     def test_entry_gate_precedes_sys_path_and_all_probe_dispatch(self):
         tree = ast.parse(Path(inside.__file__).read_text())
         entry = next(node for node in tree.body if isinstance(node, ast.If) and
