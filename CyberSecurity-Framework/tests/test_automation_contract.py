@@ -8,7 +8,8 @@ from pathlib import Path
 import re
 import unittest
 
-from automation_menu_inventory import function_body, literal_options, special_options
+from automation_menu_inventory import (case_body, evidence_manage_flags, evidence_menu_options,
+                                       function_body, literal_options, special_options)
 
 FW = Path(__file__).resolve().parents[1]
 ROOT = FW.parent
@@ -51,11 +52,19 @@ def special_sources():
         ('manager', 'cyber_framework.sh'),
         ('wizard', '00_Config/scripts/config_wizard.sh'),
         ('keys', '00_Config/scripts/api_keys.py'),
-        ('evidence', '10_Evidence/evidence_manager.sh'))}
+        ('evidence_cli', '00_Config/lib/evidence/cli.py'),
+        ('evidence_menu', '00_Config/lib/evidence_menu.bash'))}
 
 
 def explain_special_options(doc, sources):
-    for key in special_options(sources):
+    required = special_options(sources)
+    # Reconciled10 is exact in both directions: a stale documented option must
+    # not mask deletion of a registration/dispatch arm in the current source.
+    documented10 = set(re.findall(r'^\| `(10\.[\w!-]+)` \|', doc, re.M))
+    required10 = {key for key in required if key.startswith('10.')}
+    if documented10 != required10:
+        raise AssertionError('Source/doc10 options changed: ' + repr(sorted(documented10 ^ required10)))
+    for key in required:
         explained_row(doc, key)
 
 
@@ -223,6 +232,35 @@ class Contracts(unittest.TestCase):
         doc = (ROOT / 'docs/MENU-OPCIONES.md').read_text()
         sources = special_sources()
         required = special_options(sources)
+        self.assertEqual(evidence_manage_flags(sources['evidence_cli']),
+                         {'--help', '-h', '--add', '--target', '--list', '--verify', '--package'})
+        self.assertEqual(evidence_menu_options(sources['evidence_menu']),
+                         {str(n) for n in range(10)})
+        self.assertEqual({key for key in required if key.startswith('10.')},
+                         {'10.' + str(n) for n in range(10)} |
+                         {'10.' + flag for flag in ('help', 'add', 'target', 'list', 'verify', 'package')})
+        dispatch = case_body(function_body(sources['evidence_menu'], 'evidence_menu'), 'choice')
+        mappings = {
+            "0|'!'": ('return 0',),
+            '1': ('for tool in python3 cutycapt tcpdump nmap', 'command -v "$tool"'),
+            '2': ('evidence_import_selection', 'evidence_execute_script 10_Evidence/evidence_manager.sh 10_Evidence --prepared "${EVIDENCE_ARGS[@]}"'),
+            '3': ('evidence_execute_script 10_Evidence/evidence_manager.sh 10_Evidence --prepared --list',),
+            '4': ('evidence_execute_script 10_Evidence/evidence_manager.sh 10_Evidence --prepared --verify',),
+            '5': ('evidence_read', '--prepared --package "$value"', '--prepared --package || :'),
+            '6': ('evidence_execute_script 10_Evidence/auto_capture.sh 10_Evidence',),
+            '7': ('evidence_execute_script 10_Evidence/run_all_evidence.sh 10_Evidence --prepared --offline',),
+            '8': ('printf', 'Guía local: 10_Evidence/USE.md.'),
+            '9': ("run_module_scripts 10_Evidence '10_Evidence — originales'",),
+        }
+        for arm, fragments in mappings.items():
+            match = re.search(r'(?:^|;;)\s*' + re.escape(arm) + r'\)(.*?)(?=;;)', dispatch, re.S)
+            self.assertIsNotNone(match, arm)
+            for fragment in fragments:
+                self.assertIn(fragment, match[1], arm)
+        # Wrapper delegation, not a nonexistent legacy Bash case contract.
+        wrapper = (FW / '10_Evidence/evidence_manager.sh').read_text()
+        self.assertIn('manage "$@"', wrapper)
+        self.assertIn('evidence/cli.py', wrapper)
         # Explicitly assert the previously untested source/contract namespaces.
         for key in ('R.abrir', 'T.numero', 'T.0', 'lista.numero', 'lista.0', 'lista.R'):
             self.assertIn(key, required)
@@ -246,7 +284,8 @@ class Contracts(unittest.TestCase):
             ('manager', 'if [[ "$choice" == "0" ]]; then', 'if [[ "$choice" == "X" ]]; then :; fi\n        if [[ "$choice" == "0" ]]; then', 'lista.X'),
             ('wizard', '1|2) WZ_MODE=', '3) WZ_MODE=3 ;;\n            1|2) WZ_MODE=', '00.wizard.3'),
             ('keys', 'args = parser.parse_args()', 'subparsers.add_parser("future")\n    args = parser.parse_args()', '00.keys.future'),
-            ('evidence', '--verify)  verify_evidence ;;', '--future) list_evidence ;;\n    --verify)  verify_evidence ;;', '10.future'),
+            ('evidence_cli', "manage.add_argument('--verify'", "manage.add_argument('--future')\n    manage.add_argument('--verify'", '10.future'),
+            ('evidence_menu', '3) evidence_execute_script', '10) : ;;\n            3) evidence_execute_script', '10.10'),
         )
         for source, old, new, key in mutations:
             with self.subTest(added=key):
@@ -258,6 +297,27 @@ class Contracts(unittest.TestCase):
         changed = dict(sources, wizard=sources['wizard'].replace('¿Otro objetivo?', '¿Otra acción?'))
         with self.assertRaises(AssertionError):
             special_options(changed)
+        # Deletions must change the exact source contract, not remain hidden by
+        # old documentation rows. Both real mutation anchors occur exactly once.
+        for source, old, new, key in (
+                ('evidence_cli', "    manage.add_argument('--verify', action='count', default=0, help='Verificar integridad')\n", '', '10.verify'),
+                ('evidence_menu', '3) evidence_execute_script 10_Evidence/evidence_manager.sh 10_Evidence --prepared --list || : ;;', '', '10.3')):
+            with self.subTest(deleted_source=key):
+                self.assertEqual(sources[source].count(old), 1)
+                changed = dict(sources, **{source: sources[source].replace(old, new, 1)})
+                self.assertEqual(special_options(sources) - special_options(changed), {key})
+                with self.assertRaises(AssertionError):
+                    explain_special_options(doc, changed)
+        for replacement in ("'--verify', '-v'", "'--verify', alias", "flag"):
+            changed = sources['evidence_cli'].replace("'--verify', action=", replacement + ', action=', 1)
+            with self.subTest(unknown_alias=replacement), self.assertRaises(AssertionError):
+                evidence_manage_flags(changed)
+        # Explicit -h alias removal is observable even though --help keeps its row.
+        self.assertNotIn('-h', evidence_manage_flags(sources['evidence_cli'].replace("'--help', '-h'", "'--help'", 1)))
+        for owner, flag in (('parser', '--internal-future'), ('sub', '--capture-future')):
+            changed = sources['evidence_cli'].replace('    args_list =',
+                f"    {owner}.add_argument('{flag}')\n    args_list =", 1)
+            self.assertEqual(evidence_manage_flags(changed), evidence_manage_flags(sources['evidence_cli']))
 
     def test_k_sync_semantic_source_contract(self):
         # Deliberately narrow semantic check for I2, not a claim that row length

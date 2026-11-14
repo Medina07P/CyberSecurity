@@ -1,6 +1,25 @@
 # Uso de 09 — contratos, no autorización
 
-**Implementación/verificación lista PARA revisión final independiente; NO
+## Combinación develop/09: estado actual acotado
+
+Task3 Phase A,2026-11-14 sobre fdf578f: reconciliación de contratos/docs10 y
+prueba de ficha09 antes de cambiar el puente/texto productivo. La ficha antes
+de las opciones, tanto desde el gestor como desde el puente aislado, es todavía
+**contrato pendiente de RED observado e implementación Phase B**, no función
+entregada aquí. Cero/EOF/lista original deben seguir sin consultar sesión,
+escribir configuración/bytecode ni ejecutar backends.
+
+El controlador observó60units PASS;179integration con10fallos,0errores,1SKIP:
+los tres casos restantes eran contratos10legacy (1+8+1fallos). Los25casos de
+informes quedaron GREEN, incluidos recibos/generaciones repetidas del motor11.
+Esta entrega NO ejecuta nada ni autoriza repetir el selector; el gate de revisión
+independiente y autorización exacta pertenece al controlador. No se declara
+suite completa verde, cierre09/global ni equivalencia de carreras/cancelación
+históricas con este SHA. [Inventario reconciliado](../../docs/MENU-OPCIONES.md).
+
+## Historia del aislador anterior (no verificación de esta combinación)
+
+**Implementación/verificación histórica lista PARA revisión final independiente; NO
 aprobación global.** Sobre1fde308 el controlador verificó60sandbox units PASS y
 159legacy/integration,0fallos0errores1SKIP dinámico (pwsh ausente del runtime),
 rc0;25casos autorizados ejecutados, workers con Landlock ABI7 observado.
@@ -67,6 +86,11 @@ Los pasos `report` repetidos con IDs distintos son válidos: cada uno reserva
 `<run>/report-<step-id>/report-profile` y `reports/` privados, sin sobrescribir
 otro paso. El shim de informe único conserva sus nombres externos y códigos
 raw del motor; publica desde el namespace del paso `report`.
+El motor recibe salida JSON: solo se consume la generación identificada por ese
+recibo y su `run.json` final concordante, dentro de
+`<run>/report-<step-id>/reports/runs/<id>/`. No se usan archivos planos antiguos,
+glob ni `latest`. rc0 y rc3 mantienen significados distintos; un recibo ausente,
+ajeno o incompleto impide publicar aunque exista HTML.
 `--phase scan` usa scan_basic; `--phase enum` pide permisos users y
 anonymous_access para SSH/shares, añade versiones BD y WhatWeb solo con URL;
 `--phase web` usa WhatWeb y Nikto. `--phase exploit` exige elegir `--action`.
