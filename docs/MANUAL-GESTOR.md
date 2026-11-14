@@ -281,15 +281,32 @@ El gestor:
 1. Pide **cliente** y **auditor** la primera vez y los guarda en `11_Reports/.report_profile` (git-ignored). Enter conserva el valor.
 2. Usa el objetivo de la sesión.
 3. Ejecuta el motor de informes (`11_Reports/report_engine.py`).
-4. Muestra las rutas de los informes generados.
-5. Ofrece abrir el HTML con `xdg-open`.
+4. Muestra solo los archivos escritos en esa ejecución, respetando salidas personalizadas.
+5. Ofrece abrir el HTML del tipo elegido; nunca uno histórico tras error.
+
+El motor lee evidencias existentes: no vuelve a ejecutar los módulos ni
+empaqueta evidencias automáticamente. Integra fuentes soportadas de `scans/`
+y contexto/metadata de 01, 02, 07, 08 y 10. No mezcla objetivos sin `--todos`
+explícito. Sin objetivo ni sesión falla, en lugar de agregar otros clientes.
+La sección **Cobertura de evidencias** indica fuentes evaluadas, contexto,
+no evaluables y no soportadas. Capturas, etiquetas y referencias CVE no son
+por sí solas vulnerabilidades. Detalles en `11_Reports/USE.md`.
 
 ### Los dos informes
 
 - **Técnico** (`informe_tecnico.md` y `.html`): hallazgos con severidad, activo, técnica, evidencia (`archivo:línea`), reproducción, recomendación y referencias.
 - **Cliente** (`informe_cliente.md` y `.html`): resumen ejecutivo, riesgo de negocio, plan de acción, sin payloads ni rutas internas.
 
-Ambos se generan en `11_Reports/generated/<objetivo>/`.
+Ambos se generan en `11_Reports/generated/<objetivo>/runs/<id>/`. Cada ejecución
+conserva sus documentos y recibo `run.json`, sin sobrescribir informes anteriores.
+`--todos` usa raíz `_todos`, sin tratar el host de sesión como alcance agregado.
+`--salida`/`REPORT_OUT_DIR` seleccionan raíz: se añade `runs/<id>/` dentro.
+Las automatizaciones deben usar `salida`/`archivos` del recibo `--json`.
+
+Masscan JSON y RustScan texto estructurado aportan observaciones de puertos,
+combinadas con Nmap sin duplicados TCP/UDP. No acreditan último intento ni
+finalización; vacío o truncado no es «sin puertos». Consulte `11_Reports/USE.md`
+para formatos admitidos y límites. Rerender genera un nuevo run sin releer fuentes.
 
 ### Línea de comandos
 
@@ -311,12 +328,13 @@ python3 11_Reports/report_engine.py \
 | `--objetivo` | objetivo de `.session` | solo entra lo atribuible a ese host |
 | `--tipo` | `ambos` | `tecnico` / `cliente` / `ambos` |
 | `--scans` | `<repo>/scans` | raíz de resultados |
-| `--salida` | `11_Reports/generated/<slug>` | destino |
+| `--fuentes` | raíz del framework si scans no se personalizó | árboles anteriores; con scans externo debe seleccionarse explícitamente |
+| `--salida` | `11_Reports/generated/<slug>` | raíz de historial: salida real dentro de runs/<id>/ |
 | `--cliente` / `--auditor` | perfil / usuario del sistema | portada |
 | `--todos` | no | agrega todos los objetivos en un informe multiobjetivo |
 | `--incluir-sin-objetivo` | no | añade fuentes no atribuibles, marcadas |
 | `--desde-json <ruta>` | no | re-renderiza sin volver a escanear: edita `findings.json` (no el Markdown) y vuelve a generar |
-| `--json` | no | imprime el resumen JSON por stdout |
+| `--json` | no | imprime run_id, salida efectiva y archivos escritos (incluido run.json); también con rc3 |
 | `--abrir` | no | abre el HTML al terminar |
 
 ### Perfil de cliente

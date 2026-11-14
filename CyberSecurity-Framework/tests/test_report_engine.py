@@ -2,6 +2,7 @@ import json, os, sys, tempfile, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+from reports_fixture import latest_run
 sys.path.insert(0, str(ROOT / "11_Reports"))
 
 _TMP = Path(tempfile.mkdtemp(prefix="reportes-fixtures-"))
@@ -226,11 +227,11 @@ class NiktoTests(unittest.TestCase):
         r = nikto.parse(write("nikto/a.txt", txt), ROOT)
         self.assertEqual(r.findings, []); self.assertEqual(r.no_evaluable, [])
 
-    def test_cve_is_confirmed_and_osvdb_is_observation(self):
+    def test_cve_is_candidate_and_osvdb_is_observation(self):
         txt = "+ /x: CVE-2020-1234: demo\n+ OSVDB-3092: /admin/: admin found\n"
         r = nikto.parse(write("nikto/b.txt", txt), ROOT)
         self.assertEqual([f.rule for f in r.findings], ["nikto.cve", "nikto.osvdb"])
-        self.assertEqual([f.confianza for f in r.findings], ["confirmado", "observacion"])
+        self.assertEqual([f.confianza for f in r.findings], ["candidato", "observacion"])
         self.assertEqual(r.findings[0].evidencia[0].linea, 1)
 
     def test_security_header_lines_are_left_to_headers_parser(self):
@@ -635,10 +636,10 @@ class CliTests(unittest.TestCase):
         rc = run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--tipo", "ambos",
                   "--salida", str(self.out), "--cliente", "ACME", "--auditor", "Ana"])
         self.assertEqual(rc, 0)
-        self.assertTrue((self.out / "findings.json").exists())
-        self.assertEqual(json.loads((self.out / "findings.json").read_text())["meta"]["cliente"], "ACME")
-        self.assertTrue((self.out / "informe_tecnico.html").exists())
-        self.assertTrue((self.out / "informe_cliente.html").exists())
+        self.assertTrue((latest_run(self.out) / "findings.json").exists())
+        self.assertEqual(json.loads((latest_run(self.out) / "findings.json").read_text())["meta"]["cliente"], "ACME")
+        self.assertTrue((latest_run(self.out) / "informe_tecnico.html").exists())
+        self.assertTrue((latest_run(self.out) / "informe_cliente.html").exists())
 
     def test_target_isolation_covers_json_and_all_four_documents(self):
         rc = run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--tipo", "ambos",
@@ -649,19 +650,19 @@ class CliTests(unittest.TestCase):
             "informe_cliente.md", "informe_cliente.html",
         )
         for name in names:
-            text = (self.out / name).read_text(encoding="utf-8")
+            text = (latest_run(self.out) / name).read_text(encoding="utf-8")
             self.assertNotIn("127.0.0.10", text, name)
-        data = json.loads((self.out / "findings.json").read_text(encoding="utf-8"))
+        data = json.loads((latest_run(self.out) / "findings.json").read_text(encoding="utf-8"))
         self.assertEqual(list(data["activos"]), ["127.0.0.1"])
         self.assertEqual(data["objetivos"], ["127.0.0.1"])
 
     def test_exit_3_when_nothing_is_evaluable(self):
         self.assertEqual(run(["--scans", str(self.empty), "--objetivo", "127.0.0.1", "--salida", str(self.out)]), 3)
         # Los informes deben existir aunque no haya nada evaluable
-        self.assertTrue((self.out / "informe_tecnico.md").exists())
-        self.assertTrue((self.out / "informe_cliente.md").exists())
-        self.assertTrue((self.out / "findings.json").exists())
-        md = (self.out / "informe_cliente.md").read_text()
+        self.assertTrue((latest_run(self.out) / "informe_tecnico.md").exists())
+        self.assertTrue((latest_run(self.out) / "informe_cliente.md").exists())
+        self.assertTrue((latest_run(self.out) / "findings.json").exists())
+        md = (latest_run(self.out) / "informe_cliente.md").read_text()
         self.assertIn("No hubo fuentes evaluables", md)
 
     def test_usage_error_returns_1_and_help_returns_0(self):
@@ -670,15 +671,16 @@ class CliTests(unittest.TestCase):
 
     def test_desde_json_respects_an_edit(self):
         run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--salida", str(self.out)])
-        data = json.loads((self.out / "findings.json").read_text()); data["hallazgos"][0]["titulo"] = "EDITADO"
-        (self.out / "findings.json").write_text(json.dumps(data))
-        self.assertEqual(run(["--desde-json", str(self.out / "findings.json"), "--salida", str(self.out), "--tipo", "tecnico"]), 0)
-        self.assertIn("EDITADO", (self.out / "informe_tecnico.md").read_text())
+        source = latest_run(self.out) / 'findings.json'
+        data = json.loads(source.read_text()); data["hallazgos"][0]["titulo"] = "EDITADO"
+        source.write_text(json.dumps(data))
+        self.assertEqual(run(["--desde-json", str(source), "--salida", str(self.out), "--tipo", "tecnico"]), 0)
+        self.assertIn("EDITADO", (latest_run(self.out) / "informe_tecnico.md").read_text())
 
     def test_profile_is_used_when_flags_are_absent(self):
         write_profile(self.profile, {"cliente": "Perfil SA", "auditor": "Ana"})
         run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--salida", str(self.out)])
-        self.assertEqual(json.loads((self.out / "findings.json").read_text())["meta"]["cliente"], "Perfil SA")
+        self.assertEqual(json.loads((latest_run(self.out) / "findings.json").read_text())["meta"]["cliente"], "Perfil SA")
 
     def test_json_summary_is_machine_readable(self):
         import contextlib, io
@@ -690,10 +692,10 @@ class CliTests(unittest.TestCase):
 
     def test_todos_and_incluir_sin_objetivo(self):
         run(["--scans", str(self.scans), "--todos", "--salida", str(self.out)])
-        ids = {h["activo"] for h in json.loads((self.out / "findings.json").read_text())["hallazgos"]}
+        ids = {h["activo"] for h in json.loads((latest_run(self.out) / "findings.json").read_text())["hallazgos"]}
         self.assertIn("127.0.0.10", " ".join(ids))
         run(["--scans", str(self.scans), "--objetivo", "127.0.0.1", "--incluir-sin-objetivo", "--salida", str(self.out)])
-        self.assertTrue(any(h["rule"] == "api.method" for h in json.loads((self.out / "findings.json").read_text())["hallazgos"]))
+        self.assertTrue(any(h["rule"] == "api.method" for h in json.loads((latest_run(self.out) / "findings.json").read_text())["hallazgos"]))
 
     def test_framework_root_points_to_cybersecurity_framework(self):
         self.assertTrue((_FRAMEWORK_ROOT / "00_Config").is_dir())
@@ -711,10 +713,10 @@ class CliTests(unittest.TestCase):
         # Los cuatro documentos: idénticos byte a byte (misma fecha en meta)
         for name in ("informe_tecnico.md", "informe_tecnico.html",
                      "informe_cliente.md", "informe_cliente.html"):
-            self.assertEqual((out1 / name).read_bytes(), (out2 / name).read_bytes(), name)
+            self.assertEqual((latest_run(out1) / name).read_bytes(), (latest_run(out2) / name).read_bytes(), name)
         # JSON: todo igual salvo la marca de tiempo
-        d1 = json.loads((out1 / "findings.json").read_text())
-        d2 = json.loads((out2 / "findings.json").read_text())
+        d1 = json.loads((latest_run(out1) / "findings.json").read_text())
+        d2 = json.loads((latest_run(out2) / "findings.json").read_text())
         d1["meta"].pop("generado_en")
         d2["meta"].pop("generado_en")
         self.assertEqual(d1, d2)

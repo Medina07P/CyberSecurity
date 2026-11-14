@@ -1,58 +1,31 @@
 #!/bin/bash
-
-# ============================================================
-# RUN ALL REPORTS - Genera todos los informes
+# RUN ALL REPORTS — Solo lectura de evidencias, sin ejecutar módulos ni empaquetar.
 # Uso: ./run_all_reports.sh <objetivo>
-# Ejemplo: ./run_all_reports.sh 192.168.1.10
-# ============================================================
+# Ejemplo: ./run_all_reports.sh example.invalid
 
-MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$MODULE_DIR" || exit 1
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+if [[ $# -ne 1 || -z "$1" ]]; then
+    echo 'Uso: ./run_all_reports.sh <objetivo>' >&2
+    exit 1
+fi
 
-OBJETIVO="${1:-}"
-
-echo "════════════════════════════════════════════════════════"
-echo "  GENERANDO TODOS LOS INFORMES"
-echo "════════════════════════════════════════════════════════"
-
-echo ""
-echo "📊 GENERANDO INFORMES..."
-echo "────────────────────────────────────────"
-
-if [[ -n "$OBJETIVO" ]]; then
-    ./report_generator.sh --all --objetivo "$OBJETIVO"
+echo 'GENERANDO INFORMES DESDE EVIDENCIAS EXISTENTES'
+result="$(bash "$MODULE_DIR/report_generator.sh" ambos --objetivo "$1" --json)"
+rc=$?
+if [[ $rc -eq 0 || $rc -eq 3 ]]; then
+    printf '%s' "$result" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+print("Informes escritos en esta ejecución:")
+for path in data["archivos"]:
+    print("  " + path)
+' || exit 1
+fi
+if [[ $rc -eq 0 ]]; then
+    echo '✅ INFORMES COMPLETADOS (consulte cobertura y limitaciones)'
+elif [[ $rc -eq 3 ]]; then
+    echo '⚠️ Informes escritos sin fuentes evaluables; no implica ausencia de vulnerabilidades.' >&2
 else
-    ./report_generator.sh --all
+    echo "Error al generar informes (código $rc); no se presentan informes históricos." >&2
 fi
-RC=$?
-
-echo ""
-echo "════════════════════════════════════════════════════════"
-if [[ $RC -eq 0 ]]; then
-    echo "  ✅ INFORMES COMPLETADOS"
-else
-    echo "  ⚠️  INFORMES FINALIZADOS CON CÓDIGO $RC"
-fi
-echo "════════════════════════════════════════════════════════"
-echo ""
-
-# Listar lo generado en generated/
-if [[ -d "$MODULE_DIR/generated" ]]; then
-    echo "📁 Informes generados:"
-    find "$MODULE_DIR/generated" -type f \( -name '*.md' -o -name '*.html' -o -name '*.json' \) 2>/dev/null | \
-        sed "s|$MODULE_DIR/|  |"
-fi
-
-# Empaquetar evidencias (si el gestor está disponible)
-EVIDENCE_MANAGER="$MODULE_DIR/../10_Evidence/evidence_manager.sh"
-if [[ -x "$EVIDENCE_MANAGER" ]]; then
-    echo ""
-    echo "📦 Empaquetando evidencias..."
-    if "$EVIDENCE_MANAGER" --package "audit_$(date +%Y%m%d_%H%M%S)" 2>/dev/null; then
-        echo "✅ Evidencias empaquetadas"
-    else
-        echo "⚠️  No se pudieron empaquetar las evidencias (continuando sin error)"
-    fi
-fi
-
-exit $RC
+exit "$rc"
