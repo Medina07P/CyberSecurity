@@ -20,8 +20,8 @@ SOURCE_FILES = (
     '00_Config/lib/params.bash',
 )
 
-# Exact existing child sources. Only the coordinator test replaces these copied
-# leaves with recorder transports; no leaf's real business executes in that test.
+# Exact synthetic dispatch destinations, NOT copied/read child sources. Genuine
+# originals stay in the staged RO /source manifest; coordinators use new inerts.
 COORDINATOR_LEAVES = (
     '03_Scanners/network_scanners/nmap/nmap_smart.sh',
     '03_Scanners/network_scanners/masscan/masscan_scan.sh',
@@ -70,7 +70,7 @@ class CrossModuleFixture:
         for directory in (self.framework, self.home, self.bin, self.output):
             directory.mkdir(mode=0o700)
         manifest = source_names()
-        for relative in SOURCE_FILES + COORDINATOR_LEAVES:
+        for relative in SOURCE_FILES:
             name = 'CyberSecurity-Framework/' + relative
             if name not in manifest:
                 raise ValueError('Missing exact cross fixture source: ' + name)
@@ -186,7 +186,7 @@ class CrossModuleFixture:
             (root / 'stderr').read_text(encoding='utf-8', errors='replace'))
 
     def run_leaf(self, relative, args=(), stdin=''):
-        if relative not in SOURCE_FILES + COORDINATOR_LEAVES or not relative.endswith('.sh'):
+        if relative not in SOURCE_FILES or not relative.endswith('.sh'):
             raise ValueError('Not a fixed consent leaf/coordinator')
         return self._run(['/bin/bash', '--noprofile', '--norc',
                           str(self.framework / relative), *args], stdin)
@@ -208,12 +208,18 @@ class CrossModuleFixture:
         return self._run(['/bin/bash', '--noprofile', '--norc', str(driver), str(self.framework)], stdin)
 
     def record_coordinator_leaves(self):
-        # Retain copied source bytes before creating in-place inert transports.
-        for relative in COORDINATOR_LEAVES + (
+        # Only these two real leaves were copied for their business tests.
+        # Preserve their scratch copies before using recorders for exclusions.
+        for relative in (
                 '06_PostExploitation/cleanup/logs_cleaner.sh',
                 '03_Scanners/web_scanners/burpsuite/burp_launcher.sh'):
             path = self.framework / relative
             path.rename(path.with_name(path.name + '.retained-source'))
+        for relative in COORDINATOR_LEAVES + (
+                '06_PostExploitation/cleanup/logs_cleaner.sh',
+                '03_Scanners/web_scanners/burpsuite/burp_launcher.sh'):
+            path = self.framework / relative
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             with path.open('x') as stream:
                 stream.write('#!/bin/bash\nrecord-dispatch ' + repr(relative) + ' "$@"\n')
         self.stub('nmap')

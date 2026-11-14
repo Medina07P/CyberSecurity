@@ -105,6 +105,21 @@ class SandboxBoundaryTests(unittest.TestCase):
         with mock.patch.object(inside, '_VALIDATED', False), \
                 mock.patch.object(inside, '_SELECTION', '--cross-consent'):
             self.assertIsNone(inside.validated_selection())
+        from cross_module_fixture import SOURCE_FILES, COORDINATOR_LEAVES
+        from automation_test_guard import check_event
+        self.assertTrue(set(SOURCE_FILES).isdisjoint(COORDINATOR_LEAVES))
+        # Diagnostic calls only, not actual opens. Every eager copy must remain
+        # acceptable under the unchanged guard; data-shaped paths remain denied.
+        for relative in SOURCE_FILES:
+            path = '/source/CyberSecurity-Framework/' + relative
+            check_event('/source', 'open', (path, 'r', 0))
+            with self.assertRaises(PermissionError):
+                check_event('/source', 'open', (path, 'w', inside.os.O_WRONLY))
+        for relative in ('06_PostExploitation/loot/file_collector.sh',
+                         '06_PostExploitation/loot/screenshot_collector.sh',
+                         '06_PostExploitation/loot/new-synthetic-data.sh'):
+            with self.assertRaises(PermissionError):
+                check_event('/source', 'open', ('/source/CyberSecurity-Framework/' + relative, 'r', 0))
 
     def test_parent_scope_mapping_requires_vfs_composition_not_parent_uid_guess(self):
         host = {'dev': 11, 'ino': 22, 'mode': 0o100400, 'size': 52,
