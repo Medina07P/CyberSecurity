@@ -367,7 +367,7 @@ class SandboxBoundaryTests(unittest.TestCase):
 
     def test_guard_host_default_stays_blocked(self):
         from automation_test_guard import check_event
-        with self.assertRaises(PermissionError):
+        with mock.patch.dict('sys.modules', {'__main__': None}), self.assertRaises(PermissionError):
             check_event('/synthetic-checkout', 'subprocess.Popen', ())
 
     def test_unexpected_socket_is_closed_without_any_traffic(self):

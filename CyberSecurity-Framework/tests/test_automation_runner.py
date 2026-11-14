@@ -10,7 +10,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from automation_fixture import AutomationFixture
+from automation_fixture import AutomationFixture, preserve
 
 SOURCES = AutomationFixture()
 atexit.register(SOURCES.close)
@@ -183,7 +183,7 @@ class RunnerTests(unittest.TestCase):
         (scans / 'automation').symlink_to(self.fixture.home, target_is_directory=True)
         with self.assertRaises(OSError):
             RunStore.create(self.fixture.repo)
-        (scans / 'automation').unlink()
+        preserve(scans / 'automation')
         with RunStore.create(self.fixture.repo) as store:
             (store.path / 'run.json').symlink_to(self.fixture.home / 'untouched')
             with self.assertRaises(OSError):
@@ -360,7 +360,7 @@ os._exit(0)
         with self.assertRaises(OSError):
             RunStore.create(self.fixture.repo)
         self.assertFalse((self.fixture.home / 'do-not-create').exists())
-        lock.unlink()
+        preserve(lock)
         victim = self.fixture.home / 'victim'
         victim.write_text('unchanged')
         victim.chmod(0o600)

@@ -1,21 +1,22 @@
-"""WRITTEN ONLY: no execution authorized during Task9 round1.
+"""Task4 NOT RUN: reentry negatives use synthetic data, never nested bwrap.
 
-These negatives test the CURRENT BLOCK, not an OS sandbox. Child/grandchild
+These negatives test arbitrary-payload rejection, not an OS sandbox. Child/grandchild
 payloads only reference freshly created fake data and fake backends/network
-doubles. A future OS launcher needs separate reviewed containment tests; these
-must never be used to infer inherited filesystem/network isolation.
+doubles. Only the fresh independent probe receipt corroborates inherited
+isolation; these argument-rejection tests do not establish it.
 """
 from pathlib import Path
 import subprocess
 import sys
-from tempfile import TemporaryDirectory
+from tempfile import mkdtemp
+from contextlib import nullcontext
 import unittest
 
 
 class BlockedLauncherTests(unittest.TestCase):
     def test_child_and_grandchild_payloads_cannot_be_launched(self):
         source = Path(__file__).resolve().parent / 'run_automation.sh'
-        with TemporaryDirectory(prefix='automation-blocked-', dir='/tmp/opencode') as temporary:
+        with nullcontext(mkdtemp(prefix='automation-blocked-', dir='/tmp/opencode')) as temporary:
             root = Path(temporary)
             runner = root / 'run_automation.sh'
             runner.write_text(source.read_text())
@@ -67,9 +68,13 @@ class BlockedLauncherTests(unittest.TestCase):
                                    backend_marker, network_marker):
                         self.assertFalse(marker.exists(), marker.name)
 
-    @unittest.skip('BLOCKED I1: no independently reviewed inherited OS launcher; no probes authorized')
     def test_inherited_os_filesystem_and_network_barrier(self):
-        # Intentionally not a fake passing sandbox test. This unresolved
-        # requirement needs a reviewed launcher/manifest and separate approval
-        # before a child/grandchild containment probe can even be designed/run.
-        self.fail('Inherited OS containment is not implemented or accredited')
+        # Consume this selection's fresh receipt, never launch recursively.
+        import json
+        result = json.loads(Path('/evidence/probes.json').read_text())
+        self.assertEqual(result['state'], 'PASS')
+        self.assertEqual(len(result['checks']), 6)
+        for child in result['descendants']:
+            self.assertFalse(child['outside_canary_read'])
+            self.assertEqual(child['socket_errno'], [1, 1])
+            self.assertFalse(child['backend_visible'])

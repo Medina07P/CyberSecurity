@@ -9,7 +9,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from automation_fixture import AutomationFixture
+from automation_fixture import AutomationFixture, preserve
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / '00_Config/lib'))
 from automation.catalog import _ACTIONS, get_action
@@ -139,15 +139,18 @@ class AdapterTests(unittest.TestCase):
                     b'GET http://example.test:8443/ HTTP/1.1\r\nHost: example.test:8443\r\n\r\n',
                     b'GET / HTTP/1.1\r\nHost: example.test\r\nHost: other.test\r\n\r\n']
         for request in variants:
+            preserve(self.req)
             self.req.write_bytes(request)
             with self.assertRaises(PlanError):
                 preflight(plan, self.ctx, self.permissions(plan))
+        preserve(self.req)
         self.req.write_bytes(b'POST / HTTP/1.1\r\nHost: example.test:8443\r\n\r\na=1')
         allowed = self.permissions(plan)
         with self.assertRaises(PlanError):
             preflight(plan, self.ctx, Permissions(allowed.targets, allowed.grants - {('sqlmap_request', 'sqlmap_replay')}))
         preflight(plan, self.ctx, allowed)
         for context in ('esquema=http\n', 'host=other.test:8443\n', 'host=example.test:443\n', 'metodo=GET\n'):
+            preserve(self.req.parent/'contexto.txt')
             (self.req.parent/'contexto.txt').write_text(context)
             with self.assertRaises(PlanError):
                 preflight(plan, self.ctx, allowed)
@@ -160,18 +163,18 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(copied.stat().st_mode), 0o600)
         self.assertEqual(command.timeout, 5)
         self.assertEqual(self.words.read_bytes(), b'one\ntwo\nthree\nfour\n')
-        self.words.unlink()
+        preserve(self.words)
         self.words.symlink_to(self.req)
         with self.assertRaises(PreflightError):
             preflight(plan, self.ctx, self.permissions(plan))
 
     def test_backend_missing(self):
         plan = self.plan('scan_basic')
-        (self.f.bin/'nmap').unlink()
+        preserve(self.f.bin/'nmap')
         with self.assertRaises(PreflightError):
             preflight(plan, self.ctx, self.permissions(plan))
         self.f.stub('nmap')
-        (self.f.framework/'03_Scanners/network_scanners/nmap/nmap_smart.sh').unlink()
+        preserve(self.f.framework/'03_Scanners/network_scanners/nmap/nmap_smart.sh')
         with self.assertRaises(PreflightError):
             preflight(plan, self.ctx, self.permissions(plan))
 
@@ -219,6 +222,7 @@ class AdapterTests(unittest.TestCase):
         cmd = self.command(plan)
         self.assertEqual(Path(cmd.argv[2]).read_bytes(), original)
         self.assertEqual(stat.S_IMODE(Path(cmd.argv[2]).stat().st_mode), 0o600)
+        preserve(self.req)
         self.req.write_bytes(b'GET / HTTP/1.1\r\nHost: other.test\r\n\r\n')
         with self.assertRaises(PlanError):
             self.command(plan)
@@ -246,8 +250,10 @@ class AdapterTests(unittest.TestCase):
 
     def test_stub_records_env_cwd_and_no_inherited_credentials(self):
         executable = self.f.bin/'ping'
+        preserve(executable)
         executable.write_text('#!' + sys.executable + '\nimport os,json,sys\n'
                               'print(json.dumps([sys.argv,dict(os.environ),os.getcwd()]))\n')
+        executable.chmod(0o700)
         command = self.command(self.plan('ping'))
         result = subprocess.run(command.argv, cwd=command.cwd, env=dict(command.env),
                                 shell=False, capture_output=True, text=True, check=True)
@@ -263,6 +269,7 @@ class AdapterTests(unittest.TestCase):
             child_env(self.ctx, self.run)
         self.run.chmod(0o700)
         child_env(self.ctx, self.run)
+        preserve(self.run/'empty-keys/api-keys.yaml')
         (self.run/'empty-keys/api-keys.yaml').write_text('not-empty')
         with self.assertRaises(PreflightError):
             child_env(self.ctx, self.run)

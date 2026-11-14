@@ -163,6 +163,8 @@
     "CyberSecurity-Framework/09_Automation/bash/auto_exploit.sh",
     "CyberSecurity-Framework/09_Automation/bash/auto_recon.sh",
     "CyberSecurity-Framework/09_Automation/docker/Dockerfile",
+    "CyberSecurity-Framework/09_Automation/docker/Dockerfile.dockerignore",
+    "CyberSecurity-Framework/09_Automation/docker/README.md",
     "CyberSecurity-Framework/09_Automation/docker/docker-compose.yml",
     "CyberSecurity-Framework/09_Automation/powershell/auto_enum.ps1",
     "CyberSecurity-Framework/09_Automation/python/auto_audit.py",
@@ -210,6 +212,9 @@
     "CyberSecurity-Framework/cyber_framework.sh",
     "CyberSecurity-Framework/tests/automation_fixture.py",
     "CyberSecurity-Framework/tests/automation_menu_inventory.py",
+    "CyberSecurity-Framework/tests/automation_operational_baseline.json",
+    "CyberSecurity-Framework/tests/automation_preservation_cases.json",
+    "CyberSecurity-Framework/tests/automation_suite_selection.py",
     "CyberSecurity-Framework/tests/automation_test_guard.py",
     "CyberSecurity-Framework/tests/automation_sandbox_prepare.py",
     "CyberSecurity-Framework/tests/automation_sandbox_elf.py",
@@ -233,7 +238,9 @@
     "CyberSecurity-Framework/tests/test_automation_sandbox_prepare.py",
     "CyberSecurity-Framework/tests/test_automation_sandbox_policy.py",
     "CyberSecurity-Framework/tests/test_automation_sandbox_boundary.py",
+    "CyberSecurity-Framework/tests/test_automation_sandbox_integration.py",
     "docs/AUTOMATION-2026-11-13.md",
+    "docs/AUTOMATION-TEST-ISOLATION-2026-11-13.md",
     "docs/MENU-OPCIONES.md"
   ]
 }

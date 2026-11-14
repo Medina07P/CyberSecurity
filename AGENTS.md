@@ -1,5 +1,21 @@
 # AGENTS.md
 
+**Aislador test-only09 — Task4 estática sobre367b9db, 2026-11-13:** Tasks1/2
+revisadas; el controlador observó seis probes PASS/rc0 en367b9db, con
+tests_started=false. Integración fixture persistente/discovery por manifiesto,
+unit tests interiores y selección cerrada escrita NOT RUN, pendiente de revisión
+independiente y autorización explícita ANTES de cualquier nuevo run/helper/import/
+probe/suite. Listado exacto de25casos BLOCKED-preservation en
+`CyberSecurity-Framework/tests/automation_preservation_cases.json`; no borrar ni
+mockear cleanup/replace de producto para pasar. Wrapper ya delega al launcher
+fijo (el bloque anterior es histórico), sin nested bwrap/flags arbitrarios.
+Ver `docs/AUTOMATION-TEST-ISOLATION-2026-11-13.md` y ledger del aislador.
+NPROC256 aplica al workload, bootstrap hereda límite host sin elevar; mapping
+userns se interpreta en padre inmediato con composición VFS canary400. No cuota
+cgroups por árbol ni certificado kernel. Task3 unit/cancel externo, Task4 runtime,
+Task9/I1/global09 siguen pendientes. Ninguna auditoría/instalación/push/merge ni
+eliminación autorizada; conservar workspace y todos los artefactos históricos.
+
 **Task9 round1 sobre09e16c8 — NEEDS_CONTEXT / EJECUCIÓN BLOQUEADA:** revisión
 estática encontró I1–I3. I1 permanece abierto: no hay aislamiento SO heredado
 acreditado. Runner ahora solo printf/exit2 builtins, sin discovery/imports,

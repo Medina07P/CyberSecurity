@@ -1,7 +1,15 @@
 #!/bin/bash
-# BLOCKED: Task9 I1. No discovery, imports, probes, descendants or fallback.
-# Intended discovery test_automation_*.py/PYTHONDONTWRITEBYTECODE remains
-# disabled until an independently reviewed inherited OS barrier exists.
-# This script uses shell builtins only; availability of bwrap is NOT approval.
-printf '%s\n' 'BLOCKED: automation tests require an approved inherited filesystem/network OS barrier; audit hooks are insufficient. No tests or probes launched.' >&2
-exit 2
+# Test-only fixed launcher. NOT RUN: Task4 review/authorization still pending.
+case "$#:$1" in
+    0:|1:--probes|1:--suite|1:--races) ;;
+    *) printf '%s\n' 'BLOCKED: selector cerrado; sin comandos arbitrarios' >&2; exit 2 ;;
+esac
+if [[ -d /source/CyberSecurity-Framework/tests ]]; then
+    printf '%s\n' 'BLOCKED: no reentrar al launcher desde sandbox' >&2
+    exit 2
+fi
+case "${BASH_SOURCE[0]}" in
+    */*) HERE="${BASH_SOURCE[0]%/*}" ;;
+    *) HERE=. ;;
+esac
+exec /usr/bin/python3 -I -B "$HERE/automation_sandbox_launch.py" "$@"

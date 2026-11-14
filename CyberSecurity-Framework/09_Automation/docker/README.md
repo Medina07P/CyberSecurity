@@ -14,9 +14,12 @@ paquete automation, las entradas de 09 y sus dependencias de fuentes para OSINT,
 escáneres, SSH/SMB, SQLmap y el motor de informes. No incluye gestor completo,
 tests, configuración, wordlists, claves, sesiones, perfiles, resultados o logs.
 Para añadir una fuente, revisar su nombre versionado y sus dependencias; nunca
-generar excepciones recorriendo datos del checkout. Prueba estática:
-`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest test_automation_docker -v`
-desde `tests/`. Usa YAML seguro y un árbol de candidatos sintéticos.
+generar excepciones recorriendo datos del checkout. El contrato usa YAML seguro
+y candidatos sintéticos; no ejecutarlo en host. Forma parte de la selección
+interior revisada descrita en [el aislador test-only](../../../docs/AUTOMATION-TEST-ISOLATION-2026-11-13.md).
+La guía nueva está fuera del contexto framework; no se amplía el filtro para
+admitirla, ni para admitir helpers/runtime/manifiestos de pruebas. La guía USE
+continúa admitida por su nombre exacto; ningún glob nuevo ni fuente privada.
 
 El default abre solo Bash sin perfiles ni archivos de inicio, como `toolkit`, con
 home privado. No inicia herramientas ni instala nada en runtime. Compose no monta

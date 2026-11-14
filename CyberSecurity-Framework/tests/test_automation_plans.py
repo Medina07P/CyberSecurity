@@ -6,7 +6,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from automation_fixture import AutomationFixture
+from automation_fixture import AutomationFixture, preserve
 
 SOURCES = AutomationFixture()
 atexit.register(SOURCES.close)
@@ -25,6 +25,7 @@ class PlanTests(unittest.TestCase):
                                   Path(sys.executable), str(self.fixture.bin))
 
     def workflow(self, text, defaults=None):
+        preserve(self.path)
         self.path.write_text(text, encoding='utf-8')
         return load_workflow(self.path, defaults or {'target': '192.0.2.1'})
 

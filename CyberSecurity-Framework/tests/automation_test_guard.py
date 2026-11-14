@@ -1,7 +1,7 @@
 """Additional controller-only diagnostics, NOT a descendant isolation barrier.
 
 Never inspect/hash protected data to prove it unchanged. Fixtures construct
-synthetic configuration. Host runner stays BLOCKED. Only the trusted inside
+synthetic configuration. Host discovery stays forbidden. Only the trusted inside
 entrypoint may relax local Popen diagnostics after boundary probes; this helper
 is never authority to resume tests, launch host probes or certify containment.
 """
@@ -13,7 +13,34 @@ import sys
 _OPEN_PATH = ContextVar('automation_guard_open_path', default=None)
 
 
+def preservation_event(event, args):
+    """Fail closed on unclassified controller destruction; not child isolation.
+
+    This does not make destructive product tests eligible: they stay named
+    BLOCKED-preservation before dispatch, with their original semantics intact.
+    """
+    if event in ('os.remove', 'os.rmdir', 'os.truncate'):
+        raise PermissionError('BLOCKED-preservation: deletion/truncation is not authorized')
+    if event == 'os.rename':
+        destination, directory = args[1], args[3]
+    elif event == 'open' and isinstance(args[2], int) and args[2] & os.O_TRUNC:
+        destination, directory = _OPEN_PATH.get() or args[0], None
+        if isinstance(destination, int):
+            raise PermissionError('BLOCKED-preservation: truncation of descriptor')
+    else:
+        return
+    try:
+        os.stat(destination, dir_fd=None if directory in (-1, None) else directory,
+                follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    raise PermissionError('BLOCKED-preservation: existing destination must be archived first')
+
+
 def check_event(root, event, args):
+    if event not in ('open', 'subprocess.Popen', 'os.remove', 'os.rmdir',
+                     'os.mkdir', 'os.chmod', 'os.rename', 'socket.connect', 'socket.bind'):
+        return
     root = Path(root).resolve()
 
     def in_checkout(value, directory=None):
@@ -86,4 +113,7 @@ def install(root):
             _OPEN_PATH.reset(token)
 
     os.open = open_with_directory
-    sys.addaudithook(lambda event, args: check_event(root, event, args))
+    def diagnostic(event, args):
+        preservation_event(event, args)
+        check_event(root, event, args)
+    sys.addaudithook(diagnostic)
