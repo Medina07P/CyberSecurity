@@ -100,12 +100,13 @@ class BurpOps:
 
     def request(self, url, port):
         # No redirects, insecure TLS, retries, session lookup or hidden extra GET.
-        # Prevent operator ~/.curlrc/XDG curlrc from silently adding requests or
-        # redirect/retry options. No directory is created or operator file read.
+        # --disable MUST be first: it disables default config discovery, including
+        # passwd-home fallback. Environment isolation alone is not that boundary.
+        # No directory is created or operator file read.
         environment = dict(os.environ, CURL_HOME='/dev/null',
                            XDG_CONFIG_HOME='/dev/null', HOME='/dev/null')
         result = subprocess.run(
-            ['curl', '--request', 'GET', '--max-time', '5', '--noproxy', '',
+            ['curl', '--disable', '--request', 'GET', '--max-time', '5', '--noproxy', '',
              '--proxy', f'http://127.0.0.1:{port}', '--output', '/dev/null',
              '--write-out', '%{http_code}', '--', url],
             capture_output=True, text=True, check=False, timeout=7, env=environment)
