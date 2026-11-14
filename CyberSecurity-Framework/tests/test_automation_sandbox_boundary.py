@@ -17,7 +17,7 @@ class SandboxBoundaryTests(unittest.TestCase):
         entry = next(node for node in tree.body if isinstance(node, ast.If) and
                      '__name__' in ast.unparse(node.test))
         calls = [node for node in ast.walk(entry) if isinstance(node, ast.Call)]
-        gate = next(node.lineno for node in calls if ast.unparse(node.func) == '_workload_nproc_gate')
+        gate = next(node.lineno for node in calls if ast.unparse(node.func) == '_entry_nproc_gate')
         for node in calls:
             if ast.unparse(node.func) in ('sys.path.extend', '_observe', '_capture',
                                         '_cancel_worker', 'inside_main'):
@@ -78,6 +78,53 @@ class SandboxBoundaryTests(unittest.TestCase):
                 'soft': 256, 'hard': 256, 'inherited_soft_hard': [4096, 8192]})
         self.assertEqual(events, [('set', (256, 256)), ('observe',)])
 
+    def test_descendant_rejects_high_inheritance_even_if_later_readback_would_be256(self):
+        for mode in ('--probe-child', '--probe-grandchild', '--probe-bash', '--probe-cancel'):
+            with self.subTest(mode=mode), \
+                    mock.patch.object(inside.resource, 'getrlimit',
+                                      side_effect=[(4096, 8192), (256, 256)]) as read, \
+                    mock.patch.object(inside.resource, 'setrlimit') as repair, \
+                    mock.patch.object(inside, 'write_json') as receipt, \
+                    mock.patch.object(inside, '_nproc_observation') as observe:
+                with self.assertRaises(inside.NprocBlocked):
+                    inside._entry_nproc_gate([mode])
+            self.assertEqual(read.call_count, 1)
+            repair.assert_not_called()
+            observe.assert_not_called()
+            self.assertEqual(receipt.call_args.args[1]['inherited_soft_hard'], [4096, 8192])
+
+    def test_descendant_keeps_inherited_readback_without_setting_any_limit(self):
+        with mock.patch.object(inside.resource, 'getrlimit', return_value=(256, 256)), \
+                mock.patch.object(inside.resource, 'setrlimit') as repair, \
+                mock.patch.object(inside, '_nproc_observation', return_value={'soft': 256, 'hard': 256}):
+            result = inside._entry_nproc_gate(['--probe-child'])
+        self.assertEqual(result['inherited_soft_hard'], [256, 256])
+        repair.assert_not_called()
+
+    def test_cancel_fork_rejects_inheritance_before_repair_or_signal_wait(self):
+        with mock.patch.object(inside, '_descendant_nproc', return_value={}), \
+                mock.patch.object(inside, '_context'), \
+                mock.patch.object(inside.signal, 'pthread_sigmask'), \
+                mock.patch.object(inside.os, 'fork', return_value=0), \
+                mock.patch.object(inside.resource, 'getrlimit', return_value=(4096, 8192)), \
+                mock.patch.object(inside.resource, 'setrlimit') as repair, \
+                mock.patch.object(inside, 'write_json') as receipt, \
+                mock.patch.object(inside.signal, 'pause') as wait:
+            with self.assertRaises(inside.NprocBlocked):
+                inside._cancel_worker()
+        repair.assert_not_called()
+        wait.assert_not_called()
+        self.assertEqual(receipt.call_args.args[1]['inherited_soft_hard'], [4096, 8192])
+
+    def test_cancel_worker_and_fork_receipts_preserve_both_nproc_observations(self):
+        for key in ('worker_nproc', 'fork_nproc'):
+            nproc = self.result['cancel'][key]
+            self.assertEqual(nproc['inherited_soft_hard'], [256, 256])
+            self.assertEqual((nproc['soft'], nproc['hard']), (256, 256))
+            self.assertEqual(nproc['uid_map'], self.result['nproc']['uid_map'])
+            self.assertEqual(nproc['user_namespace'], self.result['nproc']['user_namespace'])
+            self.assertTrue(all(value == 0 for value in nproc['capabilities'].values()))
+
     def test_nproc_gate_never_continues_after_wrong_readback_or_missing_identity(self):
         for readback in ((256, 8192), (4096, 8192)):
             with mock.patch.object(inside.resource, 'setrlimit'), \
@@ -100,6 +147,8 @@ class SandboxBoundaryTests(unittest.TestCase):
     def test_descendants_preserve_hard256_and_unprivileged_identity(self):
         for result in self.result['descendants']:
             nproc = result['nproc']
+            self.assertEqual(nproc['inherited_soft_hard'], [256, 256])
+            self.assertEqual(nproc['entry']['inherited_soft_hard'], [256, 256])
             self.assertEqual((nproc['soft'], nproc['hard']), (256, 256))
             self.assertGreater(nproc['uid'], 0)
             self.assertEqual(nproc['uid'], nproc['euid'])
@@ -228,7 +277,7 @@ class SandboxBoundaryTests(unittest.TestCase):
         with mock.patch.object(inside, '_context', return_value={
                 'run_id': 'synthetic', 'outside_canary': '/synthetic-outside',
                  'external_stub': '/synthetic-double'}), \
-                mock.patch.object(inside, '_nproc_observation', return_value={}), \
+                mock.patch.object(inside, '_descendant_nproc', return_value={}), \
                 mock.patch.object(Path, 'read_text', return_value='synthetic'), \
                 mock.patch.object(Path, 'read_bytes', side_effect=FileNotFoundError(
                     errno.ENOENT, 'synthetic absent')), \
@@ -243,7 +292,7 @@ class SandboxBoundaryTests(unittest.TestCase):
     def test_visible_synthetic_canary_stops_before_socket_or_exec(self):
         with mock.patch.object(inside, '_context', return_value={
                  'run_id': 'synthetic', 'outside_canary': '/synthetic-outside'}), \
-                mock.patch.object(inside, '_nproc_observation', return_value={}), \
+                mock.patch.object(inside, '_descendant_nproc', return_value={}), \
                 mock.patch.object(Path, 'read_text', return_value='synthetic'), \
                 mock.patch.object(Path, 'read_bytes', return_value=b'synthetic'), \
                 mock.patch.object(inside.socket, 'socket') as create, \

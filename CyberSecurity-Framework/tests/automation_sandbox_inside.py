@@ -105,6 +105,52 @@ def _workload_nproc_gate():
     return result
 
 
+def _inherited_nproc_gate():
+    """Descendants observe inheritance; NEVER repair it before evidence."""
+    inherited = resource.getrlimit(resource.RLIMIT_NPROC)
+    if inherited != (256, 256):
+        # Preserve the rejected first readback even when stderr is captured or
+        # DEVNULL (cancel worker). No repair or probe follows this receipt.
+        write_json('/work/nproc-inheritance-blocked-' + str(os.getpid()) + '.json', {
+            'inherited_soft_hard': list(inherited), 'pid': os.getpid(),
+            'uid': os.getuid(), 'euid': os.geteuid(), 'state': 'BLOCKED',
+        })
+        raise NprocBlocked('Descendant inherited NPROC is not hard=soft256: ' + repr(inherited))
+    result = _nproc_observation()
+    result['inherited_soft_hard'] = list(inherited)
+    return result
+
+
+def _entry_nproc_gate(argv):
+    if list(argv) in (['--probe-child'], ['--probe-grandchild'],
+                     ['--probe-bash'], ['--probe-cancel']):
+        return _inherited_nproc_gate()
+    if list(argv) in (['--probes'], ['--suite'], ['--races']):
+        return _workload_nproc_gate()
+    raise NprocBlocked('Unknown entry selector')
+
+
+def _descendant_nproc():
+    entry = _NPROC_ENTRY if _NPROC_ENTRY is not None else _inherited_nproc_gate()
+    if entry.get('inherited_soft_hard') != [256, 256]:
+        raise NprocBlocked('Descendant original entry inheritance not established')
+    result = _inherited_nproc_gate()
+    result['entry'] = entry
+    return result
+
+
+def _valid_descendant_nproc(record, baseline):
+    return (record.get('inherited_soft_hard') == [256, 256] and
+            record.get('soft') == record.get('hard') == 256 and
+            record.get('uid') == record.get('euid') == baseline['uid'] and
+            record.get('uid_map') == baseline['uid_map'] and
+            record.get('user_namespace') == baseline['user_namespace'] and
+            record.get('capabilities') == baseline['capabilities'] and
+            record.get('counter_scope') == baseline['counter_scope'] and
+            type(record.get('observed_uid_tasks')) is int and
+            1 <= record['observed_uid_tasks'] < 256)
+
+
 def read_json(path):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
@@ -182,7 +228,7 @@ def _fd_observation():
 
 
 def _observe(role):
-    nproc = _nproc_observation()
+    nproc = _descendant_nproc()
     context = _context()
     inside = Path('/work/inside-canary').read_text() == context['run_id']
     try:
@@ -248,23 +294,34 @@ def _capture(argv, timeout):
 
 
 def _cancel_worker():
-    _nproc_observation()
+    worker_nproc = _descendant_nproc()
     _context()
     signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
     pid = os.fork()
     if pid == 0:
-        _nproc_observation()
+        fork_nproc = _inherited_nproc_gate()
+        write_json('/work/cancel-fork-nproc.json', fork_nproc)
+        write_json('/work/cancel-fork-ready.json', {'ready': True})
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
         while True:
             signal.pause()
     # Child remains unreaped/owned until waitpid: no PID reuse or host target.
+    deadline = time.monotonic() + 3
+    while not Path('/work/cancel-fork-ready.json').exists():
+        if time.monotonic() >= deadline:
+            raise NprocBlocked('Cancel fork inherited NPROC receipt unavailable')
+        time.sleep(0.005)
+    fork_nproc = read_json('/work/cancel-fork-nproc.json')
+    if not _valid_descendant_nproc(fork_nproc, worker_nproc):
+        raise NprocBlocked('Cancel fork NPROC inheritance not established')
     write_json('/work/cancel-ready.json', {'pid': os.getpid()})
     signal.sigwait({signal.SIGTERM})
     os.kill(pid, signal.SIGTERM)
     waited, status = os.waitpid(pid, 0)
     write_json('/work/cancel-reaped.json',
-               {'descendant_reaped': waited == pid and os.WIFSIGNALED(status)})
+               {'descendant_reaped': waited == pid and os.WIFSIGNALED(status),
+                'worker_nproc': worker_nproc, 'fork_nproc': fork_nproc})
 
 
 def _cancel(deadline):
@@ -273,6 +330,8 @@ def _cancel(deadline):
                              stderr=subprocess.DEVNULL, start_new_session=True)
     try:
         while not Path('/work/cancel-ready.json').exists():
+            if child.poll() == 2:
+                raise NprocBlocked('Cancel worker inherited NPROC gate blocked')
             if child.poll() is not None or time.monotonic() >= deadline:
                 raise ValueError('Cancel descendant not ready')
             time.sleep(0.005)
@@ -320,18 +379,18 @@ def run_probes(run_id: str) -> dict[str, object]:
               result['socket_errno'] == [errno.EPERM, errno.EPERM] and
               result['fds'] == [0, 1, 2] and result['fd_observation']['valid'] is True and
               result['namespaces'] == current and
-              result['nproc']['soft'] == result['nproc']['hard'] == 256 and
-              result['nproc']['uid'] == result['nproc']['euid'] == nproc['uid'] and
-              result['nproc']['uid_map'] == nproc['uid_map'] and
-              result['nproc']['user_namespace'] == nproc['user_namespace'] and
-              not any(result['nproc']['capabilities'].values()) and
-              1 <= result['nproc']['observed_uid_tasks'] < 256 and
+              _valid_descendant_nproc(result['nproc'], nproc) and
+              _valid_descendant_nproc(result['nproc']['entry'], nproc) and
               not result['external_stub_visible'] and not result['backend_visible'])
         checks.append({'id': result['role'], 'result': 'PASS' if ok else 'FAIL',
                        'reason': 'synthetic inherited boundary observations'})
     cancel = _cancel(deadline)
     checks.append({'id': 'cancel-owned-descendants',
-                   'result': 'PASS' if all(cancel.values()) else 'FAIL',
+                   'result': 'PASS' if (
+                       cancel['descendant_reaped'] is True and cancel['direct_child_reaped'] is True and
+                       _valid_descendant_nproc(cancel['worker_nproc'], nproc) and
+                       _valid_descendant_nproc(cancel['worker_nproc']['entry'], nproc) and
+                       _valid_descendant_nproc(cancel['fork_nproc'], nproc)) else 'FAIL',
                    'reason': 'pidfd direct child signalled, synthetic descendant reaped'})
     return {'version': 1, 'run_id': run_id,
             'state': 'PASS' if all(c['result'] == 'PASS' for c in checks) else 'FAIL',
@@ -395,7 +454,7 @@ if __name__ == '__main__':
         # fixed staged paths; never site.addsitedir (would process .pth files).
         if str(Path(__file__)) != SELF or not sys.flags.isolated:
             raise ValueError('Blocked outside fixed sandbox entrypoint')
-        _NPROC_ENTRY = _workload_nproc_gate()
+        _NPROC_ENTRY = _entry_nproc_gate(sys.argv[1:])
         sys.path.extend(['/usr/lib/python3.13/site-packages', TESTS])
         if sys.argv[1:] == ['--probe-child']:
             observations = [_observe('python-child')]

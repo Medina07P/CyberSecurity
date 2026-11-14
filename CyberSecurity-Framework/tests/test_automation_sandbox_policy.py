@@ -47,6 +47,33 @@ def prepared():
 
 
 class SandboxPolicyTests(unittest.TestCase):
+    def test_host_rejects_repaired_descendant_and_incomplete_cancel_evidence(self):
+        baseline = {'soft': 256, 'hard': 256, 'uid': 1000, 'euid': 1000,
+                    'uid_map': [[1000, 1000, 1]], 'user_namespace': 'user:[private]',
+                    'capabilities': dict.fromkeys(('CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'), 0),
+                    'observed_uid_tasks': 3, 'counter_scope': 'private-proc-visible-real-uid-threads'}
+        good = dict(baseline, inherited_soft_hard=[256, 256])
+        launcher._validate_descendant_nproc(good, baseline)
+        for bad in (dict(good, inherited_soft_hard=[4096, 8192]),
+                    {k: v for k, v in good.items() if k != 'inherited_soft_hard'},
+                    dict(good, uid=0)):
+            with self.assertRaises(IsolationBlocked):
+                launcher._validate_descendant_nproc(bad, baseline)
+        observed = dict(good, entry=good)
+        probes = {'descendants': [{'role': role, 'nproc': observed} for role in
+                                 ('python-child', 'bash-grandchild', 'bash-child')],
+                  'cancel': {'worker_nproc': observed, 'fork_nproc': good,
+                             'descendant_reaped': True, 'direct_child_reaped': True}}
+        launcher._validate_probe_nproc(probes, baseline)
+        repaired_entry = dict(observed, entry=dict(good, inherited_soft_hard=[4096, 8192]))
+        with self.assertRaises(IsolationBlocked):
+            launcher._validate_probe_nproc(dict(probes, descendants=[
+                dict(row, nproc=repaired_entry) for row in probes['descendants']]), baseline)
+        for bad_cancel in ({'descendant_reaped': True, 'direct_child_reaped': True},
+                           dict(probes['cancel'], fork_nproc=dict(good, inherited_soft_hard=[4096, 8192]))):
+            with self.assertRaises(IsolationBlocked):
+                launcher._validate_probe_nproc(dict(probes, cancel=bad_cancel), baseline)
+
     def test_bootstrap_inherits_nproc_without_setting_or_raising(self):
         self.assertNotIn(launcher.resource.RLIMIT_NPROC,
                          [kind for kind, _ in launcher.LIMITS])

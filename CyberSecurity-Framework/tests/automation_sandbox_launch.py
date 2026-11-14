@@ -232,6 +232,42 @@ def _bootstrap_nproc():
             'workload_soft_hard': [256, 256], 'bootstrap_policy': 'inherit-without-raising'}
 
 
+def _validate_descendant_nproc(record, baseline):
+    """Host checks inherited AND effective evidence, never accepts repair."""
+    if (not isinstance(record, dict) or
+            record.get('inherited_soft_hard') != [256, 256] or
+            any(type(record.get(key)) is not int for key in
+                ('soft', 'hard', 'uid', 'euid', 'observed_uid_tasks')) or
+            record.get('soft') != 256 or record.get('hard') != 256 or
+            record.get('uid') != record.get('euid') or record.get('uid') != baseline['uid'] or
+            record.get('uid_map') != baseline['uid_map'] or
+            record.get('user_namespace') != baseline['user_namespace'] or
+            record.get('capabilities') != baseline['capabilities'] or
+            record.get('counter_scope') != baseline['counter_scope'] or
+            not 1 <= record['observed_uid_tasks'] < 256):
+        raise IsolationBlocked('Descendant inherited NPROC/identity evidence not established')
+
+
+def _validate_probe_nproc(probes, baseline):
+    try:
+        descendants = probes['descendants']
+        if (not isinstance(descendants, list) or len(descendants) != 3 or
+                {row['role'] for row in descendants} !=
+                {'python-child', 'bash-grandchild', 'bash-child'}):
+            raise IsolationBlocked('Incomplete NPROC descendant observations')
+        for row in descendants:
+            _validate_descendant_nproc(row['nproc'], baseline)
+            _validate_descendant_nproc(row['nproc']['entry'], baseline)
+        cancel = probes['cancel']
+        if cancel['descendant_reaped'] is not True or cancel['direct_child_reaped'] is not True:
+            raise IsolationBlocked('Cancel descendant not reaped')
+        _validate_descendant_nproc(cancel['worker_nproc'], baseline)
+        _validate_descendant_nproc(cancel['worker_nproc']['entry'], baseline)
+        _validate_descendant_nproc(cancel['fork_nproc'], baseline)
+    except (KeyError, TypeError) as exc:
+        raise IsolationBlocked('Incomplete descendant/cancel NPROC evidence') from exc
+
+
 def _validate_staging(run):
     """No injected file/symlink or changed copy can enter directory ro-binds."""
     receipt = load_json(run.root / 'prepared.json',
@@ -549,6 +585,7 @@ def launch() -> int:
                     any(not isinstance(row, dict) or set(row) != {'id', 'result', 'reason'} or
                         row['result'] != 'PASS' for row in probes['checks'])):
                 raise IsolationBlocked('Fresh probe result missing or inconsistent')
+            _validate_probe_nproc(probes, workload)
         return result
     except _HostStop:
         # Stop raising during termination/reap. Supervision now forwards the
