@@ -310,6 +310,20 @@ class ConsentTests(unittest.TestCase):
             self.assertNotIn('curl', names)
             self.assertIn('Community', result.stdout)
             self.assertNotIn('captura certificada', result.stdout)
+            instances = list((f.repo / 'scans/burp/instances').iterdir())
+            self.assertEqual(len(instances), 1)
+            self.assertRegex(instances[0].name, r'^burp-[0-9a-f]{32}$')
+            self.assertEqual(stat.S_IMODE(instances[0].stat().st_mode), 0o700)
+            for path in instances[0].iterdir():
+                self.assertFalse(path.is_symlink())
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            config = json.loads((instances[0] / 'config.json').read_text())
+            self.assertEqual(config['proxy']['request_listeners'][0]['listener_port'], 8080)
+            if session:
+                self.assertEqual(config['target']['scope']['include'][0]['host'],
+                                 r'^remote\.example\.test$')
+            else:
+                self.assertNotIn('target', config)
         f = self.fixture()
         f.set_session('remote.example.test')
         f.configure_ss(('State Recv-Q Send-Q Local Address:Port Peer Address:Port Process\n'
@@ -322,8 +336,50 @@ class ConsentTests(unittest.TestCase):
         self.assertIn('Propietario: NO_DETERMINADO', output)
         self.assertIn('Captura: NO_VERIFICADA', output)
         self.assertNotRegex(output, r'(?i)Burp escucha|proxy comprobado|captura (certificada|confirmada|verificada)|propietario: (Burp|PROPIO)')
+        # Receipt publication uses actual business/file logic; only process
+        # launch/identity and executable availability are synthetic transports.
+        f = self.fixture()
+        burp = self.core(f, 'burp')
+        class LaunchOps:
+            def listening_ports(self):
+                return set()
+            def launch(self, config, log_fd):
+                self.config = config
+                self.log_mode = stat.S_IMODE(os.fstat(log_fd).st_mode)
+                return 123
+            def identity(self, pid):
+                return {'pid': pid, 'start_ticks': 20, 'uid': os.getuid(),
+                        'boot_id': 'synthetic-boot'}
+        ops = LaunchOps()
+        with mock.patch.object(burp.shutil, 'which', return_value=str(f.bin / 'burpsuite')):
+            first = burp.start_burp(f.framework, 8081, ops)
+            before = {p.name: (p.read_bytes(), p.stat().st_ino, p.stat().st_mode)
+                      for p in first.directory.iterdir()}
+            second = burp.start_burp(f.framework, 8081, ops)
+        self.assertTrue(first.managed)
+        self.assertNotEqual(first.instance_id, second.instance_id)
+        self.assertEqual(ops.log_mode, 0o600)
+        self.assertEqual(before, {p.name: (p.read_bytes(), p.stat().st_ino, p.stat().st_mode)
+                                  for p in first.directory.iterdir()})
+        self.assertEqual(json.loads((first.directory / 'instance.json').read_text()),
+                         {'version': 1, 'instance_id': first.instance_id, 'pid': 123,
+                          'start_ticks': 20, 'uid': os.getuid(),
+                          'boot_id': 'synthetic-boot', 'port': 8081})
+        for instance in (first, second):
+            self.assertEqual(stat.S_IMODE(instance.directory.stat().st_mode), 0o700)
+            for path in instance.directory.iterdir():
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
     def test_burp_status_has_no_side_effects(self):
+        for args, rc in ((('--help',), 0), (('--unknown',), 2),
+                         (('--help', '--execute'), 2), (('--estado', '--execute'), 2),
+                         (('--estado', '--instance', '../legacy'), 2)):
+            f = self.fixture()
+            before = f.snapshot()
+            result = f.run_leaf(BURP, args)
+            self.assertEqual(result.returncode, rc, result.stderr)
+            self.assertEqual(f.snapshot(), before)
+            self.assertEqual(f.records(), [])
         for legacy, missing_ss in ((False, False), (True, False), (True, True)):
             f = self.fixture()
             f.configure_ss(('State Recv-Q Send-Q Local Address:Port Peer Address:Port\n'
@@ -359,6 +415,10 @@ class ConsentTests(unittest.TestCase):
                      ('--verificar', 'example.test', '--proxy-port', '0',
                       '--execute', '--confirm-network'),
                      ('--verificar', 'https://example.test/a', '--proxy-port', '65536',
+                      '--execute', '--confirm-network'),
+                     ('--verificar', 'https://example.test/{a,b}', '--proxy-port', '8080',
+                      '--execute', '--confirm-network'),
+                     ('--verificar', 'https://example.test/a[1-9]', '--proxy-port', '8080',
                       '--execute', '--confirm-network')):
             f = self.fixture()
             self.assertNotEqual(f.run_leaf(BURP, args).returncode, 0)
@@ -374,6 +434,46 @@ class ConsentTests(unittest.TestCase):
                                       '--write-out', '%{http_code}', '--',
                                       'https://example.test/a?token=secret'])
         self.assertNotIn('secret', result.stdout + result.stderr)
+        # Exact public TTY gate; generic yes/EOF cannot authorize network.
+        class TTY(io.StringIO):
+            def isatty(self):
+                return True
+        cli = self.core(f, 'burp_cli')
+        class Recorder:
+            def __init__(self):
+                self.calls = []
+            def request(self, url, port):
+                self.calls.append((url, port))
+                return 0, '200'
+        ops = Recorder()
+        before = f.snapshot()
+        for answer in ('', 'no\n', 'si\n'):
+            with mock.patch.object(cli.sys, 'stdin', TTY(answer)), \
+                    mock.patch.object(cli.sys, 'stderr', TTY()), \
+                    mock.patch.object(cli.sys, 'stdout', io.StringIO()):
+                self.assertEqual(cli.main(['--verificar', 'https://example.test/a?token=secret',
+                                           '--proxy-port', '8080', '--execute'],
+                                          framework=f.framework, ops=ops), 2)
+        self.assertEqual(ops.calls, [])
+        stdout = io.StringIO()
+        with mock.patch.object(cli.sys, 'stdin', TTY('ENVIAR GET\n')), \
+                mock.patch.object(cli.sys, 'stderr', TTY()), \
+                mock.patch.object(cli.sys, 'stdout', stdout):
+            self.assertEqual(cli.main(['--verificar', 'https://example.test/a?token=secret',
+                                       '--proxy-port', '8080', '--execute'],
+                                      framework=f.framework, ops=ops), 0)
+        self.assertEqual(ops.calls, [('https://example.test/a?token=secret', 8080)])
+        self.assertNotIn('secret', stdout.getvalue())
+        self.assertEqual(f.snapshot(), before)
+        # Curl's own configuration must not silently enable redirects/retries or
+        # URL globbing: exercise real argument/env construction, double transport.
+        burp = self.core(f, 'burp')
+        response = subprocess.CompletedProcess([], 0, '200', '')
+        with mock.patch.object(burp.subprocess, 'run', return_value=response) as run:
+            self.assertEqual(burp.BurpOps().request('https://example.test/a', 8080), (0, '200'))
+        environment = run.call_args.kwargs['env']
+        for variable in ('CURL_HOME', 'XDG_CONFIG_HOME', 'HOME'):
+            self.assertEqual(environment[variable], '/dev/null')
 
     def test_burp_stop_pins_owned_identity(self):
         f = self.fixture()
@@ -481,6 +581,20 @@ class ConsentTests(unittest.TestCase):
         ops = Ops()
         self.assertNotEqual(burp.stop_burp(root, forged, ops), 0)
         self.assertFalse(any(e[0] == 'signal' for e in ops.events))
+
+        # No-instance inference is intentionally blocked once multiple namespaces
+        # exist, rather than adopting the first receipt/PID in a directory listing.
+        ops = Ops()
+        self.assertNotEqual(burp.stop_burp(root, None, ops), 0)
+        self.assertEqual(ops.events, [])
+        linked = 'burp-' + 'c' * 32
+        linked_state = root / 'instances' / linked
+        linked_state.mkdir(mode=0o700)
+        (linked_state / 'instance.json').symlink_to(receipt)
+        ops = Ops()
+        self.assertNotEqual(burp.stop_burp(root, linked, ops), 0)
+        self.assertEqual(ops.events, [])
+        self.assertEqual(receipt.read_bytes(), before)
 
     def test_menu_cancel_and_coordinator_exclusions(self):
         for menu, stdin in (('scanners_menu', '6\n0\n0\n'),
