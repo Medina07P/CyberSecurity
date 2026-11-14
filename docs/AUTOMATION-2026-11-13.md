@@ -1,6 +1,37 @@
 # 09_Automation — contratos y verificación Task9 (2026-11-13)
 
-**Estado vigente round1: NEEDS_CONTEXT / EJECUCIÓN BLOQUEADA.** La revisión
+## Estado actual — 2026-11-14: listo PARA revisión final independiente
+
+Implementación/verificación del aislador test-only sobre1fde308 lista para el
+handoff, **NO aprobación global ni cierre de Task9**. El controlador ejecutó
+selectores fijos con probes previos, runtime preparado y workers Landlock ABI7:
+
+| Verificación autorizada | Resultado observado | Evidencia conservada |
+|---|---|---|
+| launcher aislado, selector suite |60sandbox units PASS;159legacy/integration,0failures0errors1SKIP dinámico pwsh;25casos autorizados ejecutados; inside/host rc0 | `/tmp/opencode/automation-isolated-483f2446911e4dd99e8573f69b952e8a/evidence/` |
+| mismo launcher, selector races |20recibos×8=160PASS,0fallos0errores,inside/host rc0 | `/tmp/opencode/automation-isolated-f3855feac6bd45d0b985542ca5cf6831/evidence/` |
+| cancelación externa tras race01, señal directa pidfd al launcher según controlador |SIGINT130,24descendientes observados salidos;SIGTERM143,23salidos; parciales retenidos | `/tmp/opencode/automation-outer-cancel-a879a56f3bf748eab64f5b3395a1fbe7/` |
+
+Esta entrega solo lee recibos JSON sintéticos existentes para documentar; no
+repite ejecución ni crea un RED/GREEN. [Guía test-only y límites](AUTOMATION-TEST-ISOLATION-2026-11-13.md)
+y reporte local `.superpowers/sdd/2026-11-13-automation-test-isolation/task-4-report.md`.
+El manifiesto conserva25IDs y razones históricas; la excepción actual es solo
+descartables NUEVOS del caso bajo Landlock, no fuentes/config real/controller
+evidence/logs ni runs anteriores. Finales y parciales permanecen en disco.
+
+Pendientes: review final independiente del aislador y global09/decisión del
+controlador; M1 terminal-receipt y minors históricos siguen diferidos, no pulidos.
+No compatibilidad Windows/Docker, seguridad kernel/hostil, cuota cgroups por
+árbol ni garantía realtime certificadas. PWsh dinámico no ejecutado; fuentes y
+contratos estáticos siguen incluidos. Suites antiguas completas/run_tests/SSTI
+no reejecutados ni reparados aquí; no declarar rama completa verde. No auditoría
+real/red/install/sudo/Docker/push/merge/limpieza autorizados por estos resultados.
+El incidente Nmap y TODOS los históricos siguientes permanecen, no se reescriben
+como evidencia de aislamiento de la sesión anterior.
+
+## Histórico round1 y resultados anteriores (no estado actual)
+
+**Estado en round1: NEEDS_CONTEXT / EJECUCIÓN BLOQUEADA.** La revisión
 independiente encontró I1–I3. Esta corrección es exclusivamente estática: I2
 corregido documentalmente e I3 ampliado en fuentes/pruebas escritas, **sin
 ejecutarlas**. I1 sigue abierto: no hay barrera SO efectiva/heredada acreditada.

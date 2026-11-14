@@ -1,17 +1,24 @@
 # Uso de 09 — contratos, no autorización
 
-**Verificación integral pendiente — enmienda Landlock NOT RUN.** El controlador registró
-60unit tests y109casos elegibles sin fallos enea414a9 (un SKIP dinámico pwsh,
-rc2 por25exclusiones; no suite completa verde). El usuario ya autorizó delete/
-replace de descartables sintéticos NUEVOS por caso dentro del aislador.
+**Implementación/verificación lista PARA revisión final independiente; NO
+aprobación global.** Sobre1fde308 el controlador verificó60sandbox units PASS y
+159legacy/integration,0fallos0errores1SKIP dinámico (pwsh ausente del runtime),
+rc0;25casos autorizados ejecutados, workers con Landlock ABI7 observado.
+Carreras:20repeticiones×8=160PASS/rc0. Cancelación externa tras primera repetición:
+SIGINT130 con24descendientes observados salidos y SIGTERM143 con23salidos;
+señales solo al launcher directo por pidfd según controlador, runs parciales
+conservados. Resultados sintéticos, no auditoría ni compatibilidad operacional.
+El usuario autorizó delete/replace de descartables sintéticos NUEVOS por caso.
 Los estados sintéticos intermedios nuevos son descartables: no se exigen
 before-images de cada run.json. La habilitación escrita usa worker fork por caso
 con Landlock ABI≥3 heredado por fork/exec, raíz nueva fijada y permiso cerrado
 para25IDs; si falta soporte, BLOCKED sin fallback. El controlador conserva
 recibos/logs por pipe y los árboles finales, nunca cleanup global. Fuentes/config
-real, evidencias/logs y runs previos quedan fuera de la excepción. Enmienda
-estática pendiente de revisión independiente y autorización, sin certificado
-kernel, nuevas flags/bypass ni cambios operacionales.
+real, evidencias/logs y runs previos quedan fuera de la excepción. Pendiente
+revisión final aislador/global09; M1 terminal-receipt sigue diferido. Sin
+certificado kernel/hostil, validación Windows/Docker ni rama completa verde.
+Esta actualización solo documenta recibos existentes: no autoriza nuevos runs,
+auditorías, instalaciones ni limpieza global; se conserva el incidente histórico.
 [Uso, selectores y límites del aislador de pruebas](../../docs/AUTOMATION-TEST-ISOLATION-2026-11-13.md).
 
 [Inventario completo del gestor, módulos 00–13 y todas sus entradas](../../docs/MENU-OPCIONES.md).
