@@ -32,6 +32,13 @@
   ],
   "stdlib": "/usr/lib/python3.13",
   "yaml": "/usr/lib/python3/dist-packages/yaml",
+  "python_aliases": [
+    {
+      "destination": "/usr/lib/python3.13/_sysconfigdata__x86_64-linux-gnu.py",
+      "source": "/usr/lib/python3.13/_sysconfigdata__linux_x86_64-linux-gnu.py",
+      "link": "_sysconfigdata__linux_x86_64-linux-gnu.py"
+    }
+  ],
   "extensions": [
     "_asyncio.cpython-313-x86_64-linux-gnu.so",
     "_bz2.cpython-313-x86_64-linux-gnu.so",
