@@ -543,3 +543,125 @@ for `.superpowers/sdd/...` although status showed all three exact tracked files
 staged. `git ls-files --error-unmatch` confirmed the report is tracked. No commit
 ran on that failed command chain; explicit report staging and staged diff checks
 precede the final commit. No file was removed, reset or discarded.
+
+## Fix round2/5 — FIX_BASE3709a8a — controller RED, static amendment
+
+Status: **DONE_WITH_CONCERNS — GREEN pending**. This amendment has NOT RUN.
+Earlier NOT RUN statements describe the implementer's work at those deliveries;
+the controller subsequently authorized and ran the exact command below, which
+produced a genuine infrastructure RED. That is not authorization to rerun amended
+code. No repository import/helper/test/launcher/probe/backend ran in this fix round.
+
+### Observed RED and preserved evidence
+
+Controller command (not executed by this implementer):
+
+```text
+python3 -I -B CyberSecurity-Framework/tests/automation_sandbox_launch.py --suite
+returncode: 1
+```
+
+Evidence retained intact:
+`/tmp/opencode/automation-isolated-f1a9fdabca7c46a199ee3a55d66b40ab/evidence/`.
+Read only its `stderr.log` lines55–82, `sandbox-units.json` and
+`inside-result.json` as ordinary documentary data. The stderr traceback shows:
+
+```text
+test_cross_grants_are_selection_bound, line48:
+    self.assertFalse(selection.case_disposable_allowed(cross))
+automation_suite_selection.py, line63:
+    import __main__ as controller
+ModuleNotFoundError: import of __main__ halted; None in sys.modules
+Ran 65 tests in 0.125s
+FAILED (errors=1)
+```
+
+JSON receipt summary read by standalone stdlib parsing:
+
+```text
+{'tests_run': 65, 'successful': False, 'failures': 0, 'errors': 1, 'skipped': 0}
+Non-PASS unit records: [{'id': 'test_automation_sandbox_boundary.SandboxBoundaryTests.test_cross_grants_are_selection_bound', 'state': 'ERROR'}]
+Inside receipt: {'reason': 'Sandbox unit contracts failed; legacy selection not started', 'returncode': 1, 'state': 'FAIL', 'tests_started': True, 'version': 1}
+Data read only; no repository imports, helpers or tests executed
+```
+
+`tests_started: true` accounts for the infrastructure units; the reason and
+selection flow establish that legacy selection was not started. Cross cases did
+not start. This is not a functional consent RED or a passing isolation regression.
+
+### Cause and minimal fix
+
+The negative test deliberately replaces the main module registry entry with None.
+The permission diagnostic imports that entry BEFORE reaching its fail-closed
+identity predicate. Python raises at import, so the intended False is never
+returned. An absent entry could also trigger import resolution instead of simply
+observing that no already-running genuine controller exists.
+
+Replace exactly that acquisition statement with:
+
+```python
+controller = sys.modules.get('__main__')
+```
+
+The module already imports sys. This is the same registry-observation pattern as
+`automation_test_guard.py:97`, without a new import, fallback, exception catch or
+authority source. None/missing controller fails the EXISTING fixed __file__ check
+and returns False. All remaining identity, validated-context, selection and
+exact-ID permission checks are unchanged. Genuine validation/inventory exceptions
+still propagate and remain visible; no blanket error-to-False handling was added.
+
+### Covering test / scope / TDD
+
+Existing ID retained and extended, not skipped or renamed:
+`test_automation_sandbox_boundary.SandboxBoundaryTests.test_cross_grants_are_selection_bound`.
+
+- Keep the controller-None assertion and also check a historical09 grant is denied.
+- Remove `__main__` temporarily only inside a restoring mock.patch.dict context;
+  both cross and historical09 IDs must return False when the entry is missing.
+- A matching controller whose validation raises RuntimeError must propagate that
+  precise error, proving absence is not used to swallow unexpected validation
+  failures. Restore the double before existing worker rejection assertions.
+- Existing positive selection-specific assertions, crossed/changed-ID denial and
+  before-fork rejection assertions remain unchanged.
+
+Tests extended BEFORE the one-line implementation edit. Original None negative
+already has controller-observed RED evidence above; added variants and amended
+code remain NOT RUN. No new test IDs/grants, production business changes, runtime
+sources, selectors, budgets or isolation policy changes. Only the two named
+infrastructure/test files and this appended report change in fix2.
+
+### Real static commands / outputs / pending gate
+
+- `git status --short`: initially empty.
+- Standalone `python3 -I -B - <<'PY'` read/JSON-parsed the two exact controller
+  receipts above and printed the quoted counts/state; no repository code imported.
+- `grep` source inspection found the matching registry-observation pattern at
+  `CyberSecurity-Framework/tests/automation_test_guard.py:97` (source data only).
+- Separate standalone `python3 -I -B - <<'PY'` imported only stdlib ast/json/
+  subprocess/pathlib. It parsed both changed sources and their FIX_BASE versions
+  obtained by `git show 3709a8a:<exact source path>`, then compared AST bodies
+  after the controller acquisition statement, existing method-name sets and the
+  fixed nine/25 grant JSON data. Actual output, rc0:
+
+```text
+AST OK: 2 changed Python sources; parsed only, no imports/execution
+Permission checks identical to FIX_BASE after registry lookup; no exception catch added
+Test IDs unchanged; grant data still exact9 cross / historical25 disjoint
+STATIC ONLY: amended code/tests/helpers/launcher/probes/backends NOT RUN; GREEN pending
+```
+
+- `git diff --check`: rc0, empty output.
+- `git diff 3709a8a -- CyberSecurity-Framework/tests/automation_suite_selection.py CyberSecurity-Framework/tests/test_automation_sandbox_boundary.py`:
+  reviewed the one-line diagnostic fix and eleven added negative-test lines.
+
+No reproduction or GREEN run was attempted by the implementer. Controller static
+re-review of the amendment must precede separately authorized exact runtime
+commands. Retain this failing run and all earlier sources/receipts/logs; no cleanup,
+installation, network, sudo, subagent, merge or push occurred. Final fix commit
+uses disabled repository hooks; runtime safety/compatibility remains unverified
+for the amended SHA.
+
+Final standalone stdlib AST/Git data check also verified the exact three-file
+scope and byte-for-byte preservation of the entire report prefix at FIX_BASE:
+`Final static check: exact two scoped sources + append-only report; 2 AST OK; no code imported/run`
+(rc0). Final `git diff --check` was rc0 with empty output.
