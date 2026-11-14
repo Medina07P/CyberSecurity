@@ -36,8 +36,7 @@ REVIEWED_PACKAGE = b'bubblewrap (0.11.2-2) unstable; urgency=medium'
 HOST_TIMEOUT = 900
 SIGNAL_GRACE = 5
 LIMITS = ((resource.RLIMIT_AS, 2 * 1024**3), (resource.RLIMIT_CPU, 600),
-          (resource.RLIMIT_NOFILE, 256), (resource.RLIMIT_FSIZE, 64 * 1024**2),
-          (resource.RLIMIT_NPROC, 256))
+          (resource.RLIMIT_NOFILE, 256), (resource.RLIMIT_FSIZE, 64 * 1024**2))
 
 
 class _HostStop(BaseException):
@@ -86,6 +85,7 @@ class _Child:
 
 
 def _fork_child(child, argv, bwrap_fd, seccomp_fd, stdout, stderr):
+    inherited_nproc = resource.getrlimit(resource.RLIMIT_NPROC)
     # Publish the PID into an already-owned object BEFORE unmasking signals.
     # Thus cancellation cannot lose a child between fork and caller assignment.
     old_mask = signal.pthread_sigmask(signal.SIG_BLOCK,
@@ -114,6 +114,10 @@ def _fork_child(child, argv, bwrap_fd, seccomp_fd, stdout, stderr):
                 os.set_inheritable(seccomp_fd, True)
                 for kind, limit in LIMITS:
                     resource.setrlimit(kind, (limit, limit))
+                # Trusted namespace bootstrap inherits the host ceiling. Never
+                # set/raise it here; earliest inside gate imposes hard=soft256.
+                if resource.getrlimit(resource.RLIMIT_NPROC) != inherited_nproc:
+                    raise IsolationBlocked('Bootstrap NPROC inheritance changed')
                 # fexecve pins the approved ELF; the fd closes on exec. No host
                 # environment, argv command selection, or Python fallback.
                 os.execve(bwrap_fd, argv, {})
@@ -181,6 +185,51 @@ def _validate_limits():
         soft, hard = resource.getrlimit(kind)
         if any(value != resource.RLIM_INFINITY and value < limit for value in (soft, hard)):
             raise IsolationBlocked('Existing resource limit insufficient; not increased')
+
+
+def _host_uid_tasks(uid):
+    """Procfs metadata only: sum Threads for real UID, not process count.
+
+    Snapshot, NOT kernel ucounts/pids.max or a reserved allowance. Vanished PIDs
+    can be skipped; denied/ambiguous metadata blocks rather than guessing.
+    """
+    total = 0
+    for name in os.listdir('/proc'):
+        if not name.isdecimal():
+            continue
+        try:
+            fields = {}
+            with open('/proc/' + name + '/status', encoding='ascii') as status:
+                for line in status:
+                    key, _, value = line.partition(':')
+                    if key in ('Uid', 'Threads'):
+                        fields[key] = [int(part) for part in value.split()]
+        except FileNotFoundError:
+            continue
+        if (set(fields) != {'Uid', 'Threads'} or len(fields['Uid']) != 4 or
+                len(fields['Threads']) != 1 or fields['Threads'][0] < 1):
+            raise IsolationBlocked('UID task metadata incomplete')
+        if fields['Uid'][0] == uid:
+            total += fields['Threads'][0]
+    if total < 1:
+        raise IsolationBlocked('UID task accounting not observable')
+    return total
+
+
+def _bootstrap_nproc():
+    uid = os.getuid()
+    soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
+    if uid == 0 or os.geteuid() != uid:
+        raise IsolationBlocked('NPROC requires nonroot real/effective identity')
+    if any(value != resource.RLIM_INFINITY and value < 256 for value in (soft, hard)):
+        raise IsolationBlocked('Inherited NPROC cannot admit workload hard256')
+    consumed = _host_uid_tasks(uid)
+    if soft != resource.RLIM_INFINITY and consumed >= soft:
+        raise IsolationBlocked('Inherited host NPROC already exhausted')
+    return {'uid': uid, 'soft': soft, 'hard': hard,
+            'observed_uid_tasks': consumed, 'counter_scope': 'host-proc-visible-real-uid-threads',
+            'user_namespace': os.readlink('/proc/self/ns/user'),
+            'workload_soft_hard': [256, 256], 'bootstrap_policy': 'inherit-without-raising'}
 
 
 def _validate_staging(run):
@@ -355,6 +404,7 @@ def _probe_inputs(run):
         'host_namespaces': {name: os.readlink('/proc/self/ns/' + name)
                             for name in ('mnt', 'pid', 'net', 'user', 'ipc',
                                          'uts', 'cgroup')},
+        'host_uid': os.getuid(),
     })
 
 
@@ -418,11 +468,13 @@ def launch() -> int:
         seccomp_fd = _seccomp_memfd()
         descriptors.append(seccomp_fd)
         argv = bubblewrap_argv(run, seccomp_fd) + (selector,)
+        bootstrap_nproc = _bootstrap_nproc()
         _new_json(run.evidence / 'launch.json', {
             'version': 1, 'state': 'STARTING', 'argv': list(argv),
             'bwrap': bwrap_record, 'host_timeout': HOST_TIMEOUT,
             'suite_timeout': 600, 'races_timeout': 240, 'probe_timeout': 10,
             'runtime_executed': False,
+            'bootstrap_nproc': bootstrap_nproc,
         })
         stdout = _new_log(run.evidence / 'stdout.log')
         descriptors.append(stdout)
@@ -432,6 +484,8 @@ def launch() -> int:
             return 128 + pending[0]
         if time.monotonic() >= host_deadline:
             raise IsolationBlocked('Host budget exhausted before payload')
+        if resource.getrlimit(resource.RLIMIT_NPROC) != (bootstrap_nproc['soft'], bootstrap_nproc['hard']):
+            raise IsolationBlocked('Host NPROC changed before bootstrap')
         child = _Child()
         _fork_child(child, argv, bwrap_fd, seccomp_fd, stdout, stderr)
         try:
@@ -464,17 +518,34 @@ def launch() -> int:
         if (run.root / 'external-marker').exists():
             raise IsolationBlocked('External synthetic marker unexpectedly exists')
         if receipt['state'] == 'PASS' or (receipt['state'] == 'BLOCKED' and result == 2):
+            workload = load_json(run.evidence / 'workload-nproc.json', {
+                'version', 'soft', 'hard', 'uid', 'euid', 'uid_map', 'user_namespace',
+                'capabilities', 'observed_uid_tasks', 'counter_scope', 'inherited_soft_hard'})
+            if (any(type(workload[key]) is not int for key in
+                    ('soft', 'hard', 'uid', 'euid', 'observed_uid_tasks')) or
+                    not isinstance(workload['capabilities'], dict) or
+                    workload['counter_scope'] != 'private-proc-visible-real-uid-threads' or
+                    not isinstance(workload['user_namespace'], str) or
+                    workload['soft'] != 256 or workload['hard'] != 256 or
+                    workload['uid'] != workload['euid'] or workload['uid'] <= 0 or
+                    workload['uid_map'] != [[workload['uid'], bootstrap_nproc['uid'], 1]] or
+                    workload['user_namespace'] == bootstrap_nproc['user_namespace'] or
+                    workload['inherited_soft_hard'] != [bootstrap_nproc['soft'], bootstrap_nproc['hard']] or
+                    set(workload['capabilities']) != {'CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'} or
+                    any(workload['capabilities'].values()) or
+                    not 1 <= workload['observed_uid_tasks'] < 256):
+                raise IsolationBlocked('Workload NPROC receipt not established')
             probes = load_json(run.evidence / 'probes.json', {
                 'version', 'run_id', 'state', 'checks', 'context', 'namespaces',
-                'descendants', 'cancel', 'entry_fds'})
+                'descendants', 'cancel', 'entry_fds', 'nproc'})
             if (probes['run_id'] != run.root.name or probes['state'] != 'PASS' or
                     probes['entry_fds'] != {'valid': True, 'observed': [0, 1, 2, 3],
                                            'live': [0, 1, 2], 'closed_transient': [3]} or
                     not isinstance(probes['checks'], list) or
                     {row.get('id') for row in probes['checks'] if isinstance(row, dict)} !=
-                    {'entry-fds', 'python-child', 'bash-grandchild', 'bash-child',
+                    {'entry-fds', 'workload-nproc', 'python-child', 'bash-grandchild', 'bash-child',
                      'cancel-owned-descendants'} or
-                    len(probes['checks']) != 5 or
+                    len(probes['checks']) != 6 or
                     any(not isinstance(row, dict) or set(row) != {'id', 'result', 'reason'} or
                         row['result'] != 'PASS' for row in probes['checks'])):
                 raise IsolationBlocked('Fresh probe result missing or inconsistent')

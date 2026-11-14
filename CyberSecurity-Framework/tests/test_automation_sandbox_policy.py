@@ -47,6 +47,32 @@ def prepared():
 
 
 class SandboxPolicyTests(unittest.TestCase):
+    def test_bootstrap_inherits_nproc_without_setting_or_raising(self):
+        self.assertNotIn(launcher.resource.RLIMIT_NPROC,
+                         [kind for kind, _ in launcher.LIMITS])
+        text = Path(launcher.__file__).read_text()
+        self.assertIn('resource.getrlimit(resource.RLIMIT_NPROC) != inherited_nproc', text)
+        with mock.patch.object(launcher.resource, 'getrlimit', return_value=(4096, 8192)), \
+                mock.patch.object(launcher, '_host_uid_tasks', return_value=330), \
+                mock.patch.object(launcher.os, 'readlink', return_value='user:[host]'), \
+                mock.patch.object(launcher.os, 'getuid', return_value=1000), \
+                mock.patch.object(launcher.os, 'geteuid', return_value=1000):
+            result = launcher._bootstrap_nproc()
+        self.assertEqual((result['soft'], result['hard']), (4096, 8192))
+        self.assertEqual(result['observed_uid_tasks'], 330)
+        self.assertEqual(result['workload_soft_hard'], [256, 256])
+
+    def test_host_consumption_counts_uid_threads_not_processes(self):
+        statuses = [mock.mock_open(read_data='Uid:\t1000 1000 1000 1000\nThreads:\t300\n').return_value,
+                    mock.mock_open(read_data='Uid:\t1000 1000 1000 1000\nThreads:\t30\n').return_value]
+        with mock.patch.object(launcher.os, 'listdir', return_value=['101', '102']), \
+                mock.patch('builtins.open', side_effect=statuses):
+            self.assertEqual(launcher._host_uid_tasks(1000), 330)
+        with mock.patch.object(launcher.os, 'listdir', return_value=['101']), \
+                mock.patch('builtins.open', side_effect=PermissionError('denied')):
+            with self.assertRaises(PermissionError):
+                launcher._host_uid_tasks(1000)
+
     def test_isolated_script_bootstrap_precedes_all_local_imports(self):
         # Inspect the actual -I entry script as data; never start a host Python.
         tree = ast.parse(Path(launcher.__file__).read_text())
