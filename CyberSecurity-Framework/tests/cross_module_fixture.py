@@ -38,6 +38,15 @@ COORDINATOR_LEAVES = (
 )
 
 
+def _private_json(path, value):
+    """Exclusive new evidence/input, never overwrite an invocation artifact."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        json.dump(value, stream, sort_keys=True)
+        stream.write('\n')
+
+
 class CrossModuleFixture:
     def __init__(self, group: str):
         import __main__ as controller
@@ -80,9 +89,23 @@ class CrossModuleFixture:
             'SESSION_TARGETS_FILE': str(config / 'targets.txt'),
         }
         self._invocations = 0
+        self._ss_configurations = 0
         for name in ('curl', 'ss', 'sudo', 'burpsuite', 'sleep', 'last',
                      'xdotool', 'xwininfo', 'whoami', 'record-dispatch'):
             self.stub(name)
+        self.configure_ss((
+            'State Recv-Q Send-Q Local Address:Port Peer Address:Port\n',
+            'State Recv-Q Send-Q Local Address:Port Peer Address:Port\n'
+            'LISTEN 0 128 127.0.0.1:8080 0.0.0.0:*\n'))
+
+    def configure_ss(self, responses):
+        """Transport data only; repeat the last response, never open a socket."""
+        if not responses or not all(isinstance(value, str) for value in responses):
+            raise ValueError('Expected nonempty literal ss response strings')
+        self._ss_configurations += 1
+        path = self.output / ('ss-transport-' + str(self._ss_configurations) + '.json')
+        _private_json(path, list(responses))
+        self.env['CROSS_SS_RESPONSES'] = str(path)
 
     def stub(self, name):
         if '/' in name or name in ('', '.', '..'):
@@ -90,7 +113,7 @@ class CrossModuleFixture:
         path = self.bin / name
         # Exclusive new file, never replace/adopt a backend from the environment.
         with path.open('x') as stream:
-            stream.write('#!/usr/bin/python3\nimport json, sys\nfrom pathlib import Path\n'
+            stream.write('#!/usr/bin/python3\nimport json, os, sys\nfrom pathlib import Path\n'
                          'name = ' + repr(name) + '\n'
                          'log = Path(' + repr(str(self.log)) + ')\n'
                          'prior = log.read_text().splitlines() if log.exists() else []\n'
@@ -100,9 +123,9 @@ class CrossModuleFixture:
                          '    print("synthetic sudo refusal", file=sys.stderr)\n'
                          '    sys.exit(1)\n'
                          'if name == "ss":\n'
-                         '    print("State Recv-Q Send-Q Local Address:Port Peer Address:Port")\n'
-                         '    if any(json.loads(row)[0] == "ss" for row in prior):\n'
-                         '        print("LISTEN 0 128 127.0.0.1:8080 0.0.0.0:*")\n'
+                         '    responses = json.loads(Path(os.environ["CROSS_SS_RESPONSES"]).read_text())\n'
+                         '    index = sum(json.loads(row)[0] == "ss" for row in prior)\n'
+                         '    print(responses[min(index, len(responses) - 1)], end="")\n'
                          'if name == "curl": print("200", end="")\n'
                          'if name == "whoami": print("synthetic-user")\n'
                          'if name in ("xdotool", "xwininfo"): sys.exit(1)\n'
@@ -126,20 +149,41 @@ class CrossModuleFixture:
             if path == self.log or self.output == path or self.output in path.parents:
                 continue
             info = path.lstat()
-            rows.append((str(path.relative_to(self.repo)), info.st_mode,
+            rows.append((str(path.relative_to(self.repo)), info.st_mode, info.st_dev, info.st_ino,
+                         info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_nlink,
                          path.read_bytes() if path.is_file() and not path.is_symlink() else None))
         return rows
 
     def _run(self, argv, stdin):
         self._invocations += 1
-        result = subprocess.run(argv, input=stdin, text=True, capture_output=True,
-                                cwd=self.framework, env=self.env, timeout=15, close_fds=True)
         root = self.output / str(self._invocations)
-        root.mkdir(mode=0o700)
-        (root / 'stdout').write_text(result.stdout)
-        (root / 'stderr').write_text(result.stderr)
-        (root / 'result.json').write_text(json.dumps({'argv': argv, 'returncode': result.returncode}))
-        return result
+        root.mkdir(mode=0o700)  # EEXIST blocks before launch; retain prior artifacts.
+        _private_json(root / 'argv.json', list(argv))
+        _private_json(root / 'started.json', {'state': 'STARTING', 'timeout': 15})
+        receipt = {'argv': list(argv), 'state': 'INTERRUPTED', 'returncode': None}
+        try:
+            # Direct retained streams preserve partial bytes even if run raises.
+            with (root / 'stdout').open('xb') as stdout, (root / 'stderr').open('xb') as stderr:
+                os.fchmod(stdout.fileno(), 0o600)
+                os.fchmod(stderr.fileno(), 0o600)
+                result = subprocess.run(argv, input=stdin, text=True, stdout=stdout, stderr=stderr,
+                                        cwd=self.framework, env=self.env, timeout=15, close_fds=True)
+            receipt.update(state='DONE', returncode=result.returncode)
+        except subprocess.TimeoutExpired:
+            receipt.update(state='TIMEOUT', timeout=15, error_type='TimeoutExpired')
+            raise
+        except OSError as exc:
+            receipt.update(state='LAUNCH_ERROR', error_type=type(exc).__name__, errno=exc.errno)
+            raise
+        except BaseException as exc:
+            receipt.update(error_type=type(exc).__name__)
+            raise
+        finally:
+            _private_json(root / 'result.json', receipt)
+        return subprocess.CompletedProcess(
+            result.args, result.returncode,
+            (root / 'stdout').read_text(encoding='utf-8', errors='replace'),
+            (root / 'stderr').read_text(encoding='utf-8', errors='replace'))
 
     def run_leaf(self, relative, args=(), stdin=''):
         if relative not in SOURCE_FILES + COORDINATOR_LEAVES or not relative.endswith('.sh'):
@@ -157,7 +201,7 @@ class CrossModuleFixture:
                          'source "$1/00_Config/lib/session.bash"\n'
                          'source "$1/00_Config/lib/' + name + '.bash"\n'
                          'clear_screen() { :; }; pause() { :; }\n'
-                         'ask_confirm() { printf "%s\\n" "$1"; local answer; IFS= read -r answer || return 1; '
+                         'ask_confirm() { printf "CONSENT_PROMPT: %s\\n" "$1"; local answer; IFS= read -r answer || return 1; '
                          '[[ "$answer" == s || "$answer" == si ]]; }\n'
                          'execute_script() { record-dispatch "$@"; }\n'
                          'run_module_scripts() { record-dispatch "$@"; }\n' + name + '\n')

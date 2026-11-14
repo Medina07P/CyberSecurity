@@ -8,8 +8,13 @@ from pathlib import Path
 import importlib
 import os
 import signal
+import stat
+import subprocess
 import sys
 import unittest
+from unittest import mock
+import json
+import uuid
 
 CLEANER = '06_PostExploitation/cleanup/logs_cleaner.sh'
 BURP = '03_Scanners/web_scanners/burpsuite/burp_launcher.sh'
@@ -40,6 +45,54 @@ class ConsentTests(unittest.TestCase):
                 self.assertEqual(result.returncode, rc, result.stderr)
                 self.assertEqual(f.records(), [])
                 self.assertEqual(f.snapshot(), before)
+        # Fixture transport contracts use doubles only: no timed-out real leaf.
+        for state in ('DONE', 'TIMEOUT', 'LAUNCH_ERROR'):
+            f = self.fixture()
+            argv = ['/bin/bash', 'synthetic-transport-only']
+            def transport(actual, **kwargs):
+                self.assertEqual(actual, argv)
+                root = f.output / '1'
+                self.assertEqual(json.loads((root / 'argv.json').read_text()), argv)
+                self.assertEqual(json.loads((root / 'started.json').read_text())['state'], 'STARTING')
+                self.assertTrue((root / 'stdout').is_file())
+                self.assertTrue((root / 'stderr').is_file())
+                self.assertEqual(kwargs['timeout'], 15)
+                kwargs['stdout'].write(b'partial synthetic stdout\n')
+                kwargs['stdout'].flush()
+                kwargs['stderr'].write(b'partial synthetic stderr\n')
+                kwargs['stderr'].flush()
+                if state == 'TIMEOUT':
+                    raise subprocess.TimeoutExpired(actual, 15)
+                if state == 'LAUNCH_ERROR':
+                    raise OSError(2, 'synthetic launch failure')
+                return subprocess.CompletedProcess(actual, 7)
+            with mock.patch('cross_module_fixture.subprocess.run', side_effect=transport):
+                if state == 'DONE':
+                    result = f._run(argv, '')
+                    self.assertEqual(result.returncode, 7)
+                    self.assertEqual(result.stdout, 'partial synthetic stdout\n')
+                    self.assertEqual(result.stderr, 'partial synthetic stderr\n')
+                else:
+                    with self.assertRaises(subprocess.TimeoutExpired if state == 'TIMEOUT' else OSError):
+                        f._run(argv, '')
+            root = f.output / '1'
+            self.assertEqual((root / 'stdout').read_bytes(), b'partial synthetic stdout\n')
+            self.assertEqual((root / 'stderr').read_bytes(), b'partial synthetic stderr\n')
+            receipt = json.loads((root / 'result.json').read_text())
+            self.assertEqual(receipt['state'], state)
+            self.assertEqual(receipt['argv'], argv)
+            self.assertEqual(receipt['returncode'], 7 if state == 'DONE' else None)
+            self.assertEqual(stat.S_IMODE(root.stat().st_mode), 0o700)
+            for path in root.iterdir():
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            # Reusing an invocation number may not overwrite retained evidence.
+            retained = {p.name: p.read_bytes() for p in root.iterdir()}
+            f._invocations = 0
+            with mock.patch('cross_module_fixture.subprocess.run') as not_launched:
+                with self.assertRaises(FileExistsError):
+                    f._run(argv, '')
+                not_launched.assert_not_called()
+            self.assertEqual({p.name: p.read_bytes() for p in root.iterdir()}, retained)
 
     def test_cleanup_requires_both_flags(self):
         for args in (('--execute',), ('--confirm-local-cleanup',),
@@ -51,17 +104,39 @@ class ConsentTests(unittest.TestCase):
             self.assertEqual(f.records(), [])
         f = self.fixture()
         f.set_session('remote.example.test')
+        prior = f.repo / 'scans/cleanup/11111111111141118111111111111111'
+        prior.mkdir(parents=True, mode=0o700)
+        (prior / 'last_access.txt').write_bytes(b'previous synthetic report\n')
+        (prior / 'last_access.txt').chmod(0o600)
+        prior_bytes = (prior / 'last_access.txt').read_bytes()
+        prior_info = (prior / 'last_access.txt').stat()
         result = f.run_leaf(CLEANER, ('--execute', '--confirm-local-cleanup'))
         # Synthetic sudo refuses every operation; cannot be complete success.
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertNotIn('remote.example.test', result.stdout + result.stderr)
         self.assertTrue(f.records())
         self.assertNotIn('remote.example.test', repr(f.records()))
+        created = [p for p in prior.parent.iterdir() if p != prior]
+        self.assertEqual(len(created), 1)
+        uuid.UUID(created[0].name)
+        self.assertEqual(stat.S_IMODE(created[0].stat().st_mode), 0o700)
+        self.assertEqual((created[0] / 'last_access.txt').read_bytes(), b'synthetic login snapshot\n')
+        self.assertEqual(stat.S_IMODE((created[0] / 'last_access.txt').stat().st_mode), 0o600)
+        for path in created[0].rglob('*'):
+            self.assertFalse(path.is_symlink())
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700 if path.is_dir() else 0o600)
+        self.assertEqual((prior / 'last_access.txt').read_bytes(), prior_bytes)
+        self.assertEqual(stat.S_IMODE((prior / 'last_access.txt').stat().st_mode), 0o600)
+        self.assertEqual(((prior / 'last_access.txt').stat().st_dev,
+                          (prior / 'last_access.txt').stat().st_ino),
+                         (prior_info.st_dev, prior_info.st_ino))
 
     def test_cleanup_local_plan_and_partial_failure(self):
         f = self.fixture()
         cleanup = self.core(f, 'cleanup')
+        before_plan = f.snapshot()
         plan = cleanup.plan_cleanup(f.home)
+        self.assertEqual(f.snapshot(), before_plan)
         self.assertEqual([(op.kind, str(op.path) if op.path else None) for op in plan], [
             ('truncate', '/var/log/auth.log'), ('truncate', '/var/log/syslog'),
             ('truncate', '/var/log/btmp'), ('truncate', '/var/log/wtmp'),
@@ -71,7 +146,11 @@ class ConsentTests(unittest.TestCase):
         class Ops:
             def __init__(self):
                 self.seen = []
+                self.child_history = ['synthetic child-only command']
             def perform(self, operation, report_root):
+                self_test.assertEqual(report_root.parent, reports)
+                self_test.assertTrue(report_root.is_dir())  # allocated by business, not Ops
+                self_test.assertEqual(stat.S_IMODE(report_root.stat().st_mode), 0o700)
                 self.seen.append(operation.kind)
                 if operation.path == Path('/var/log/syslog'):
                     raise OSError('synthetic syslog failure')
@@ -81,15 +160,44 @@ class ConsentTests(unittest.TestCase):
                     files.truncate_regular(target)
                     if target.read_bytes() != b'':
                         raise AssertionError('real file operation did not truncate')
+                elif operation.kind == 'child-history':
+                    self.child_history.clear()  # synthetic child transport state only
+                elif operation.kind == 'snapshot':
+                    return b'synthetic access snapshot\n'
         files = self.core(f, 'files')
+        self_test = self
+        reports = f.repo / 'scans/cleanup'
+        prior = reports / '11111111111141118111111111111111'
+        prior.mkdir(parents=True, mode=0o700)
+        (prior / 'last_access.txt').write_bytes(b'prior report intact\n')
+        (prior / 'last_access.txt').chmod(0o600)
         ops = Ops()
-        result = cleanup.apply_cleanup(plan, f.repo / 'reports', ops)
+        result = cleanup.apply_cleanup(plan, reports, ops)
         self.assertEqual(result.rc, 1)
         self.assertEqual(ops.seen, ['truncate', 'truncate', 'truncate', 'truncate',
                                     'history', 'child-history', 'snapshot'])
         self.assertEqual([row.success for row in result.operations],
                          [True, False, True, True, True, True, True])
         self.assertIn('synthetic syslog failure', result.operations[1].error)
+        self.assertEqual(ops.child_history, [])
+        self.assertEqual(result.report_dir.parent, reports)
+        uuid.UUID(result.report_dir.name)
+        self.assertEqual((result.report_dir / 'last_access.txt').read_bytes(), b'synthetic access snapshot\n')
+        self.assertEqual(stat.S_IMODE((result.report_dir / 'last_access.txt').stat().st_mode), 0o600)
+        previous_output = {str(p.relative_to(reports)): (p.read_bytes(), stat.S_IMODE(p.stat().st_mode),
+                                                       p.stat().st_dev, p.stat().st_ino)
+                           for p in reports.rglob('*') if p.is_file()}
+        second = cleanup.apply_cleanup(plan, reports, Ops())
+        self.assertEqual(second.rc, 1)
+        self.assertNotEqual(second.report_dir, result.report_dir)
+        self.assertEqual(second.report_dir.parent, reports)
+        self.assertEqual(stat.S_IMODE(second.report_dir.stat().st_mode), 0o700)
+        self.assertEqual((second.report_dir / 'last_access.txt').read_bytes(), b'synthetic access snapshot\n')
+        self.assertEqual(stat.S_IMODE((second.report_dir / 'last_access.txt').stat().st_mode), 0o600)
+        for relative, expected in previous_output.items():
+            path = reports / relative
+            self.assertEqual((path.read_bytes(), stat.S_IMODE(path.stat().st_mode),
+                              path.stat().st_dev, path.stat().st_ino), expected)
 
     def test_cleanup_refuses_links(self):
         f = self.fixture()
@@ -120,10 +228,24 @@ class ConsentTests(unittest.TestCase):
             self.assertNotIn('curl', names)
             self.assertIn('Community', result.stdout)
             self.assertNotIn('captura certificada', result.stdout)
+        f = self.fixture()
+        f.set_session('remote.example.test')
+        f.configure_ss(('State Recv-Q Send-Q Local Address:Port Peer Address:Port Process\n'
+                        'LISTEN 0 128 127.0.0.1:8080 0.0.0.0:* users:(("foreign-synthetic",pid=999999,fd=3))\n',))
+        result = f.run_leaf(BURP, ('8080',), stdin='no\n')
+        output = result.stdout + result.stderr
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(any(r[0] in ('curl', 'burpsuite') for r in f.records()))
+        self.assertIn('Puerto ocupado: 8080', output)
+        self.assertIn('Propietario: NO_DETERMINADO', output)
+        self.assertIn('Captura: NO_VERIFICADA', output)
+        self.assertNotRegex(output, r'(?i)Burp escucha|proxy comprobado|captura (certificada|confirmada|verificada)|propietario: (Burp|PROPIO)')
 
     def test_burp_status_has_no_side_effects(self):
         for legacy, missing_ss in ((False, False), (True, False), (True, True)):
             f = self.fixture()
+            f.configure_ss(('State Recv-Q Send-Q Local Address:Port Peer Address:Port\n'
+                            'LISTEN 0 128 127.0.0.1:8080 0.0.0.0:*\n',))
             if legacy:
                 state = f.repo / 'scans/burp'
                 state.mkdir(parents=True)
@@ -134,9 +256,13 @@ class ConsentTests(unittest.TestCase):
                 (f.bin / 'ss').rename(f.repo / 'retained-ss')
             before = f.snapshot()
             result = f.run_leaf(BURP, ('--estado',))
+            output = result.stdout + result.stderr
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(f.snapshot(), before)
             self.assertFalse(any(r[0] in ('curl', 'burpsuite', 'sudo') for r in f.records()))
+            self.assertIn('Propietario: NO_DETERMINADO', output)
+            self.assertIn('Captura: NO_VERIFICADA', output)
+            self.assertNotRegex(output, r'(?i)Burp escucha|proxy comprobado|captura (certificada|confirmada|verificada)|propietario: (Burp|PROPIO)')
             if missing_ss:
                 self.assertIn('NO_DETERMINADO', result.stdout)
 
@@ -169,15 +295,23 @@ class ConsentTests(unittest.TestCase):
 
     def test_burp_stop_pins_owned_identity(self):
         f = self.fixture()
+        # Public wrapper gate, with no receipt/PID to adopt even on the old code.
+        before_cli = f.snapshot()
+        rejected = f.run_leaf(BURP, ('--parar', '--instance', 'burp-' + 'a' * 32))
+        self.assertEqual(rejected.returncode, 2, rejected.stdout + rejected.stderr)
+        self.assertEqual(f.records(), [])
+        self.assertEqual(f.snapshot(), before_cli)
         burp = self.core(f, 'burp')
         # Entire process transport is synthetic: no foreign PID or real signal.
         class Ops:
             def __init__(self):
                 self.events = []
                 self.ticks = 20
+                self.uid = 1000
+                self.boot_id = 'synthetic-boot'
             def identity(self, pid):
                 self.events.append(('identity', pid))
-                return {'pid': 123, 'start_ticks': self.ticks, 'uid': 1000, 'boot_id': 'synthetic-boot'}
+                return {'pid': 123, 'start_ticks': self.ticks, 'uid': self.uid, 'boot_id': self.boot_id}
             def pidfd_open(self, pid):
                 self.events.append(('open', pid))
                 return 42
@@ -192,12 +326,26 @@ class ConsentTests(unittest.TestCase):
         root = f.repo / 'scans/burp'
         state = root / 'instances' / instance
         state.mkdir(parents=True, mode=0o700)
-        import json
         receipt = state / 'instance.json'
         receipt.write_text(json.dumps({'version': 1, 'instance_id': instance, 'pid': 123,
                                       'start_ticks': 20, 'uid': 1000, 'boot_id': 'synthetic-boot'}))
         receipt.chmod(0o600)
         before = receipt.read_bytes()
+        # Same public argument parser with a real new receipt, but injected
+        # process transport: no possible signal to a numeric OS PID in this test.
+        cli = self.core(f, 'burp_cli')
+        ops = Ops()
+        before_gate = f.snapshot()
+        self.assertEqual(cli.main(['--parar', '--instance', instance],
+                                  framework=f.framework, ops=ops), 2)
+        self.assertEqual(ops.events, [])
+        self.assertEqual(f.snapshot(), before_gate)
+        ops = Ops()
+        self.assertEqual(cli.main(['--parar', '--instance', instance, '--execute'],
+                                  framework=f.framework, ops=ops), 0)
+        self.assertEqual(ops.events, [('identity', 123), ('open', 123), ('identity', 123),
+                                     ('signal', 42, signal.SIGTERM), ('wait', 42, 5),
+                                     ('signal', 42, signal.SIGKILL), ('close', 42)])
         ops = Ops()
         self.assertEqual(burp.stop_burp(root, instance, ops), 0)
         self.assertEqual(ops.events, [('identity', 123), ('open', 123), ('identity', 123),
@@ -209,6 +357,19 @@ class ConsentTests(unittest.TestCase):
             ops.ticks = ticks
             self.assertNotEqual(burp.stop_burp(root, instance, ops), 0)
             self.assertFalse(any(e[0] == 'signal' for e in ops.events))
+        for field, changed in (('uid', 1001), ('boot_id', 'other-synthetic-boot')):
+            for after_pin in (False, True):
+                ops = Ops()
+                if after_pin:
+                    original_pin = ops.pidfd_open
+                    def changed_after_pin(pid):
+                        setattr(ops, field, changed)
+                        return original_pin(pid)
+                    ops.pidfd_open = changed_after_pin
+                else:
+                    setattr(ops, field, changed)
+                self.assertNotEqual(burp.stop_burp(root, instance, ops), 0)
+                self.assertFalse(any(e[0] == 'signal' for e in ops.events))
         ops = Ops()
         def unavailable(pid):
             raise OSError('pidfd absent')
@@ -242,14 +403,31 @@ class ConsentTests(unittest.TestCase):
     def test_menu_cancel_and_coordinator_exclusions(self):
         for menu, stdin in (('scanners_menu', '6\n0\n0\n'),
                             ('scanners_menu', '6\n2\n\n'),
-                            ('postexploitation_menu', '7\nno\n0\n'),
-                            ('postexploitation_menu', '7\n')):
+                            ('postexploitation_menu', '7\n0\n0\n'),
+                            ('postexploitation_menu', '7\n2\nno\n0\n'),
+                            ('postexploitation_menu', '7\n2\n'),
+                            ('postexploitation_menu', '7\n2\n0\n0\n')):
             f = self.fixture()
+            f.set_session('remote.example.test')
+            session = f.framework / '00_Config/.session'
+            before_session = (session.read_bytes(), stat.S_IMODE(session.stat().st_mode))
+            before_tree = f.snapshot()
             result = f.run_menu(menu, stdin)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertFalse(any('--execute' in row for row in f.records()))
+            if menu == 'postexploitation_menu' and stdin.startswith('7\n2\n'):
+                self.assertRegex(result.stdout, r'(?im)^CONSENT_PROMPT: .*LOCAL')
+                self.assertIn('LOCAL', result.stdout + result.stderr)
+            # Only an explicitly inert preview is permitted, never unflagged
+            # historical cleaner dispatch or a session-derived destination.
+            for row in f.records():
+                self.assertEqual(menu, 'postexploitation_menu')
+                self.assertEqual(row, ['record-dispatch', CLEANER, '06_PostExploitation',
+                                       '--prepared', '--preview'])
+            self.assertEqual((session.read_bytes(), stat.S_IMODE(session.stat().st_mode)), before_session)
+            self.assertEqual(f.snapshot(), before_tree)
         f = self.fixture()
-        result = f.run_menu('postexploitation_menu', '7\nno\n0\n')
+        f.set_session('remote.example.test')
+        result = f.run_menu('postexploitation_menu', '7\n2\nno\n0\n')
         self.assertIn('LOCAL', result.stdout + result.stderr)
         f = self.fixture()
         result = f.run_menu('scanners_menu', '4\ns\n0\n')
@@ -262,12 +440,18 @@ class ConsentTests(unittest.TestCase):
             'record-dispatch', BURP, '03_Scanners', '--prepared', '--verificar',
             'https://example.test/a', '--proxy-port', '8080', '--execute', '--confirm-network']])
         f = self.fixture()
+        f.set_session('remote.example.test')
+        session = f.framework / '00_Config/.session'
+        before_session = (session.read_bytes(), stat.S_IMODE(session.stat().st_mode))
+        before_tree = f.snapshot()
         result = f.run_menu('postexploitation_menu', '7\n2\ns\n0\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(f.records(), [[
             'record-dispatch', CLEANER, '06_PostExploitation', '--prepared',
             '--execute', '--confirm-local-cleanup']])
         self.assertIn('LOCAL', result.stdout + result.stderr)
+        self.assertEqual((session.read_bytes(), stat.S_IMODE(session.stat().st_mode)), before_session)
+        self.assertEqual(f.snapshot(), before_tree)
         # Coordinator leaves are replaced ONLY with inert transport recorders;
         # coordinator's actual exclusion/dispatch logic still executes.
         for coordinator in ('03_Scanners/run_all_scanners.sh',
