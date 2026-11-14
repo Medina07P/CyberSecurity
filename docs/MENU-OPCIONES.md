@@ -1,7 +1,8 @@
 # Gestor: todas las opciones y entradas (00–13)
 
 Inventario por lectura de fuentes, 2026-11-13; reconciliación acotada09/10/11
-2026-11-14 (Phase A contratos/docs; Phase B ficha09 implementada, GREEN NOT RUN). No se ejecutaron
+2026-11-14 (Phase A contratos/docs; historia Phase B previa: ficha09 implementada,
+GREEN NOT RUN entonces; observación posterior del controlador sobre82663d7 abajo). No se ejecutaron
 menús ni herramientas reales para redactarlo. Rutas relativas a
 `CyberSecurity-Framework/`. Una entrada presente **no** equivale a capacidad
 integrada operacional, resultado válido, autorización ni instalación comprobada.
@@ -442,7 +443,20 @@ acreditado. `tests/run_automation.sh` solo contiene un diagnóstico builtin y
 exit2; no discovery, intérpretes, probes ni fallback. Los resultados anteriores
 son históricos, no autorización para reanudar.
 
-**Combinación actual, Task3 Phase B (2026-11-14):** el controlador observó RED
+**Observación acotada del controlador,2026-11-14, sobre82663d7
+(`82663d746e1b9347a74c7f7836fa6722f04c92a1`):** selector `--suite` rc0;
+60sandbox units,0fallos0errores0SKIP;179integration,0fallos0errores1SKIP.
+SKIP explícito: `test_automation_powershell.PowerShellTests.test_ps_mock_contract_and_ast`,
+pwsh dinámico ausente del runtime; no acredita Windows. Recibos existentes:
+`/tmp/opencode/automation-isolated-7708be2f5ddb4d5fb021a35bccce754b/evidence/`
+(`inside-result.json` PASS/rc0/tests_started=true, `host-wait.json` rc0,
+`sandbox-units.json`, `suite.json`). Es GREEN del selector en ese SHA, no del
+finalfix posterior (GREEN **NOT RUN**). No cierra Task4/Task9/global09 ni toda
+la rama, ni acredita nuevas carreras/cancelación, Docker u operación real.
+Esta conciliación documental no ejecuta nada ni autoriza repetir el selector;
+el siguiente gate es revisión independiente acotada y autorización exacta del controlador.
+
+**Historia Task3 Phase B previa al GREEN (2026-11-14):** el controlador observó RED
 sobre37c558b:60units PASS;179integration,6fallos0errores1SKIP, solo ficha09
 ausente en seis subcasos del casoCLI existente; contratos10/informes sin fallos.
 El puente/texto09 se implementan ahora, sin modificar las pruebas Phase A.

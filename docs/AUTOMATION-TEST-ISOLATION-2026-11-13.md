@@ -2,7 +2,20 @@
 
 ## Estado y autorización
 
-**Combinación actual,2026-11-14 (Task3 Phase B):** el controlador observó RED
+**Observación acotada del controlador,2026-11-14, sobre82663d7
+(`82663d746e1b9347a74c7f7836fa6722f04c92a1`):** selector `--suite` rc0;
+60sandbox units,0fallos0errores0SKIP;179integration,0fallos0errores1SKIP.
+SKIP explícito: `test_automation_powershell.PowerShellTests.test_ps_mock_contract_and_ast`,
+pwsh dinámico ausente del runtime; no acredita Windows. Recibos existentes:
+`/tmp/opencode/automation-isolated-7708be2f5ddb4d5fb021a35bccce754b/evidence/`
+(`inside-result.json` PASS/rc0/tests_started=true, `host-wait.json` rc0,
+`sandbox-units.json`, `suite.json`). Es GREEN del selector en ese SHA, no del
+finalfix posterior (GREEN **NOT RUN**). No cierra Task4/Task9/global09 ni toda
+la rama, ni acredita nuevas carreras/cancelación, Docker u operación real.
+Esta conciliación documental no ejecuta nada ni autoriza repetir el selector;
+el siguiente gate es revisión independiente acotada y autorización exacta del controlador.
+
+**Historia Task3 Phase B previa al GREEN,2026-11-14:** el controlador observó RED
 sobre37c558b en
 `/tmp/opencode/automation-isolated-31cf271903d14a3c9e9bd7f3a618d224/evidence/`:
 60units PASS;179integration,6fallos0errores1SKIP; único ID fallido

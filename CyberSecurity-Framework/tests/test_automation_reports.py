@@ -506,6 +506,9 @@ class ReportGenerationTests(unittest.TestCase):
         from automation.reporting import report_generation
         variants = ({'omit': ('stdout',)}, {'stdout': ''}, {'stdout': '{'},
                     {'stdout': '[]'}, {'stdout': '{}'}, {'stdout': '{}\n{}\n'},
+                    # A last-line-only reader would accept the valid second summary;
+                    # require rejection of the complete multi-document stdout instead.
+                    {'stdout': lambda s: (json.dumps(s) + '\n') * 2},
                     {'stdout': lambda s: json.dumps(s)[:-1] + ',"run_id":"foreign"}'},
                     # Last-wins yields the otherwise valid original summary;
                     # only duplicate-key rejection can reject this object.
