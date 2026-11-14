@@ -1,4 +1,4 @@
-"""Trusted Task3 entrypoint; NOT RUN. No legacy discovery before Task4.
+"""Trusted probe-first entrypoint; Task4 selection changes NOT RUN.
 
 Namespace observations corroborate the launch, not a host authorization token.
 The independently reviewed host launcher is the only permitted entrypoint.
@@ -464,13 +464,14 @@ def inside_main(argv: Sequence[str]) -> int:
     state, code, reason = 'BLOCKED', 2, 'Probe prerequisites unavailable'
     previous = None
     armed = False
+    tests_started = False
     try:
         nproc = _NPROC_ENTRY if _NPROC_ENTRY is not None else _workload_nproc_gate()
         _nproc_observation()  # verify effective state, not just saved entry data
         write_json('/evidence/workload-nproc.json', dict(nproc, version=1))
         context = _context()
         def expired(number, frame):
-            raise TimeoutError('Global probe budget exhausted')
+            raise TimeoutError('Fixed probe/selection budget exhausted')
         previous = signal.signal(signal.SIGALRM, expired)
         signal.setitimer(signal.ITIMER_REAL, 10)
         armed = True
@@ -483,7 +484,12 @@ def inside_main(argv: Sequence[str]) -> int:
             state, code, reason = 'PASS', 0, 'Synthetic probes passed; no legacy tests started'
         else:
             _VALIDATED = True
-            reason = 'Task4 preservation integration pending; suite/races blocked'
+            # Stop the probe budget; selection has its own fixed budget. This
+            # is direct discovery, never run_automation/launcher/nested bwrap.
+            signal.setitimer(signal.ITIMER_REAL, 600 if argv[0] == '--suite' else 240)
+            from automation_suite_selection import run_selection
+            tests_started = True
+            state, code, reason = run_selection(argv[0], write_json)
     except NprocBlocked as exc:
         state, code, reason = 'BLOCKED', 2, str(exc)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
@@ -495,7 +501,7 @@ def inside_main(argv: Sequence[str]) -> int:
             signal.signal(signal.SIGALRM, previous)
     write_json('/evidence/inside-result.json', {
         'version': 1, 'state': state, 'returncode': code,
-        'reason': reason, 'tests_started': False})
+        'reason': reason, 'tests_started': tests_started})
     return code
 
 

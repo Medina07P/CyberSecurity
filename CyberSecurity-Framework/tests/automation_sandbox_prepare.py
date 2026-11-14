@@ -250,11 +250,16 @@ _SOURCE_DATA = frozenset({
     'CyberSecurity-Framework/09_Automation/workflows/full_audit.yaml',
     'CyberSecurity-Framework/09_Automation/docker/Dockerfile',
     'CyberSecurity-Framework/09_Automation/docker/docker-compose.yml',
+    'CyberSecurity-Framework/09_Automation/docker/Dockerfile.dockerignore',
+    'CyberSecurity-Framework/tests/automation_preservation_cases.json',
+    'CyberSecurity-Framework/tests/automation_operational_baseline.json',
     'CyberSecurity-Framework/tests/automation_sandbox_manifest.json',
     'CyberSecurity-Framework/tests/automation_sandbox_sources.json',
 })
 _SOURCE_DOCS = frozenset({
     'docs/MENU-OPCIONES.md', 'docs/AUTOMATION-2026-11-13.md',
+    'docs/AUTOMATION-TEST-ISOLATION-2026-11-13.md',
+    'CyberSecurity-Framework/09_Automation/docker/README.md',
     'CyberSecurity-Framework/09_Automation/README.md',
     'CyberSecurity-Framework/09_Automation/USE.md',
 })

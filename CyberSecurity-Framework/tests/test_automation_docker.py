@@ -105,7 +105,13 @@ class DockerContracts(unittest.TestCase):
         forbidden = ['00_Config/scope.yaml', '00_Config/targets.txt',
                      '00_Config/.session', '11_Reports/.report_profile',
                      '09_Automation/report.json', '09_Automation/report.html',
-                     '00_Config/wordlists/users.txt', '.git/config']
+                      '00_Config/wordlists/users.txt', '.git/config']
+        forbidden += ['tests/' + name for name in (
+            'automation_sandbox_launch.py', 'automation_sandbox_prepare.py',
+            'automation_sandbox_policy.py', 'automation_sandbox_inside.py',
+            'automation_suite_selection.py', 'automation_sandbox_sources.json')]
+        forbidden += ['docs/AUTOMATION-TEST-ISOLATION-2026-11-13.md',
+                      '09_Automation/USE-private.md']
         for directory in ('scans', 'loot', 'credentials', 'analysis', 'logs', '__pycache__'):
             for prefix in ('', '00_Config/', '09_Automation/', '06_PostExploitation/', '08_Forensics/'):
                 forbidden.extend(prefix + directory + '/secret' + suffix

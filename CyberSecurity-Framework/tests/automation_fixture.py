@@ -3,7 +3,29 @@ from pathlib import Path
 import json
 import shutil
 import sys
-from tempfile import TemporaryDirectory
+from tempfile import mkdtemp
+
+
+def preserve(path):
+    """Archive a test-owned object intact; NEVER replace product cleanup."""
+    path = Path(path)
+    try:
+        before = path.lstat()
+    except FileNotFoundError:
+        return None
+    archive = Path(mkdtemp(prefix='.preserved-', dir=path.parent))
+    destination = archive / path.name
+    path.rename(destination)
+    after = destination.lstat()
+    def identity(info):
+        return [info.st_dev, info.st_ino, info.st_mode, info.st_size]
+    if identity(before) != identity(after):
+        raise RuntimeError('Preservation identity changed; retain archive and stop')
+    with (archive / 'preservation.json').open('x', encoding='utf-8') as stream:
+        json.dump({'original': str(path), 'retained': str(destination),
+                   'before': identity(before), 'after': identity(after)}, stream)
+        stream.write('\n')
+    return destination
 
 
 SOURCE_FILES = tuple(
@@ -56,8 +78,7 @@ SOURCE_FILES += ('09_Automation/USE.md',)
 
 class AutomationFixture:
     def __init__(self):
-        self.temporary = TemporaryDirectory(prefix='automation-', dir='/tmp/opencode')
-        self.repo = Path(self.temporary.name)
+        self.repo = Path(mkdtemp(prefix='automation-', dir='/tmp/opencode'))
         self.framework = self.repo / 'CyberSecurity-Framework'
         self.bin = self.repo / 'bin'
         self.home = self.repo / 'home'
@@ -80,6 +101,7 @@ class AutomationFixture:
         if not name or '/' in name or name in ('.', '..'):
             raise ValueError('Expected a basename')
         executable = self.bin / name
+        preserve(executable)
         executable.write_text(
             '#!' + sys.executable + '\nimport json, sys\n'
             + 'with open(' + repr(str(self.log)) + ', "a") as stream:\n'
@@ -93,4 +115,5 @@ class AutomationFixture:
         return [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
 
     def close(self):
-        self.temporary.cleanup()
+        # No live handles owned; persistent trees have no finalizer or cleanup.
+        pass

@@ -1,9 +1,11 @@
 # Uso de 09 — contratos, no autorización
 
-**Task9 round1: ejecución de verificación BLOQUEADA.** Runner sin discovery ni
-probes hasta disponer de barrera SO heredada revisada. Audithook no protege
-hijos/nietos; ningún prefijo temporal prueba identidad. Conteos anteriores son
-históricos. Pruebas corregidas escritas SIN ejecutar; validación pendiente.
+**Verificación integral pendiente.** Aislador exclusivo de pruebas: seis probes
+sintéticos PASS en367b9db, sin ejecutar suite ni unit tests. Integración Task4
+escrita SIN ejecutar, pendiente de revisión independiente y permiso explícito;
+hay casos nominales BLOCKED-preservation. Audithook no protege hijos/nietos ni
+un prefijo temporal prueba identidad. Los conteos anteriores son históricos.
+[Uso, selectores y límites del aislador de pruebas](../../docs/AUTOMATION-TEST-ISOLATION-2026-11-13.md).
 
 [Inventario completo del gestor, módulos 00–13 y todas sus entradas](../../docs/MENU-OPCIONES.md).
 Los ejemplos parten del directorio `CyberSecurity-Framework`, con destinos

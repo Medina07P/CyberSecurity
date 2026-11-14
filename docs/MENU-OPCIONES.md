@@ -5,6 +5,12 @@ menús ni herramientas reales para redactarlo. Rutas relativas a
 `CyberSecurity-Framework/`. Una entrada presente **no** equivale a capacidad
 integrada operacional, resultado válido, autorización ni instalación comprobada.
 Las bibliotecas `lib/` y fixtures/tests no son herramientas del menú.
+El contrato de cobertura usa ahora el inventario exacto
+`CyberSecurity-Framework/tests/automation_sandbox_sources.json`, no git dentro
+del sandbox. Conserva todas las hojas/namespaces y mutaciones existentes; al
+añadir una opción/hoja deben revisarse fuentes, manifiesto y su fila explicada.
+La [infraestructura de verificación](AUTOMATION-TEST-ISOLATION-2026-11-13.md)
+no añade opciones operacionales al gestor ni sustituye esa explicación.
 
 ## Reglas comunes
 

@@ -6,7 +6,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from automation_fixture import AutomationFixture
+from automation_fixture import AutomationFixture, preserve
 
 SOURCES = AutomationFixture()
 atexit.register(SOURCES.close)
@@ -152,7 +152,7 @@ class CatalogTests(unittest.TestCase):
             self.assertTrue(all(found.values()))
             self.assertEqual(fixture.records(), [])
             self.assertFalse((fixture.repo / 'scans').exists())
-            (fixture.bin / 'nmap').unlink()
+            preserve(fixture.bin / 'nmap')
             self.assertFalse(availability(ctx)['scan_basic'])
             self.assertTrue(availability(ctx)['ping'])
             empty = RuntimeContext(ctx.framework, ctx.repo, ctx.python, '')

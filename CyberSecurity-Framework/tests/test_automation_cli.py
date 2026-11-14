@@ -9,7 +9,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from automation_fixture import AutomationFixture
+from automation_fixture import AutomationFixture, preserve
 
 
 class CliTests(unittest.TestCase):
@@ -167,6 +167,7 @@ class CliTests(unittest.TestCase):
         import re
         for name in re.findall(r'source "\$LIB_DIR/([^"\n]+)"', manager.read_text()):
             if name != 'automation_menu.bash':
+                preserve(self.fx.framework / '00_Config/lib' / name)
                 (self.fx.framework / '00_Config/lib' / name).write_text('true\n')
         # Trap all accidental backends, while interpreter/path utilities are explicit.
         for name in ('nmap', 'ping', 'sudo', 'docker', 'curl'):

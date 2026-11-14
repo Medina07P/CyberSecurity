@@ -6,7 +6,6 @@ proof. Do not run even these tests until the controller explicitly authorizes.
 import ast
 from pathlib import Path
 import re
-import subprocess
 import unittest
 
 from automation_menu_inventory import function_body, literal_options, special_options
@@ -16,10 +15,10 @@ ROOT = FW.parent
 
 
 def source_paths():
-    # Git inventories names only: never enumerate generated/recovered tools.
-    result = subprocess.run(['git', 'ls-files', '-z', 'CyberSecurity-Framework'],
-                            cwd=ROOT, check=True, capture_output=True)
-    return [ROOT / p for p in result.stdout.decode().split('\0') if p]
+    # Exact reviewed inventory; no .git or generated/recovered tools required.
+    from automation_sandbox_prepare import source_names
+    return [ROOT / name for name in source_names()
+            if name.startswith('CyberSecurity-Framework/')]
 
 
 def explained_row(doc, key):
@@ -30,6 +29,20 @@ def explained_row(doc, key):
     if len(cells) != 4 or len(cells[1]) < 3 or len(cells[2]) < 5 or len(cells[3]) < 20:
         raise AssertionError('Falta finalidad/entrada/efectos/límites: ' + key)
     return row
+
+
+def leaf_inventory(doc, paths):
+    leaves = set()
+    for source in paths:
+        relative = source.relative_to(FW)
+        if ('lib' not in relative.parts and 'tests' not in relative.parts and
+                re.match(r'^\d\d_', relative.parts[0]) and
+                source.suffix in ('.sh', '.py', '.ps1')):
+            leaves.add(relative.as_posix())
+    rows = set(re.findall(r'^\| `([0-9][0-9]_[^`]+\.(?:sh|py|ps1))` \|', doc, re.M))
+    if leaves != rows:
+        raise AssertionError('Source/doc leaf inventory changed: ' + repr(sorted(leaves ^ rows)))
+    return leaves
 
 
 def special_sources():
@@ -114,19 +127,19 @@ class Contracts(unittest.TestCase):
             self.assertIn(flag, accepted, flag)
 
     def test_suite_isolated(self):
-        """Current contract is a hard block, NOT proof of descendant isolation."""
+        """Fixed launcher only; dynamic boundary evidence belongs to probes."""
         runner = (FW / 'tests/run_automation.sh').read_text()
-        commands = [line for line in runner.splitlines() if line and not line.startswith('#')]
-        self.assertEqual(len(commands), 2)
-        self.assertRegex(commands[0], r"^printf '%s\\n' 'BLOCKED:.*' >&2$")
-        self.assertEqual(commands[1], 'exit 2')
-        self.assertNotIn('$', '\n'.join(commands), 'No environment/argument bypass while blocked')
+        self.assertIn('/usr/bin/python3 -I -B', runner)
+        self.assertIn('automation_sandbox_launch.py', runner)
+        self.assertNotIn('discover', runner)
+        self.assertNotIn('eval ', runner)
         fixture = (FW / 'tests/automation_fixture.py').read_text()
         self.assertNotIn('copytree', fixture)
         self.assertNotIn('scope.yaml', fixture.split('class AutomationFixture:')[0])
 
     def test_every_leaf_explained(self):
         doc = (ROOT / 'docs/MENU-OPCIONES.md').read_text()
+        leaf_inventory(doc, source_paths())
         for source in source_paths():
             relative = source.relative_to(FW)
             if ('lib' in relative.parts or 'tests' in relative.parts or
@@ -134,6 +147,16 @@ class Contracts(unittest.TestCase):
                     source.suffix not in ('.sh', '.py', '.ps1')):
                 continue
             explained_row(doc, relative.as_posix())
+
+    def test_source_manifest_leaf_deletion_and_addition_mutations(self):
+        doc = (ROOT / 'docs/MENU-OPCIONES.md').read_text()
+        paths = source_paths()
+        known = FW / '09_Automation/bash/auto_recon.sh'
+        self.assertIn(known, paths)
+        for changed in ([p for p in paths if p != known],
+                        paths + [FW / '09_Automation/bash/future_action.sh']):
+            with self.assertRaises(AssertionError):
+                leaf_inventory(doc, changed)
 
     def test_every_menu_option_explained(self):
         doc = (ROOT / 'docs/MENU-OPCIONES.md').read_text()
@@ -256,8 +279,9 @@ class Contracts(unittest.TestCase):
                 self.assertEqual(len(cells), 4, action)
                 self.assertTrue(all(len(c) >= 9 for c in cells[1:]), action)
 
-    def test_controller_guard_is_additional_only_and_blocks_all_spawn(self):
+    def test_controller_guard_is_additional_only_and_blocks_unvalidated_spawn(self):
         from automation_test_guard import check_event
+        from unittest.mock import patch
         root = Path('/synthetic-not-a-host-checkout')
         for path in (root / 'CyberSecurity-Framework/00_Config/scope.yaml',
                      root / 'scans/fake.txt'):
@@ -266,7 +290,7 @@ class Contracts(unittest.TestCase):
         # All are inert strings passed directly to a guard function: no Popen.
         for executable in ('synthetic_backend', '/tmp/opencode/automation-unregistered/stub',
                            'bash', 'python3', 'pwsh', 'git'):
-            with self.subTest(executable=executable), self.assertRaises(PermissionError):
+            with self.subTest(executable=executable), patch.dict('sys.modules', {'__main__': None}), self.assertRaises(PermissionError):
                 check_event(root, 'subprocess.Popen', (executable, [executable], None, None))
 
 

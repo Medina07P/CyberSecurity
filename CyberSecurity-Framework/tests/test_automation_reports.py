@@ -7,7 +7,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from automation_fixture import AutomationFixture
+from automation_fixture import AutomationFixture, preserve
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / '00_Config/lib'))
 from automation.adapters import execute_plan, preflight
@@ -96,7 +96,7 @@ raise SystemExit(''' + str(rc) + ')\n')
         self.assertNotEqual(again.returncode, 0)
 
     def test_preview_is_pure_and_execute_requires_gate(self):
-        self.input.rmdir()
+        preserve(self.input)
         preview = self.shim('--target', 'example.test')
         self.assertEqual(preview.returncode, 0, preview.stderr)
         self.assertFalse(self.output.exists())
@@ -122,7 +122,7 @@ raise SystemExit(''' + str(rc) + ')\n')
         self.assertEqual(self.f.records(), [])
 
     def test_preflight_rejects_missing_input_and_symlinks(self):
-        self.input.rmdir()
+        preserve(self.input)
         with self.assertRaises(PreflightError):
             preflight(self.plan(), self.ctx, self.permissions)
         self.input.mkdir()
@@ -164,7 +164,7 @@ raise SystemExit(''' + str(rc) + ')\n')
         with self.assertRaises(PreflightError):
             publish_reports(self.f.home, destination, identity)
         self.assertFalse(destination.exists())
-        parent.rmdir()
+        preserve(parent)
         parent.symlink_to(self.f.home, target_is_directory=True)
         with self.assertRaises(PreflightError):
             check_report_destination(destination)
