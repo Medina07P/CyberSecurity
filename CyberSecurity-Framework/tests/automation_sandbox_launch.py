@@ -130,9 +130,9 @@ def _fork_child(child, argv, bwrap_fd, seccomp_fd, stdout, stderr):
 def _selector(argv):
     if not argv:
         return '--suite'
-    if len(argv) == 1 and argv[0] in ('--probes', '--suite', '--races', '--cross-consent'):
+    if len(argv) == 1 and argv[0] in ('--probes', '--suite', '--races', '--cross-consent', '--cross-web'):
         return argv[0]
-    raise IsolationBlocked('Only --probes, --suite, --races or --cross-consent is accepted')
+    raise IsolationBlocked('Only --probes, --suite, --races, --cross-consent or --cross-web is accepted')
 
 
 def _open_bwrap():

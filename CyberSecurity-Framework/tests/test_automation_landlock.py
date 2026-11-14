@@ -382,7 +382,7 @@ class LandlockContracts(unittest.TestCase):
 
     def assert_both_selector_outcomes(self, result, expected):
         import automation_suite_selection as selection
-        for label in ('suite', 'race'):
+        for label in ('suite', 'race', 'cross-consent', 'cross-web'):
             with self.subTest(selector=label):
                 self.assertEqual(selection.selection_outcome(result, label)[:2], expected)
 
@@ -447,7 +447,7 @@ class LandlockContracts(unittest.TestCase):
         decisions = [n for n in ast.walk(function) if isinstance(n, ast.Call)
                      and isinstance(n.func, ast.Name) and n.func.id == 'selection_outcome']
         self.assertEqual(sorted(n.args[1].value for n in decisions),
-                         ['cross-consent', 'race', 'suite'])
+                          ['cross-consent', 'cross-web', 'race', 'suite'])
 
 
 if __name__ == '__main__':

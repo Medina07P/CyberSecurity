@@ -214,14 +214,14 @@ def _closed_pairs(pairs):
     return result
 
 
-def load_json(path, keys):
+def load_json(path, keys, *, version=1):
     try:
         result = json.loads(read_regular(path, MAX_JSON), object_pairs_hook=_closed_pairs)
     except (ValueError, UnicodeError, RecursionError) as exc:
         raise IsolationBlocked('Invalid JSON') from exc
     if not isinstance(result, dict) or set(result) != set(keys):
         raise IsolationBlocked('Closed JSON schema mismatch')
-    if type(result.get('version')) is not int or result['version'] != 1:
+    if type(result.get('version')) is not int or result['version'] != version:
         raise IsolationBlocked('Unsupported manifest version')
     return result
 

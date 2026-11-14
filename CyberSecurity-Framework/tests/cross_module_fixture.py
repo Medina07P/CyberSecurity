@@ -1,7 +1,7 @@
-"""Persistent consent-only synthetic fixture. Never a host test entrypoint.
+"""Persistent per-selection synthetic fixture. Never a host test entrypoint.
 
 No cleanup/finalizer, executable search fallback or copy of operator data.
-New consent core sources must be added explicitly WHEN their tasks create them.
+New helper sources must be added explicitly WHEN their tasks create them.
 """
 import json
 import os
@@ -26,6 +26,21 @@ SOURCE_FILES = (
     '00_Config/lib/web_target.bash', '00_Config/lib/prompt.bash',
     '00_Config/lib/params.bash',
 )
+
+WEB_SOURCE_FILES = (
+    '00_Config/lib/http_request.bash', '00_Config/lib/scans.bash',
+    '00_Config/lib/session.bash',
+    '05_Exploitation/web/web_login_bruteforce.sh',
+    '05_Exploitation/web/rate_limit_probe.sh',
+)
+PURE_SOURCE_FILES = ('00_Config/lib/http_request.bash',)
+
+
+def _new_text(path, value):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+        stream.write(value)
+
 
 # Exact synthetic dispatch destinations, NOT copied/read child sources. Genuine
 # originals stay in the staged RO /source manifest; coordinators use new inerts.
@@ -59,16 +74,22 @@ class CrossModuleFixture:
         import __main__ as controller
         import automation_case_scope as scope
         from automation_suite_selection import case_disposable_allowed
-        from cross_module_selection import group_cases
+        from cross_module_selection import group_cases, group_grants, WEB_CASES
         names = group_cases(group)
         if (getattr(controller, '__file__', None) !=
                 '/source/CyberSecurity-Framework/tests/automation_sandbox_inside.py' or
                 getattr(controller, 'validated_selection', lambda: None)() != group or
                 not scope.in_worker() or scope._SCOPE[3] not in names or
-                not case_disposable_allowed(scope._SCOPE[3])):
-            raise ValueError('Cross fixture requires validated current granted worker')
+                scope._SCOPE[4] != (scope._SCOPE[3] in group_grants(group)) or
+                case_disposable_allowed(scope._SCOPE[3]) != scope._SCOPE[4]):
+            raise ValueError('Cross fixture requires validated current per-case worker')
         from automation_sandbox_prepare import copy_regular, source_names
-        self.repo = Path(mkdtemp(prefix='cross-consent-', dir=scope.fixture_parent()))
+        self.group = group
+        pure = group == '--cross-web' and scope._SCOPE[3] in WEB_CASES[:2]
+        self.source_files = SOURCE_FILES
+        if group == '--cross-web':
+            self.source_files = PURE_SOURCE_FILES if pure else WEB_SOURCE_FILES
+        self.repo = Path(mkdtemp(prefix=group[2:] + '-', dir=scope.fixture_parent()))
         self.framework = self.repo / 'CyberSecurity-Framework'
         self.home = self.repo / 'home'
         self.bin = self.repo / 'bin'
@@ -77,7 +98,7 @@ class CrossModuleFixture:
         for directory in (self.framework, self.home, self.bin, self.output):
             directory.mkdir(mode=0o700)
         manifest = source_names()
-        for relative in SOURCE_FILES:
+        for relative in self.source_files:
             name = 'CyberSecurity-Framework/' + relative
             if name not in manifest:
                 raise ValueError('Missing exact cross fixture source: ' + name)
@@ -85,9 +106,9 @@ class CrossModuleFixture:
             destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             copy_regular(Path('/source') / name, destination, 0o500)
         config = self.framework / '00_Config'
-        (config / 'scope.yaml').write_text('targets: {domains: [example.test]}\n')
-        (config / 'targets.txt').write_text('example.test|443|https|Synthetic|B\n')
-        (self.home / '.bash_history').write_text('synthetic-history-sentinel\n')
+        _new_text(config / 'scope.yaml', 'targets: {domains: [example.test]}\n')
+        _new_text(config / 'targets.txt', 'example.test|443|https|Synthetic|B\n')
+        _new_text(self.home / '.bash_history', 'synthetic-history-sentinel\n')
         self.env = {
             'PATH': str(self.bin) + ':/usr/bin:/bin', 'HOME': str(self.home),
             # The exact sandbox omits locale archives: C is always available.
@@ -100,6 +121,18 @@ class CrossModuleFixture:
         }
         self._invocations = 0
         self._ss_configurations = 0
+        self._curl_configurations = 0
+        if group == '--cross-web':
+            if not pure:
+                temporary = self.repo / 'tmp'
+                temporary.mkdir(mode=0o700)
+                self.env['TMPDIR'] = str(temporary)  # mktemp must stay in this pinned case
+                name = 'CyberSecurity-Framework/tests/cross_web_curl_double.py'
+                if name not in manifest:
+                    raise ValueError('Missing mandatory web curl double')
+                copy_regular(Path('/source') / name, self.bin / 'curl', 0o500)
+                self.configure_curl([{'code': '401', 'time': '0.010', 'headers': {}, 'body': 'denied'}])
+            return
         for name in ('curl', 'ss', 'sudo', 'burpsuite', 'sleep', 'last',
                      'xdotool', 'xwininfo', 'whoami', 'record-dispatch'):
             self.stub(name)
@@ -107,6 +140,19 @@ class CrossModuleFixture:
             'State Recv-Q Send-Q Local Address:Port Peer Address:Port\n',
             'State Recv-Q Send-Q Local Address:Port Peer Address:Port\n'
             'LISTEN 0 128 127.0.0.1:8080 0.0.0.0:*\n'))
+
+    def configure_curl(self, responses):
+        if self.group != '--cross-web' or not responses:
+            raise ValueError('Web transport requires nonempty programmed responses')
+        self._curl_configurations += 1
+        path = self.output / ('curl-program-' + str(self._curl_configurations) + '.json')
+        _private_json(path, responses)
+        self.env['CROSS_CURL_PROGRAM'] = str(path)
+        self.env['CROSS_CURL_RECORDS'] = str(self.output / 'curl-records.jsonl')
+
+    def curl_records(self):
+        path = self.output / 'curl-records.jsonl'
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
     def configure_ss(self, responses):
         """Transport data only; repeat the last response, never open a socket."""
@@ -196,9 +242,9 @@ class CrossModuleFixture:
             (root / 'stderr').read_text(encoding='utf-8', errors='replace'))
 
     def run_leaf(self, relative, args=(), stdin=''):
-        if (relative == 'cyber_framework.sh' or relative not in SOURCE_FILES or
+        if (relative == 'cyber_framework.sh' or relative not in self.source_files or
                 not relative.endswith('.sh')):
-            raise ValueError('Not a fixed consent leaf/coordinator')
+            raise ValueError('Not a fixed current-selection leaf/coordinator')
         return self._run(['/bin/bash', '--noprofile', '--norc',
                           str(self.framework / relative), *args], stdin)
 
