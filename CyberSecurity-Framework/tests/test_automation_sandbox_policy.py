@@ -311,10 +311,11 @@ class SandboxPolicyTests(unittest.TestCase):
             policy.bubblewrap_argv(run, 1)
 
     def test_selectors_are_closed_and_inside_cannot_launch(self):
-        for selector in ('--probes', '--suite', '--races'):
+        for selector in ('--probes', '--suite', '--races', '--cross-consent'):
             self.assertEqual(launcher._selector([selector]), selector)
         self.assertEqual(launcher._selector([]), '--suite')
-        for args in (['bash'], ['--suite', 'id'], ['--unsafe'], ['--suite', '--races']):
+        for args in (['bash'], ['--suite', 'id'], ['--unsafe'], ['--suite', '--races'],
+                     ['--cross-web'], ['--cross-local'], ['--cross-consent', 'id']):
             with self.assertRaises(IsolationBlocked):
                 launcher._selector(args)
         with mock.patch.object(inside, '_context', side_effect=ValueError('not inside')), \

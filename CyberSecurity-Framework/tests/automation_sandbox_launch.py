@@ -130,9 +130,9 @@ def _fork_child(child, argv, bwrap_fd, seccomp_fd, stdout, stderr):
 def _selector(argv):
     if not argv:
         return '--suite'
-    if len(argv) == 1 and argv[0] in ('--probes', '--suite', '--races'):
+    if len(argv) == 1 and argv[0] in ('--probes', '--suite', '--races', '--cross-consent'):
         return argv[0]
-    raise IsolationBlocked('Only --probes, --suite or --races is accepted')
+    raise IsolationBlocked('Only --probes, --suite, --races or --cross-consent is accepted')
 
 
 def _open_bwrap():
@@ -577,6 +577,7 @@ def launch() -> int:
             'version': 1, 'state': 'STARTING', 'argv': list(argv),
             'bwrap': bwrap_record, 'host_timeout': HOST_TIMEOUT,
             'suite_timeout': 600, 'races_timeout': 240, 'probe_timeout': 10,
+            'cross_consent_timeout': 600,
             'runtime_executed': False,
             'bootstrap_nproc': bootstrap_nproc,
             'identity_canary': canary_identity,

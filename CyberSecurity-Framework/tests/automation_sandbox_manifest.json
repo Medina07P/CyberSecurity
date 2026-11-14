@@ -28,7 +28,12 @@
     {"source": "/usr/bin/tail", "destination": "/usr/bin/tail"},
     {"source": "/usr/bin/timeout", "destination": "/usr/bin/timeout"},
     {"source": "/usr/bin/tr", "destination": "/usr/bin/tr"},
-    {"source": "/usr/bin/wc", "destination": "/usr/bin/wc"}
+    {"source": "/usr/bin/wc", "destination": "/usr/bin/wc"},
+    {"source": "/usr/bin/mawk", "destination": "/usr/bin/awk"},
+    {"source": "/usr/bin/cut", "destination": "/usr/bin/cut"},
+    {"source": "/usr/bin/seq", "destination": "/usr/bin/seq"},
+    {"source": "/usr/bin/sleep", "destination": "/usr/bin/sleep"},
+    {"source": "/usr/bin/tee", "destination": "/usr/bin/tee"}
   ],
   "stdlib": "/usr/lib/python3.13",
   "yaml": "/usr/lib/python3/dist-packages/yaml",

@@ -45,6 +45,7 @@ class ConsentTests(unittest.TestCase):
         for args in (('--execute',), ('--confirm-local-cleanup',),
                      ('--execute', '--preview', '--confirm-local-cleanup')):
             f = self.fixture()
+            f.env.update({'CONFIRM_LOCAL_CLEANUP': '1', 'FRAMEWORK_ASSUME_YES': '1'})
             result = f.run_leaf(CLEANER, args, stdin='no\n')
             self.assertEqual(result.returncode, 2, result.stderr)
             self.assertEqual(f.records(), [])
@@ -142,11 +143,14 @@ class ConsentTests(unittest.TestCase):
     def test_burp_verify_explicit_url(self):
         for args in (('--verificar', 'https://example.test/a', '--proxy-port', '8080'),
                      ('--verificar', 'https://example.test/a', '--proxy-port', '8080', '--execute'),
+                     ('--verificar', 'https://example.test/a', '--proxy-port', '8080', '--confirm-network'),
                      ('--verificar', 'https://u:p@example.test/a', '--proxy-port', '8080',
                       '--execute', '--confirm-network'),
                      ('--verificar', 'https://example.test/\n', '--proxy-port', '8080',
                       '--execute', '--confirm-network'),
                      ('--verificar', 'example.test', '--proxy-port', '0',
+                      '--execute', '--confirm-network'),
+                     ('--verificar', 'https://example.test/a', '--proxy-port', '65536',
                       '--execute', '--confirm-network')):
             f = self.fixture()
             self.assertNotEqual(f.run_leaf(BURP, args).returncode, 0)
@@ -211,9 +215,28 @@ class ConsentTests(unittest.TestCase):
         ops.pidfd_open = unavailable
         self.assertNotEqual(burp.stop_burp(root, instance, ops), 0)
         self.assertFalse(any(e[0] == 'signal' for e in ops.events))
-        (root / 'burp.pid').write_text('123\n')
+        legacy_root = f.repo / 'legacy-burp'
+        legacy_root.mkdir()
+        (legacy_root / 'burp.pid').write_text('123\n')
         ops = Ops()
-        self.assertNotEqual(burp.stop_burp(root, None, ops), 0)
+        self.assertNotEqual(burp.stop_burp(legacy_root, None, ops), 0)
+        self.assertFalse(any(e[0] == 'signal' for e in ops.events))
+        # PID reuse between first observation and pidfd pin must fail closed.
+        ops = Ops()
+        original_pin = ops.pidfd_open
+        def reused(pid):
+            ops.ticks = 21
+            return original_pin(pid)
+        ops.pidfd_open = reused
+        self.assertNotEqual(burp.stop_burp(root, instance, ops), 0)
+        self.assertFalse(any(e[0] == 'signal' for e in ops.events))
+        forged = 'burp-' + 'b' * 32
+        forged_state = root / 'instances' / forged
+        forged_state.mkdir(mode=0o700)
+        (forged_state / 'instance.json').write_bytes(before)  # wrong instance namespace
+        (forged_state / 'instance.json').chmod(0o600)
+        ops = Ops()
+        self.assertNotEqual(burp.stop_burp(root, forged, ops), 0)
         self.assertFalse(any(e[0] == 'signal' for e in ops.events))
 
     def test_menu_cancel_and_coordinator_exclusions(self):
@@ -228,12 +251,31 @@ class ConsentTests(unittest.TestCase):
         f = self.fixture()
         result = f.run_menu('postexploitation_menu', '7\nno\n0\n')
         self.assertIn('LOCAL', result.stdout + result.stderr)
+        f = self.fixture()
+        result = f.run_menu('scanners_menu', '4\ns\n0\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(f.records(), [['record-dispatch', BURP, '03_Scanners']])
+        f = self.fixture()
+        result = f.run_menu('scanners_menu', '6\n2\nhttps://example.test/a\n8080\ns\n0\n0\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(f.records(), [[
+            'record-dispatch', BURP, '03_Scanners', '--prepared', '--verificar',
+            'https://example.test/a', '--proxy-port', '8080', '--execute', '--confirm-network']])
+        f = self.fixture()
+        result = f.run_menu('postexploitation_menu', '7\n2\ns\n0\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(f.records(), [[
+            'record-dispatch', CLEANER, '06_PostExploitation', '--prepared',
+            '--execute', '--confirm-local-cleanup']])
+        self.assertIn('LOCAL', result.stdout + result.stderr)
         # Coordinator leaves are replaced ONLY with inert transport recorders;
         # coordinator's actual exclusion/dispatch logic still executes.
         for coordinator in ('03_Scanners/run_all_scanners.sh',
                             '06_PostExploitation/run_all_post.sh'):
             f = self.fixture()
             f.record_coordinator_leaves()
-            f.run_leaf(coordinator, ('example.test',))
+            result = f.run_leaf(coordinator, ('example.test',))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue(f.records())
             self.assertFalse(any('burp_launcher' in repr(r) or 'logs_cleaner' in repr(r)
                                  for r in f.records()))

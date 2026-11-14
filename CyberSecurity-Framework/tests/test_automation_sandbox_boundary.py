@@ -37,6 +37,7 @@ class SandboxBoundaryTests(unittest.TestCase):
         self.assertEqual(group_grants('--cross-consent'), frozenset(group_cases('--cross-consent')))
         self.assertTrue(set(old).isdisjoint(group_grants('--cross-consent')))
         controller = mock.Mock(__file__=inside.SELF)
+        controller.validated_diagnostic_context.return_value = True
         for selector in ('--suite', '--races', '--cross-consent', None):
             controller.validated_selection.return_value = selector
             with mock.patch.dict('sys.modules', {'__main__': controller}):
@@ -45,6 +46,18 @@ class SandboxBoundaryTests(unittest.TestCase):
                 self.assertFalse(selection.case_disposable_allowed(cross + '_changed'))
         with mock.patch.dict('sys.modules', {'__main__': None}):
             self.assertFalse(selection.case_disposable_allowed(cross))
+        import automation_case_worker as worker
+        controller.validated_selection.return_value = '--cross-consent'
+        with mock.patch.dict('sys.modules', {'__main__': controller}), \
+                mock.patch.object(worker.os, 'fork') as fork, \
+                mock.patch.object(worker, '_prctl') as prctl:
+            for name, granted in ((old[0], True), (cross + '_changed', False), (cross, False)):
+                case = mock.Mock()
+                case.id.return_value = name
+                with self.assertRaises(worker.WorkerBlocked):
+                    worker.run_case(case, granted, 1)
+            fork.assert_not_called()
+            prctl.assert_not_called()
 
     def test_cross_root_and_protected_paths_remain_blocked(self):
         import automation_case_scope as scope
@@ -55,9 +68,14 @@ class SandboxBoundaryTests(unittest.TestCase):
                 mock.patch('automation_suite_selection.case_disposable_allowed', return_value=True), \
                 mock.patch.object(Path, 'stat', return_value=info), \
                 mock.patch.object(Path, 'resolve', autospec=True, side_effect=lambda p, **kw: p):
-            scope.configure_worker(root, pinned, 'synthetic-cross', True, 3)
+            scope.configure_worker(root, pinned,
+                                   'test_cross_consent.ConsentTests.test_cleanup_nonexecution_is_inert',
+                                   True, 3)
             for path in (root, '/source/file', '/evidence/file', '/work/fixtures/case-other/file'):
                 self.assertFalse(scope.destructive_path(path))
+                from automation_test_guard import preservation_event
+                with self.assertRaises(PermissionError):
+                    preservation_event('os.truncate', (path, 0))
             self.assertTrue(scope.destructive_path(root / 'new'))
             info.st_ino = 3
             self.assertFalse(scope.destructive_path(root / 'new'))
