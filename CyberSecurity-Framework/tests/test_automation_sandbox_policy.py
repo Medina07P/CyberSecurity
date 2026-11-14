@@ -47,9 +47,40 @@ def prepared():
 
 
 class SandboxPolicyTests(unittest.TestCase):
+    def test_host_identity_canary_rejects_alias_races_and_wrong_composition(self):
+        host = {'dev': 11, 'ino': 22, 'mode': 0o100400, 'size': 52,
+                'uid': 1000, 'gid': 1000, 'nlink': 1, 'mtime_ns': 5, 'ctime_ns': 6}
+        record = {'uid': 1234, 'euid': 1234, 'uid_map': [[1234, 0, 1]],
+                  'uid_map_scope': 'immediate-parent-user-namespace',
+                  'identity_canary': {'host': host, 'inside': dict(host, uid=1234, gid=1234)}}
+        with mock.patch.object(launcher, '_canary_metadata', return_value=host), \
+                mock.patch.object(launcher.os, 'getuid', return_value=1000), \
+                mock.patch.object(launcher.os, 'fstat') as pinned, \
+                mock.patch.object(launcher, '_named_canary_metadata', return_value=host) as named:
+            launcher._validate_identity_canary(Path('/synthetic'), 42, host, record)
+        pinned.assert_called_once_with(42)
+        named.assert_called_once_with(Path('/synthetic'))
+        for changed in (dict(host, ino=23), dict(host, uid=0), dict(host, ctime_ns=7)):
+            for pinned_value, named_value in ((host, changed), (changed, host)):
+                with mock.patch.object(launcher, '_canary_metadata', return_value=pinned_value), \
+                        mock.patch.object(launcher, '_named_canary_metadata', return_value=named_value), \
+                        mock.patch.object(launcher.os, 'fstat'):
+                    with self.assertRaises(IsolationBlocked):
+                        launcher._validate_identity_canary(Path('/synthetic'), 42, host, record)
+        for bad in (dict(record, uid_map_scope='host'),
+                    dict(record, identity_canary={'host': host, 'inside': dict(host, uid=0)}),
+                    dict(record, uid_map=[[1234, 0, 65536]])):
+            with mock.patch.object(launcher, '_canary_metadata', return_value=host), \
+                    mock.patch.object(launcher.os, 'getuid', return_value=1000), \
+                    mock.patch.object(launcher.os, 'fstat'), \
+                    mock.patch.object(launcher, '_named_canary_metadata', return_value=host):
+                with self.assertRaises(IsolationBlocked):
+                    launcher._validate_identity_canary(Path('/synthetic'), 42, host, bad)
+
     def test_host_rejects_repaired_descendant_and_incomplete_cancel_evidence(self):
         baseline = {'soft': 256, 'hard': 256, 'uid': 1000, 'euid': 1000,
                     'uid_map': [[1000, 1000, 1]], 'user_namespace': 'user:[private]',
+                    'uid_map_scope': 'immediate-parent-user-namespace', 'identity_canary': {},
                     'capabilities': dict.fromkeys(('CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'), 0),
                     'observed_uid_tasks': 3, 'counter_scope': 'private-proc-visible-real-uid-threads'}
         good = dict(baseline, inherited_soft_hard=[256, 256])
@@ -212,6 +243,8 @@ class SandboxPolicyTests(unittest.TestCase):
                     stack.enter_context(mock.patch.object(launcher, '_new_log', return_value=12))
                     stack.enter_context(mock.patch.object(launcher, '_new_json'))
                     stack.enter_context(mock.patch.object(launcher, '_probe_inputs'))
+                    stack.enter_context(mock.patch.object(launcher, '_create_identity_canary',
+                                                         return_value=(14, 15, {})))
                     stage = stack.enter_context(mock.patch.object(launcher, 'prepare',
                                                                  return_value=prepared()))
                     validate = stack.enter_context(mock.patch.object(launcher, '_validate_staging'))

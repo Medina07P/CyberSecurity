@@ -24,6 +24,23 @@
 - Conservar incidente y ledgers anteriores. No merge/push, ni limpieza de worktrees. Modelo de subagentes elegido previamente por usuario, sin overrides de modelo no solicitados.
 - Tasks1–8 del plan09 no se repiten. No tocar sus módulos de producto ni incorporar aislamiento al uso operacional con Internet/datos autorizados.
 
+### Identidad de user namespace anidado (enmienda autorizada)
+
+`uid_map` se interpreta en el padre inmediato, no directamente en el host: una
+entrada única de longitud1 para el UID interior no root requiere composición
+VFS, no aceptar parent0 por sí solo. Host crea exclusivamente un canary sintético
+nuevo400 en work, fija descriptor/metadatos (dev/ino/mode/size/owner/nlink/times),
+y conserva su recibo. Interior exige mismo archivo y propietario traducido a su
+UID no root, userns distinto y capacidades cero; declara scope
+`immediate-parent-user-namespace`.
+El interior debe abrir para lectura el canary400 sin leer su contenido: igualdad
+numérica de UID traducido/overflow por stat sola no es prueba de propietario.
+Host relee descriptor y nombre originales sin seguir enlaces al aceptar la
+prueba; alias/cambio/ambigüedad => BLOCKED. Hijos,
+nietos y cancelación heredan256 sin normalización y observan la misma prueba.
+No cambia privilegios ni acredita pids.max/ucounts; revisión enfocada y permiso
+explícito antes de retry siguen obligatorios.
+
 ## Review Focus
 
 1. Descriptor de host, entorno o enlace heredado permite a un nieto leer fuera de la raíz: cierre de fd, canonicalización y mounts mínimos (Tasks1–3).
