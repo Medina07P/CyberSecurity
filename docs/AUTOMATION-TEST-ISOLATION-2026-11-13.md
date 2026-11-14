@@ -2,10 +2,11 @@
 
 ## Estado y autorización
 
-Esta enmienda sobreea414a9 es **estática NOT RUN — NEEDS_CONTEXT**, pendiente de
-revisión independiente. El usuario YA concedió la excepción acotada para25IDs;
-no repetir la petición de ese permiso ni inferir uno más amplio. Falta observador
-heredado de before-images y frontera propia por caso, no autorización humana.
+Esta enmienda Landlock sobre40db4f1 es **estática NOT RUN**, pendiente de revisión
+independiente y autorización de ejecución. El usuario YA concedió excepción
+acotada para25IDs y ruling posterior aclara que estados intermedios sintéticos
+NUEVOS son descartables, no evidencia de engagement; no necesitan before-images
+de cada versión. No repetir esa petición ni ampliar el permiso.
 Según ledger, el controlador ejecutó ea414a9:60unit tests y109elegibles sin
 fallos, un SKIP pwsh yrc2 esperado por25exclusiones; no toda la suite verde.
 El RED anterior826ca17rc1 y todos sus artefactos se conservan. No ejecutar los
@@ -29,8 +30,8 @@ Launcher y wrapper rechazan reentrada desde `/source`; discovery no los invoca.
 |---|---|---|
 | sin selector | Equivale a `--suite` | Mismos gates, nunca fallback al host. No autorización implícita. |
 | `--probes` | Solo observaciones sintéticas de frontera | Preparación nueva y seis checks; no importa tests/producto. |
-| `--suite` | Probes frescos, unit tests prepare/policy/boundary y después suite09 | Selección exacta sin git. Los25IDs tienen permiso registrado pero gate NEEDS_CONTEXT por cobertura heredada ausente; no se ejecutan ni cuentan PASS/SKIP. rc2 si el subconjunto pasa; habilitación completa pendiente. |
-| `--races` | Probes frescos, mismos unit tests y ocho casos internos fijos ×20 | Los ocho están autorizados en principio, pero aún bloqueados por el mismo gate técnico; recibos por repetición no son160ejecuciones verdes. No scripts externos/nested bwrap. |
+| `--suite` | Probes frescos,60unit tests puros y después suite09 | Cada caso legacy requiere worker Landlock ABI≥3 antes de setUp/run;25IDs permiten descartar temporales propios. Fallo de requisito=rc2, fallo real=rc1; solo ejecución observada puede acreditar PASS. |
+| `--races` | Probes frescos, mismos unit tests y ocho casos internos fijos ×20 | Cada repetición/caso tiene worker/scratch/logs nuevos. Habilitación escrita, NO160ejecuciones observadas. Requisito ausente bloquea sin fallback ni scripts/nested bwrap. |
 | cualquier otro argumento | Rechazo cerrado | rc2 antes de discovery; no `--unsafe`, token/env-bypass ni intérprete elegido por el usuario. |
 
 Códigos:0 PASS de lo seleccionado y sin bloqueos,1 fallo real de probes/tests,
@@ -92,14 +93,16 @@ renombra objetos sintéticos a `.preserved-<único>/nombre` antes de sustitució
 bytes y enlaces anteriores permanecen; recibo exclusivo `preservation.json`
 registra origen/destino e identidad anterior/posterior, no se sustituye cleanup
 del producto.
-No rm/rmdir reales disponibles. Diagnósticos adicionales del controlador rechazan
-delete y reemplazos/truncados existentes; **no son barrera heredada ni permiso**.
+No rm/rmdir reales disponibles. Diagnósticos por defecto rechazan delete y
+reemplazos/truncados; solo worker verificado/case25 puede descartar sintéticos
+propios. **No son barrera heredada ni permiso**.
 
 Lista nominal autoritativa, preparada por lectura/AST antes de cualquier run:
 `CyberSecurity-Framework/tests/automation_preservation_cases.json` (25casos).
 Versión2 conserva íntegramente25nombres y razones históricas bajo `blocked` y
 añade `authorization`: los mismos25IDs, excepción explícita, scope únicamente
-fixture registrada del caso actual y observador heredado obligatorio. No es un
+fixture registrada del caso actual y `landlock-abi3-current-case-worker` obligatorio.
+`disposable_states` registra la aclaración de estados intermedios. No es un
 switch de ejecución ni token/env/CLI. Se valida que los IDs no desaparezcan,
 no se dupliquen ni difieran entre autorización e historia.
 Incluye16casos RunnerTests, siete ReportTests y los casos de ejecución real-core
@@ -114,32 +117,46 @@ concedió: delete/replace solo de temporales sintéticos NUEVOS descartables den
 del caso actual, sin borrar fuentes/config real/evidencias/logs ni runs previos.
 No permite limpieza global de fixtures/runlogs. Close sigue persistente.
 
-### Gate técnico que NO está implementado: NEEDS_CONTEXT
+### Gate escrito: worker por caso y Landlock ABI≥3 (NOT RUN)
 
-No se ha creado un registro fiable de raíces CURRENT ni un observador heredado:
-implementar solo un registro Python no resolvería la garantía para hijos. Antes
-de habilitar los25casos hacen falta caseID cerrado, raíz recién creada con
-descriptor/dev/ino/owner/mode fijados y revalidación de ancestros/enlaces; rechazo
-de rutas de otros casos o previas, /source y /evidence. Los before-images de
-estados/logs/evidencia importantes deben guardarse como objetos nuevos antes de
-la operación, sin reemplazar cleanup/rename/unlink del producto por mocks.
+Controlador validado dentro de bwrap crea `/work/fixtures/case-<único>`700, fija
+descriptor O_PATH/no-follow y dev/ino/owner/mode, registra caseID y permiso25
+en recibo exclusivo. Discovery solo crea SOURCES de bibliotecas para lectura;
+fixtures nuevas del worker usan API interna `fixture_parent()` bajo SU scratch,
+no env/argv. Cada caso, incluso no autorizado para destruir, recibe su scratch.
 
-La barrera revisada actual separa host/datos reales, NO casos entre sí: monta
-todo work en `/work` y evidence writeable en `/evidence`. Los hijos Python `-I`
-no heredan sys.addaudithook del controlador; pueden sustituir run.json o limpiar
-stage sin generar before-image en el padre. Un snapshot final o entre pasos
-NO recupera estados intermedios ya sustituidos. La ubicación fuente read-only
-y ausencia de runs host previos no equivalen a aislar fixtures previas del mismo
-run. Tampoco se acredita protección de recibos actuales frente a hijos solo por
-nombrarlos /evidence.
+Worker fork cierra TODOS los fd heredados excepto stdio de logs NUEVOS, pipe de
+resultado CLOEXEC y descriptor O_PATH de scratch hasta aplicar regla. Verifica
+herencia NPROC sin repararla; no_new_privs y Landlock nativos x86_64 (syscalls
+444/445/446) manejan WRITE_FILE, REMOVE, todos MAKE, REFER y TRUNCATE. Única regla
+write/create/delete/reparent/truncate: scratch de ESE caso. Read/execute siguen
+permitidos para runtime/fuentes. Instalación o ABI<3 falla cerrado antes del
+test. Rule/herencia fork/exec es SO, no audithook ni env-token. Regla no habilita
+network/backends/root; outer bwrap/mounts/seccomp/probes quedan intactos.
 
-Por ello no se afloja guard ni se activa registry ficticio por prefijo. Los25
-casos/race8×20 permanecen técnicamente bloqueados con razón explícita
-NEEDS_CONTEXT-descendant-boundary, no con «usuario no autorizó». Se requiere
-decisión/revisión arquitectónica del controlador para observación síncrona
-heredada y confinamiento por caso compatibles con pipeline fijo y sin nested
-bwrap, monkeypatch operacional ni flag arbitraria. No se propone desactivar
-before-images o ampliar la excepción para sortearlo. No certificado kernel.
+`/source` sigue ro por outer; `/evidence` y demás fixtures/recibos quedan fuera
+de la regla write del worker. Solo padre escribe recibos a partir de pipe acotado
+(64KiB), con caseID/ABI/identidad cotejados; stdio del hijo escribe únicamente
+logs nuevos explícitos preabiertos. Registro/result/logs por caso permanecen al
+fallar/cancelar. No before-images intermedios descartables ni monkeypatch de
+unlink/replace/cleanup operacional. Guard local deja descartar solo si caseID25,
+scope actual fijado y Landlock ya instalado; otros/default siguen bloqueando.
+
+Timeout propio60s/caso más budgets globales existentes. Controlador/worker son
+subreapers; recolección usa únicamente lista kernel de hijos directos propios,
+pidfd y waitpid, incluyendo adopción de nietos con sesión separada. Cancelación
+en padre bloquea señales repetidas mientras mata/reapea hijos propios. No señal
+por nombre/hostPID. Reap puede esperar kernel no interrumpible; outer deadline
+no es garantía realtime. Resultado de caso/repetición conserva errores/bloqueos.
+
+**Límites que requieren revisión y runtime:** Landlock ABI3 NO media chmod,
+chown, utime, xattrs y varios ioctls; “read-only” aquí es para derechos manejados,
+no certificación completa de metadatos frente a código hostil. Especial files,
+compatibilidad subprocess/DEVNULL, cancelación externa y kernel concreto no se
+han probado en esta enmienda. Fd stdio/pipe explícitos son excepciones de I/O
+confiable, no ficheros heredados arbitrarios. Sin claims de sandbox hostil ni
+before-images universales. Si un requisito falla en ejecución se registra fallo/
+BLOCKED, no se amplía regla a /work, /tmp, /dev o /evidence para obtener verde.
 
 PowerShell dinámico: SKIP explícito si falta pwsh en runtime (no se incluye ni se
 instala); fuentes PS, AST/contratos estáticos y fixture se mantienen. No confundir
@@ -161,8 +178,8 @@ manifiesto exacto y explicación/review. `automation_operational_baseline.json`
 fija hashes solo de fuentes operacionales de BASE367b9db, nunca config/evidencia.
 Docker conserva allowlist exacta: ninguna infraestructura sandbox entra al producto.
 
-Pendientes: nuevas regresiones de esta enmienda NOT RUN, registro/observación y
-frontera por caso heredados antes de habilitar25IDs y race8×20, evidencia externa
+Pendientes: revisión enfocada y nuevas regresiones de esta enmienda NOT RUN,
+verificación real Landlock/casos25/race8×20 y evidencia externa
 de cancelación y review global del aislador/global09. La excepción humana ya
 está concedida, no pendiente. Task9/I1 no se cierran por
 probes verdes; minors diferidos permanecen en el ledger09 de

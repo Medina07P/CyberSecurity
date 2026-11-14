@@ -9,6 +9,7 @@ import os
 from contextvars import ContextVar
 from pathlib import Path
 import sys
+from automation_case_scope import destructive_path
 
 _OPEN_PATH = ContextVar('automation_guard_open_path', default=None)
 
@@ -16,10 +17,13 @@ _OPEN_PATH = ContextVar('automation_guard_open_path', default=None)
 def preservation_event(event, args):
     """Fail closed on unclassified controller destruction; not child isolation.
 
-    This does not make destructive product tests eligible: they stay named
-    BLOCKED-preservation before dispatch, with their original semantics intact.
+    Only the exact25case grant inside a verified fork-local Landlock scope may
+    discard fresh synthetic objects. All other cases/default remain blocked.
     """
     if event in ('os.remove', 'os.rmdir', 'os.truncate'):
+        directory = args[1] if event in ('os.remove', 'os.rmdir') else None
+        if destructive_path(args[0], directory):
+            return
         raise PermissionError('BLOCKED-preservation: deletion/truncation is not authorized')
     if event == 'open' and isinstance(args[0], int):
         # io.open/os.fdopen attach to an ALREADY open fd. Their mode-derived
@@ -29,9 +33,13 @@ def preservation_event(event, args):
         os.fstat(args[0])
         return
     if event == 'os.rename':
+        if destructive_path(args[0], args[2]) and destructive_path(args[1], args[3]):
+            return
         destination, directory = args[1], args[3]
     elif event == 'open' and isinstance(args[2], int) and args[2] & os.O_TRUNC:
         destination, directory = _OPEN_PATH.get() or args[0], None
+        if destructive_path(destination):
+            return
     else:
         return
     try:

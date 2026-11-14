@@ -7,7 +7,7 @@ from unittest import mock
 
 
 class IntegrationTests(unittest.TestCase):
-    def test_user_exception_is_recorded_without_claiming_inherited_observation(self):
+    def test_user_exception_requires_landlock_worker_not_blanket_permission(self):
         data = json.loads(Path(__file__).with_name('automation_preservation_cases.json').read_text())
         self.assertEqual(data['version'], 2)
         permission = data['authorization']
@@ -15,14 +15,15 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(permission['scope'], 'registered-current-case-fixture-only')
         self.assertEqual(set(permission['case_ids']), set(data['blocked']))
         self.assertEqual(len(permission['case_ids']), 25)
-        self.assertEqual(permission['required_observer'], 'inherited-before-images-and-own-fixture-boundary')
+        self.assertEqual(permission['required_observer'], 'landlock-abi3-current-case-worker')
+        self.assertEqual(permission['disposable_states'], 'new-synthetic-intermediate-states')
         self.assertTrue(all(reason.startswith('BLOCKED-preservation:')
                             for reason in data['blocked'].values()))  # History retained.
 
     def test_user_permission_is_not_an_arbitrary_path_or_environment_bypass(self):
         from automation_test_guard import preservation_event
-        # Inert path strings only. No registry/inherited observer is currently
-        # available: permission alone must not make any path destructive.
+        # Inert path strings only. This non-whitelisted case cannot destroy
+        # objects even though it runs in its own restricted worker.
         for path in ('/source/CyberSecurity-Framework/00_Config/scope.yaml',
                      '/evidence/stdout.log', '/work/identity-canary',
                      '/tmp/opencode/previous-run/log',
@@ -75,6 +76,8 @@ class IntegrationTests(unittest.TestCase):
         import os
         from automation_fixture import AutomationFixture
         fixture = AutomationFixture()
+        from automation_case_scope import fixture_parent
+        self.assertEqual(fixture.repo.parent, fixture_parent())
         path = fixture.repo / 'attachment-only'
         original = b'SYNTHETIC existing bytes; wrapping wb must not truncate\x00'
         with path.open('xb') as stream:
@@ -127,10 +130,9 @@ class IntegrationTests(unittest.TestCase):
             tree = ast.parse((here / filename).read_text())
             calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
                      and isinstance(n.func, ast.Name) and n.func.id == 'mkdtemp']
-            directories = [ast.literal_eval(k.value) for n in calls for k in n.keywords
-                           if k.arg == 'dir' and isinstance(k.value, ast.Constant)]
-            self.assertIn('/work/fixtures', directories, filename)
-            self.assertNotIn('/tmp/opencode', directories, filename)
+            directories = [ast.unparse(k.value) for n in calls for k in n.keywords
+                           if k.arg == 'dir']
+            self.assertIn('fixture_parent()', directories, filename)
         tree = ast.parse((here / 'test_automation_sandbox_prepare.py').read_text())
         case = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
                     and n.name == 'persistent_case')
@@ -146,11 +148,14 @@ class IntegrationTests(unittest.TestCase):
                     'fixtures' in ast.literal_eval(n.iter))
         self.assertEqual(ast.unparse(loop.body[0]),
                          '(run.work / name).mkdir(mode=448)')
+        worker = (here / 'automation_case_worker.py').read_text()
+        self.assertIn("(root / 'fixtures').mkdir(mode=0o700)", worker)
 
     def test_previous_stub_bytes_and_receipt_are_under_bin(self):
         from automation_fixture import AutomationFixture
         fixture = AutomationFixture()
-        self.assertEqual(fixture.repo.parent, Path('/work/fixtures'))
+        from automation_case_scope import fixture_parent
+        self.assertEqual(fixture.repo.parent, fixture_parent())
         previous = fixture.stub('synthetic', 17).read_bytes()
         current = fixture.stub('synthetic', 19)
         archives = list(fixture.bin.glob('.preserved-*/synthetic'))
@@ -250,10 +255,10 @@ class IntegrationTests(unittest.TestCase):
                    and name.endswith('.py')]
         cases = list(flatten(unittest.defaultTestLoader.loadTestsFromNames(modules)))
         allowed, blocked = classify(cases)
-        self.assertTrue(blocked)
+        self.assertEqual(blocked, {})
         self.assertEqual({t.id() for t in cases}, {t.id() for t in allowed} | set(blocked))
-        self.assertTrue(all(reason.startswith('BLOCKED-preservation:') for reason in blocked.values()))
-        self.assertTrue(all('NEEDS_CONTEXT-descendant-boundary' in reason for reason in blocked.values()))
+        from automation_suite_selection import preservation_inventory
+        self.assertEqual(len(preservation_inventory()['blocked']), 25)  # historical reasons retained
 
     def test_no_new_selector_or_nested_launcher_in_suite_dispatch(self):
         import automation_suite_selection as selection
@@ -262,7 +267,7 @@ class IntegrationTests(unittest.TestCase):
             if isinstance(node, ast.Call):
                 self.assertNotIn(ast.unparse(node.func), ('subprocess.run', 'subprocess.Popen', 'os.system'))
 
-    def test_current_race_cases_are_named_blocks_not_passing_repetitions(self):
+    def test_current_race_cases_require_exact_disposable_permission_and_worker(self):
         from automation_suite_selection import RACES
         blocked = json.loads(Path(__file__).with_name('automation_preservation_cases.json').read_text())['blocked']
         self.assertEqual(len(RACES), 8)
