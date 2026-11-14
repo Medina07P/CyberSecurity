@@ -241,6 +241,8 @@ def _validate_descendant_nproc(record, baseline):
             record.get('soft') != 256 or record.get('hard') != 256 or
             record.get('uid') != record.get('euid') or record.get('uid') != baseline['uid'] or
             record.get('uid_map') != baseline['uid_map'] or
+            record.get('uid_map_scope') != baseline['uid_map_scope'] or
+            record.get('identity_canary') != baseline['identity_canary'] or
             record.get('user_namespace') != baseline['user_namespace'] or
             record.get('capabilities') != baseline['capabilities'] or
             record.get('counter_scope') != baseline['counter_scope'] or
@@ -412,7 +414,69 @@ def _supervise(child, pidfd, pending, deadline=None):
                 killed = True
 
 
-def _probe_inputs(run):
+def _canary_metadata(info):
+    return {key: getattr(info, 'st_' + key) for key in
+            ('dev', 'ino', 'mode', 'size', 'uid', 'gid', 'nlink', 'mtime_ns', 'ctime_ns')}
+
+
+def _create_identity_canary(run):
+    path = run.work / 'identity-canary'
+    output = _new_log(path)
+    try:
+        data = run.root.name.encode('ascii')
+        if os.write(output, data) != len(data):
+            raise IsolationBlocked('Short synthetic identity canary write')
+        os.fchmod(output, 0o400)
+        os.fsync(output)
+        identity = _canary_metadata(os.fstat(output))
+    finally:
+        os.close(output)
+    fd, parent, _ = _open_regular(path)
+    try:
+        if _canary_metadata(os.fstat(fd)) != identity:
+            raise IsolationBlocked('Identity canary changed during pinning')
+        return fd, parent, identity
+    except BaseException:
+        os.close(fd)
+        os.close(parent)
+        raise
+
+
+def _named_canary_metadata(path):
+    directory = _open_directory(path.parent)  # no-follow every host component
+    try:
+        return _canary_metadata(os.stat(path.name, dir_fd=directory, follow_symlinks=False))
+    finally:
+        os.close(directory)
+
+
+def _validate_identity_canary(path, fd, expected, record):
+    """Pinned original AND named host file unchanged; VFS composes identity."""
+    try:
+        inside = record['identity_canary']['inside']
+        mapping = record['uid_map']
+        if (_canary_metadata(os.fstat(fd)) != expected or
+                _named_canary_metadata(path) != expected or
+                expected['uid'] != os.getuid() or expected['uid'] <= 0 or
+                expected['mode'] != (stat.S_IFREG | 0o400) or expected['nlink'] != 1 or
+                expected['size'] <= 0 or set(inside) != set(expected) or
+                any(type(value) is not int for value in inside.values()) or
+                record['identity_canary']['host'] != expected or
+                record['uid_map_scope'] != 'immediate-parent-user-namespace' or
+                not isinstance(mapping, list) or len(mapping) != 1 or
+                not isinstance(mapping[0], list) or len(mapping[0]) != 3 or
+                any(type(v) is not int for v in mapping[0]) or
+                mapping[0][0] != record['uid'] or mapping[0][1] < 0 or mapping[0][2] != 1 or
+                record['uid'] <= 0 or record['uid'] != record['euid'] or
+                inside['uid'] != record['uid'] or
+                any(inside[key] != expected[key] for key in
+                    ('dev', 'ino', 'mode', 'size', 'nlink', 'mtime_ns', 'ctime_ns'))):
+            raise IsolationBlocked('Synthetic canary identity composition not established')
+    except (KeyError, TypeError, IndexError) as exc:
+        raise IsolationBlocked('Incomplete synthetic identity proof') from exc
+
+
+def _probe_inputs(run, identity_canary):
     """Exclusive synthetic inputs; siblings outside mounts, no host data reads."""
     for path, content, mode in (
             (run.root / 'outside-canary', run.root.name.encode(), 0o600),
@@ -441,6 +505,7 @@ def _probe_inputs(run):
                             for name in ('mnt', 'pid', 'net', 'user', 'ipc',
                                          'uts', 'cgroup')},
         'host_uid': os.getuid(),
+        'identity_canary': identity_canary,
     })
 
 
@@ -500,7 +565,10 @@ def launch() -> int:
             (run.work / name).mkdir(mode=0o700)
         # Synthetic siblings are outside all mounts; the marker double is never
         # executed, even if unexpectedly visible. All failed artifacts retained.
-        _probe_inputs(run)
+        canary_path = run.work / 'identity-canary'
+        canary_fd, canary_parent, canary_identity = _create_identity_canary(run)
+        descriptors.extend((canary_fd, canary_parent))
+        _probe_inputs(run, canary_identity)
         seccomp_fd = _seccomp_memfd()
         descriptors.append(seccomp_fd)
         argv = bubblewrap_argv(run, seccomp_fd) + (selector,)
@@ -511,6 +579,7 @@ def launch() -> int:
             'suite_timeout': 600, 'races_timeout': 240, 'probe_timeout': 10,
             'runtime_executed': False,
             'bootstrap_nproc': bootstrap_nproc,
+            'identity_canary': canary_identity,
         })
         stdout = _new_log(run.evidence / 'stdout.log')
         descriptors.append(stdout)
@@ -556,7 +625,9 @@ def launch() -> int:
         if receipt['state'] == 'PASS' or (receipt['state'] == 'BLOCKED' and result == 2):
             workload = load_json(run.evidence / 'workload-nproc.json', {
                 'version', 'soft', 'hard', 'uid', 'euid', 'uid_map', 'user_namespace',
-                'capabilities', 'observed_uid_tasks', 'counter_scope', 'inherited_soft_hard'})
+                'capabilities', 'observed_uid_tasks', 'counter_scope', 'inherited_soft_hard',
+                'uid_map_scope', 'identity_canary'})
+            _validate_identity_canary(canary_path, canary_fd, canary_identity, workload)
             if (any(type(workload[key]) is not int for key in
                     ('soft', 'hard', 'uid', 'euid', 'observed_uid_tasks')) or
                     not isinstance(workload['capabilities'], dict) or
@@ -564,7 +635,6 @@ def launch() -> int:
                     not isinstance(workload['user_namespace'], str) or
                     workload['soft'] != 256 or workload['hard'] != 256 or
                     workload['uid'] != workload['euid'] or workload['uid'] <= 0 or
-                    workload['uid_map'] != [[workload['uid'], bootstrap_nproc['uid'], 1]] or
                     workload['user_namespace'] == bootstrap_nproc['user_namespace'] or
                     workload['inherited_soft_hard'] != [bootstrap_nproc['soft'], bootstrap_nproc['hard']] or
                     set(workload['capabilities']) != {'CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'} or
@@ -586,6 +656,7 @@ def launch() -> int:
                         row['result'] != 'PASS' for row in probes['checks'])):
                 raise IsolationBlocked('Fresh probe result missing or inconsistent')
             _validate_probe_nproc(probes, workload)
+            _validate_identity_canary(canary_path, canary_fd, canary_identity, workload)
         return result
     except _HostStop:
         # Stop raising during termination/reap. Supervision now forwards the

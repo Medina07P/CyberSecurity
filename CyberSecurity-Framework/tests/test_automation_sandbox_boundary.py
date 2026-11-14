@@ -12,9 +12,50 @@ import automation_sandbox_inside as inside
 
 
 class SandboxBoundaryTests(unittest.TestCase):
+    def test_parent_scope_mapping_requires_vfs_composition_not_parent_uid_guess(self):
+        host = {'dev': 11, 'ino': 22, 'mode': 0o100400, 'size': 52,
+                'uid': 1000, 'gid': 1000, 'nlink': 1, 'mtime_ns': 5, 'ctime_ns': 6}
+        local = dict(host, uid=1234, gid=1234)
+        for parent in (0, 1000):
+            proof = inside._compose_identity(1234, 1234, 1000, [[1234, parent, 1]],
+                                             host, local, 'user:[private]', 'user:[host]')
+            self.assertEqual(proof['uid_map_scope'], 'immediate-parent-user-namespace')
+            self.assertEqual(proof['canary']['inside']['uid'], 1234)
+        for mapping, observed in (([[1234, 0, 65536]], local),
+                                  ([[0, 0, 1]], local),
+                                  ([[1234, 0, 1]], dict(local, uid=0)),
+                                  ([[1234, 0, 1]], dict(local, ino=23)),
+                                  ([[1234, 0, 1]], dict(local, dev=12)),
+                                  ([[1234, 0, 1]], dict(local, mode=0o100600)),
+                                  ([[1234, 0, 1]], {k: v for k, v in local.items() if k != 'ino'}),
+                                  ([[1234, 0, 1]], dict(local, size=53))):
+            with self.subTest(mapping=mapping, observed=observed):
+                with self.assertRaises(inside.NprocBlocked):
+                    inside._compose_identity(1234, 1234, 1000, mapping, host,
+                                             observed, 'user:[private]', 'user:[host]')
+
+    def test_inside_canary_rejects_named_alias_and_metadata_race(self):
+        fields = {'dev': 11, 'ino': 22, 'mode': 0o100400, 'size': 52,
+                  'uid': 1000, 'gid': 1000, 'nlink': 1, 'mtime_ns': 5, 'ctime_ns': 6}
+        good = mock.Mock(**{'st_' + key: value for key, value in fields.items()})
+        changed = mock.Mock(**{'st_' + key: value for key, value in dict(fields, ino=23).items()})
+        for named, reads in ((changed, [good]), (good, [good, changed])):
+            with mock.patch.object(inside.os, 'open', return_value=42), \
+                    mock.patch.object(inside.os, 'close') as close, \
+                    mock.patch.object(inside.os, 'stat', return_value=named), \
+                    mock.patch.object(inside.os, 'fstat', side_effect=reads):
+                with self.assertRaises(inside.NprocBlocked):
+                    inside._identity_canary()
+            close.assert_called_once_with(42)
+        # Stat numeric equality alone is not proof: owner-only read-open must
+        # succeed, including when an unmapped owner has an overflow UID alias.
+        with mock.patch.object(inside.os, 'open', side_effect=PermissionError('owner mismatch')):
+            with self.assertRaises(PermissionError):
+                inside._identity_canary()
+
     def test_identity_mapping_failure_reports_exact_metadata_before_any_probe(self):
-        for mapping, namespace in (('1000 0 1\n', 'user:[private]'),
-                                   ('1000 0 1\n', 'user:[private]\n\tescaped'),
+        for mapping, namespace in (('999 0 1\n', 'user:[private]'),
+                                   ('999 0 1\n', 'user:[private]\n\tescaped'),
                                    ('1000 1000 65536\n', 'user:[private]'),
                                    ('1000 1000 1\n', 'user:[host]')):
             with self.subTest(mapping=mapping, namespace=namespace), \
@@ -85,10 +126,13 @@ class SandboxBoundaryTests(unittest.TestCase):
         context.assert_not_called()
 
     def test_accounting_scope_mapping_caps_and_task_count_are_required(self):
+        canary = {'dev': 11, 'ino': 22, 'mode': 0o100400, 'size': 52,
+                  'uid': 1000, 'gid': 1000, 'nlink': 1, 'mtime_ns': 5, 'ctime_ns': 6}
         status = ('Uid:\t1000 1000 1000 1000\nThreads:\t3\n'
                   'CapInh:\t0\nCapPrm:\t0\nCapEff:\t0\nCapBnd:\t0\nCapAmb:\t0\n')
         for mapping, metadata, valid in (
                 ('1000 1000 1\n', status, True),
+                ('1000 0 1\n', status, True),
                 ('0 1000 1\n', status, False),
                 ('1000 1000 65536\n', status, False),
                 ('1000 1000 1\n', status.replace('CapEff:\t0', 'CapEff:\t1'), False),
@@ -97,8 +141,10 @@ class SandboxBoundaryTests(unittest.TestCase):
                     mock.patch.object(inside.resource, 'getrlimit', return_value=(256, 256)), \
                     mock.patch.object(inside.os, 'getuid', return_value=1000), \
                     mock.patch.object(inside.os, 'geteuid', return_value=1000), \
-                    mock.patch.object(inside, 'read_json', return_value={
-                        'host_uid': 1000, 'host_namespaces': {'user': 'user:[host]'}}), \
+                     mock.patch.object(inside, 'read_json', return_value={
+                        'host_uid': 1000, 'host_namespaces': {'user': 'user:[host]'},
+                        'identity_canary': canary}), \
+                    mock.patch.object(inside, '_identity_canary', return_value=canary), \
                     mock.patch.object(Path, 'read_text', return_value=mapping), \
                     mock.patch.object(inside.os, 'readlink', return_value='user:[private]'), \
                     mock.patch.object(inside.os, 'listdir', return_value=['1']), \
@@ -170,6 +216,8 @@ class SandboxBoundaryTests(unittest.TestCase):
             self.assertEqual(nproc['inherited_soft_hard'], [256, 256])
             self.assertEqual((nproc['soft'], nproc['hard']), (256, 256))
             self.assertEqual(nproc['uid_map'], self.result['nproc']['uid_map'])
+            self.assertEqual(nproc['uid_map_scope'], 'immediate-parent-user-namespace')
+            self.assertEqual(nproc['identity_canary'], self.result['nproc']['identity_canary'])
             self.assertEqual(nproc['user_namespace'], self.result['nproc']['user_namespace'])
             self.assertTrue(all(value == 0 for value in nproc['capabilities'].values()))
 
@@ -197,6 +245,8 @@ class SandboxBoundaryTests(unittest.TestCase):
             nproc = result['nproc']
             self.assertEqual(nproc['inherited_soft_hard'], [256, 256])
             self.assertEqual(nproc['entry']['inherited_soft_hard'], [256, 256])
+            self.assertEqual(nproc['uid_map_scope'], 'immediate-parent-user-namespace')
+            self.assertEqual(nproc['identity_canary'], self.result['nproc']['identity_canary'])
             self.assertEqual((nproc['soft'], nproc['hard']), (256, 256))
             self.assertGreater(nproc['uid'], 0)
             self.assertEqual(nproc['uid'], nproc['euid'])

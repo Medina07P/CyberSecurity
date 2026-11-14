@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import resource
 import signal
+import stat
 import socket
 import subprocess
 import sys
@@ -25,6 +26,48 @@ _NPROC_ENTRY = None
 
 class NprocBlocked(ValueError):
     """Resource identity/accounting not established: never authorize workload."""
+
+
+def _compose_identity(uid, euid, host_uid, mapping, host, local, current_ns, host_ns):
+    """Map is parent-scoped, VFS translated ownership composes host identity."""
+    keys = {'dev', 'ino', 'mode', 'size', 'uid', 'gid', 'nlink', 'mtime_ns', 'ctime_ns'}
+    if (not isinstance(host, dict) or not isinstance(local, dict) or
+            set(host) != keys or set(local) != keys or
+            any(type(value) is not int for value in (*host.values(), *local.values())) or
+            type(host_uid) is not int or host_uid <= 0 or uid <= 0 or uid != euid or
+            not isinstance(mapping, list) or len(mapping) != 1 or
+            not isinstance(mapping[0], list) or len(mapping[0]) != 3 or
+            any(type(value) is not int for value in mapping[0]) or
+            mapping[0][0] != uid or mapping[0][1] < 0 or mapping[0][2] != 1 or
+            current_ns == host_ns or host['uid'] != host_uid or
+            host['mode'] != (stat.S_IFREG | 0o400) or host['nlink'] != 1 or host['size'] <= 0 or
+            local['uid'] != uid or
+            any(local[key] != host[key] for key in
+                ('dev', 'ino', 'mode', 'size', 'nlink', 'mtime_ns', 'ctime_ns'))):
+        raise NprocBlocked('Synthetic canary VFS identity composition not established')
+    return {'uid_map_scope': 'immediate-parent-user-namespace',
+            'canary': {'host': host, 'inside': local}}
+
+
+def _identity_canary():
+    # Opening the newly created owner-read-only400 file is required as well as
+    # stat equality; an unmapped owner's overflow UID must not masquerade as our
+    # UID merely because translated numeric stat values coincide. No contents
+    # are read, and the same gate separately requires all capabilities zero.
+    path = '/work/identity-canary'
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        def metadata(info):
+            return {key: getattr(info, 'st_' + key) for key in
+                    ('dev', 'ino', 'mode', 'size', 'uid', 'gid', 'nlink', 'mtime_ns', 'ctime_ns')}
+        before = metadata(os.fstat(fd))
+        if before != metadata(os.stat(path, follow_symlinks=False)):
+            raise NprocBlocked('Identity canary named alias differs from pinned file')
+        if before != metadata(os.fstat(fd)):
+            raise NprocBlocked('Identity canary changed during observation')
+        return before
+    finally:
+        os.close(fd)
 
 
 def _nproc_observation():
@@ -51,17 +94,21 @@ def _read_nproc_observation():
     mapping = [[int(part) for part in line.split()]
                for line in Path('/proc/self/uid_map').read_text().splitlines()]
     user_namespace = os.readlink('/proc/self/ns/user')
-    if (type(host_uid) is not int or host_uid <= 0 or mapping != [[uid, host_uid, 1]] or
+    if (type(host_uid) is not int or host_uid <= 0 or
+            len(mapping) != 1 or len(mapping[0]) != 3 or
+            mapping[0][0] != uid or mapping[0][1] < 0 or mapping[0][2] != 1 or
             user_namespace == context['host_namespaces']['user']):
-        # Already-read own/synthetic metadata only. Keep the rejection unchanged;
-        # JSON escaping makes stderr's diagnostic a single safe line, not a
-        # mapping guess, extra host read, or authority to continue to probes.
+        # Structural/namespace failure, before the additional VFS composition
+        # proof. JSON escaping keeps own/synthetic diagnostics on one line.
         raise NprocBlocked('NPROC accounting identity/user namespace not demonstrable; '
                            'identity_metadata=' + json.dumps({
                                'uid': uid, 'euid': euid, 'host_uid': host_uid,
                                'uid_map': mapping, 'user_namespace': user_namespace,
                                'expected_user_namespace': context['host_namespaces']['user'],
                            }, sort_keys=True, ensure_ascii=True))
+    proof = _compose_identity(uid, euid, host_uid, mapping,
+                              context['identity_canary'], _identity_canary(),
+                              user_namespace, context['host_namespaces']['user'])
     fields = {}
     with open('/proc/self/status', encoding='ascii') as status:
         for line in status:
@@ -96,6 +143,7 @@ def _read_nproc_observation():
         raise NprocBlocked('Local UID task consumption unavailable or exhausted')
     return {'soft': soft, 'hard': hard, 'uid': uid, 'euid': euid,
             'uid_map': mapping, 'user_namespace': user_namespace,
+            'uid_map_scope': proof['uid_map_scope'], 'identity_canary': proof['canary'],
             'capabilities': capabilities, 'observed_uid_tasks': total,
             'counter_scope': 'private-proc-visible-real-uid-threads'}
 
@@ -152,6 +200,8 @@ def _valid_descendant_nproc(record, baseline):
             record.get('soft') == record.get('hard') == 256 and
             record.get('uid') == record.get('euid') == baseline['uid'] and
             record.get('uid_map') == baseline['uid_map'] and
+            record.get('uid_map_scope') == baseline['uid_map_scope'] and
+            record.get('identity_canary') == baseline['identity_canary'] and
             record.get('user_namespace') == baseline['user_namespace'] and
             record.get('capabilities') == baseline['capabilities'] and
             record.get('counter_scope') == baseline['counter_scope'] and
@@ -194,7 +244,7 @@ def _context():
         raise ValueError('Only fixed isolated entrypoint permitted')
     data = read_json('/work/probe-context.json')
     if (set(data) != {'version', 'run_id', 'outside_canary', 'external_stub',
-                     'external_marker', 'host_namespaces', 'host_uid'} or data['version'] != 1 or
+                     'external_marker', 'host_namespaces', 'host_uid', 'identity_canary'} or data['version'] != 1 or
             re.fullmatch(r'automation-isolated-[0-9a-f]{32}', data['run_id']) is None):
         raise ValueError('Invalid fresh probe context')
     base = '/tmp/opencode/' + data['run_id'] + '/'
