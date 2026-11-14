@@ -25,7 +25,7 @@ class WebTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('http_fields', path)
         module = importlib.util.module_from_spec(spec)
         sys.modules['http_fields'] = module
-        spec.loader.exec_module(module)  # missing helper must ERROR here, not at discovery
+        spec.loader.exec_module(module)  # fixture-local only; no host/module fallback
         return module
 
     def new_text(self, path, text):
@@ -69,7 +69,7 @@ class WebTests(unittest.TestCase):
 
     def test_pair_composes_locations_and_literals(self):
         f = self.fixture()
-        core = self.helper(f)  # deliberately missing in initial tests-only phase
+        core = self.helper(f)
         from dataclasses import FrozenInstanceError
         Change = core.FieldChange
         change = Change('form', 'password', 'literal')
@@ -127,7 +127,7 @@ class WebTests(unittest.TestCase):
         driver = self.new_text(f.output / 'pair.sh', '''source "$1/00_Config/lib/http_request.bash"
 HR_METHOD=PATCH; HR_TARGET='/login?username=old&keep=%2f+'; HR_CT=application/x-www-form-urlencoded
 HR_BODY='password=old&keep=%2f+'
-pair=$(hr_request_pair query username 'a&b=+%' form password 'quote" /ñ') || exit $?
+pair=$(hr_request_pair query username 'a&b=+%' form password $'quote" /ñ\\n|tail') || exit $?
 printf '%s\n' "$pair"
 printf '%s' "$pair" | hr_pair_part target || exit $?
 printf '\n'
@@ -149,7 +149,7 @@ hr_body_with json users.0.password 'legacy"literal' || exit $?
         self.assertEqual(set(pair), {'target', 'body'})
         self.assertEqual(lines[1:3], [pair['target'], pair['body']])
         self.assertEqual(dict(parse_qsl(pair['target'].split('?', 1)[1]))['username'], 'a&b=+%')
-        self.assertEqual(dict(parse_qsl(pair['body']))['password'], 'quote" /ñ')
+        self.assertEqual(dict(parse_qsl(pair['body']))['password'], 'quote" /ñ\n|tail')
         self.assertEqual(lines[3:6], ['PATCH', '/login?username=old&keep=%2f+', 'password=old&keep=%2f+'])
         self.assertIn('/login?username=legacy%20raw&keep=%2f+', result.stdout)
         self.assertIn('password=legacy%20raw&keep=%2f+', result.stdout)
@@ -159,6 +159,17 @@ hr_body_with json users.0.password 'legacy"literal' || exit $?
         self.assertIn('json|users.0.active|true', result.stdout)
         self.assertEqual(json.loads(result.stdout.splitlines()[-1]),
                          {'users': [{'password': 'legacy"literal', 'active': True}]})
+        # The fixed CLI consumes the actual NUL frame, not newline/pipe/argv
+        # copies of request values. Independently inspect its logical result.
+        value = 'literal\n|a&b=+% ñ'
+        frame = '\0'.join(('/login?username=old', 'password=old', FORM,
+                           'query', 'username', value, 'form', 'password', value, ''))
+        result = f._run(['/usr/bin/python3', '-I', '-B',
+                         str(f.framework / '00_Config/lib/http_fields.py'), 'compose'], frame)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        wire_pair = json.loads(result.stdout)
+        self.assertEqual(dict(parse_qsl(urlsplit(wire_pair['target']).query)), {'username': value})
+        self.assertEqual(dict(parse_qsl(wire_pair['body'])), {'password': value})
         self.assertEqual(f.curl_records(), [])
 
     def test_pair_rejects_ambiguity(self):
@@ -202,6 +213,25 @@ hr_request_pair form password literal
             result = f._run(['/bin/bash', '--noprofile', '--norc', str(driver), str(f.framework), part], value)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(result.stdout, '')
+        for frame in ('/login\0password=old\0' + FORM + '\0form\0password\0literal',
+                      '\0'.join(('/login', 'password=old', FORM, 'form', 'password', 'x', 'extra', '')),
+                      '\0'.join(('/login', 'password=old', FORM, 'form', 'password', 'x' * (1024 * 1024), ''))):
+            result = f._run(['/usr/bin/python3', '-I', '-B',
+                             str(f.framework / '00_Config/lib/http_fields.py'), 'compose'], frame)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, '')
+            self.assertTrue(result.stderr)
+        # An unavailable existing interpreter override must not become a partial
+        # request or a successful empty result; this is a negative, not a backend.
+        driver = self.new_text(f.output / 'interpreter-error.sh', '''source "$1/00_Config/lib/http_request.bash"
+HR_TARGET=/login; HR_BODY=password=old; HR_CT=application/x-www-form-urlencoded
+HTTP_REQUEST_PYTHON=/unavailable-synthetic-interpreter
+hr_request_pair form password literal
+''')
+        result = f._run(['/bin/bash', '--noprofile', '--norc', str(driver), str(f.framework)], '')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
+        self.assertTrue(result.stderr)
         self.assertEqual(f.curl_records(), [])
 
     def test_login_req_transmits_each_candidate(self):

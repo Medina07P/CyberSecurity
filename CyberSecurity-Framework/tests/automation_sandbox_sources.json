@@ -44,6 +44,7 @@
     "CyberSecurity-Framework/00_Config/lib/forensics_runtime.bash",
     "CyberSecurity-Framework/00_Config/lib/forensics_timeline.py",
     "CyberSecurity-Framework/00_Config/lib/forensics_volatility.bash",
+    "CyberSecurity-Framework/00_Config/lib/http_fields.py",
     "CyberSecurity-Framework/00_Config/lib/http_request.bash",
     "CyberSecurity-Framework/00_Config/lib/module_intro.bash",
     "CyberSecurity-Framework/00_Config/lib/osint/__init__.py",
