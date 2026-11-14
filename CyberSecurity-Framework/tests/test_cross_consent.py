@@ -704,6 +704,8 @@ class ConsentTests(unittest.TestCase):
                             ('postexploitation_menu', '7\n2\n'),
                             ('postexploitation_menu', '7\n2\n0\n0\n')):
             f = self.fixture()
+            with self.assertRaises(ValueError):
+                f.run_leaf('cyber_framework.sh')  # Source-only, never launch manager.
             f.set_session('remote.example.test')
             session = f.framework / '00_Config/.session'
             before_session = (session.read_bytes(), stat.S_IMODE(session.stat().st_mode))
@@ -711,7 +713,7 @@ class ConsentTests(unittest.TestCase):
             result = f.run_menu(menu, stdin)
             self.assertEqual(result.returncode, 0, result.stderr)
             if menu == 'postexploitation_menu' and stdin.startswith('7\n2\n'):
-                self.assertRegex(result.stdout, r'(?im)^CONSENT_PROMPT: .*LOCAL')
+                self.assertRegex(result.stdout, r'(?im)^¿Autorizas .*LOCAL')
                 self.assertIn('LOCAL', result.stdout + result.stderr)
             # Only an explicitly inert preview is permitted, never unflagged
             # historical cleaner dispatch or a session-derived destination.
