@@ -405,26 +405,27 @@ hr_request_pair form password literal
                 self.assertEqual(record['body'], text)
                 self.assertEqual(body.read_bytes(), payload)
         scenarios = (
-            ({'BRUTE_SI': '1'}, 'example.test', 'username=a&password=b', 'local'),
-            ({'BRUTE_SI': '1'}, 'example.test:443', 'username=a&password=b', 'local'),
-            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'ftp'}, 'example.test', 'username=a&password=b', 'remote'),
-            ({'BRUTE_ESQUEMA': 'https'}, 'example.test', 'username=a&password=b', 'remote'),
-            ({}, 'example.test', 'username=a&password=b', 'remote'),  # EOF + missing consent
-            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https'}, 'example.test', 'username=a&password=b&%70assword=c', 'local'),
-            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https', 'BRUTE_USUARIO_CAMPO': 'password'}, 'example.test', 'username=a&password=b', 'local'),
-            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https', 'BRUTE_MAX': '1001'}, 'example.test', 'username=a&password=b', 'remote'),
-            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': ''}, 'example.test', 'username=a&password=b', 'remote'),
-            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https'}, 'example.test', 'username=a&password=b&%70assword=c', 'remote'),
-            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https', 'BRUTE_USUARIO_CAMPO': 'absent'}, 'example.test', 'username=a&password=b', 'remote'),
+            ({'BRUTE_SI': '1'}, 'example.test', 'username=a&password=b', 'local', 1),
+            ({'BRUTE_SI': '1'}, 'example.test:443', 'username=a&password=b', 'local', 1),
+            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'ftp'}, 'example.test', 'username=a&password=b', 'remote', 1),
+            ({'BRUTE_ESQUEMA': 'https'}, 'example.test', 'username=a&password=b', 'remote', 0),  # valid input, no consent
+            ({}, 'example.test', 'username=a&password=b', 'remote', 1),  # missing scheme fails before cancellation/EOF
+            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https'}, 'example.test', 'username=a&password=b&%70assword=c', 'local', 1),
+            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https', 'BRUTE_USUARIO_CAMPO': 'password'}, 'example.test', 'username=a&password=b', 'local', 1),
+            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https', 'BRUTE_MAX': '1001'}, 'example.test', 'username=a&password=b', 'remote', 1),
+            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': ''}, 'example.test', 'username=a&password=b', 'remote', 1),
+            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https'}, 'example.test', 'username=a&password=b&%70assword=c', 'remote', 1),
+            ({'BRUTE_SI': '1', 'BRUTE_ESQUEMA': 'https', 'BRUTE_USUARIO_CAMPO': 'absent'}, 'example.test', 'username=a&password=b', 'remote', 1),
         )
-        for env, host, body, dictionary in scenarios:
-            with self.subTest(env=env, host=host, dictionary=dictionary):
+        for env, host, body, dictionary, expected_rc in scenarios:
+            with self.subTest(env=env, host=host, dictionary=dictionary, expected_rc=expected_rc):
                 f = self.fixture()
                 request = self.capture(f, body=body, host=host)
                 words = self.dictionary(f) if dictionary == 'local' else 'https://example.test/synthetic-words'
                 f.env.update(env)
                 result = f.run_leaf(LOGIN, (str(request), str(words)), stdin='')
                 self.assertEqual(f.curl_invocations(), [], result.stdout + result.stderr)
+                self.assertEqual(result.returncode, expected_rc, result.stdout + result.stderr)
         f = self.fixture()
         request = self.new_text(f.repo / 'invalid.req', 'not an HTTP request')
         words = self.dictionary(f)
