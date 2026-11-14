@@ -3,7 +3,7 @@
 ## Combinación develop/09: estado actual acotado
 
 **Observación acotada del controlador,2026-11-14, sobre82663d7
-(`82663d746e1b9347a74c7f7836fa6722f04c92a1`):** selector `--suite` rc0;
+(`82663d746e1b9347a74c7f7836fa6722f04c92a1`):** suite aislada de integración rc0;
 60sandbox units,0fallos0errores0SKIP;179integration,0fallos0errores1SKIP.
 SKIP explícito: `test_automation_powershell.PowerShellTests.test_ps_mock_contract_and_ast`,
 pwsh dinámico ausente del runtime; no acredita Windows. Recibos existentes:
