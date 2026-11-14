@@ -1,6 +1,6 @@
 # Diseño: correcciones funcionales entre módulos y cierre de pendientes
 
-Fecha:2026-11-14. Estado: **PROPUESTO; enfoque elegido, documento pendiente de aprobación**.
+Fecha:2026-11-14. Estado: **APROBADO por el usuario para preparar los planes**.
 Base de trabajo:`00e4bbe4c2a3a380c4ee672072ea488072da561d`.
 
 ## 1. Intención y autoridad
@@ -9,7 +9,7 @@ El usuario pide corregir todos los fallos investigados, también fuera de09,
 conservando capacidades, datos, artefactos y trabajo de otras sesiones. Tras la
 investigación eligió expresamente la opción1 para SMB/PSExec/Linpeas: herramientas
 estables en sus rutas actuales, ejecución sensible explícita y generación opcional
-hacia un archivo nuevo. No se ha aprobado todavía este documento completo.
+hacia un archivo nuevo. Después aprobó este documento completo con «aprobado».
 
 La investigación es estática. No se han reproducido estos fallos ejecutando
 herramientas ni leído configuración, claves, notas o evidencias reales. El60/179
@@ -20,9 +20,10 @@ verde de compatibilidad09 no verifica estas hojas ni autoriza otra selección.
 - **Acordado:** corregir los siete frentes y pendientes menores; conservar
   funcionalidades y artefactos; opción1 de herramientas estables; consentimiento
   explícito para limpieza/tráfico; notas previas intactas; pruebas sintéticas.
-- **Propuesto aquí:** contratos concretos de modos/confirmación, esquema capturado,
-  rutas Labs, validaciónCIDR, orden de bloques y estrategia de verificación.
-- Aprobar el diseño autorizará preparar planes. No autoriza auditoría, limpieza,
+- **Propuestas del autor aprobadas con el documento:** contratos concretos de
+  modos/confirmación, esquema capturado, rutas Labs, validaciónCIDR, orden de
+  bloques y estrategia de verificación.
+- La aprobación autoriza preparar planes. No autoriza auditoría, limpieza,
   descargas, sudo, ejecución fuera de aislamiento ni nuevas excepciones de pruebas.
 
 ## 2. Evidencia y punto de partida
@@ -317,6 +318,6 @@ CLI/menús y matrices exactas de casos/manifiestos. Cualquier cambio de las fron
 anteriores se registra y revisa; no se retiran métodos ni se conceden efectos
 adicionales por completar un formulario o heredar una sesión.
 
-Antes de implementación: revisión de diseño, aprobación del documento por usuario,
-planes acotados y permisos específicos de verificación. Aprobación del enfoque
-no equivale a aprobación de ejecuciones o de estas propuestas todavía no revisadas.
+Antes de implementación: planes acotados revisados por el usuario y permisos
+específicos de verificación. Diseño revisado y aprobado; la aprobación no equivale
+a permiso para ejecuciones o descartables sintéticos adicionales todavía no definidos.
