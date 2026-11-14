@@ -12,8 +12,9 @@
 - [x] Revisión del plan por el usuario y elección de ejecución con subagentes.
 - [x] Ocho entregas implementadas y revisadas; dos fixes globales aprobados.
 - [x] Verificación final del controlador: 145 tests/rc0/GUARD OK sobre 8518c91.
-- [ ] Confirmación e integración local en develop, sin push.
+- [x] Confirmación del usuario e integración local fast-forward en develop a
+  1979d7f, sin push; 145 tests posmerge/rc0/GUARD OK, configuración preservada.
 
-Diseño y plan ejecutados; producto revisado, pendiente de integración local.
+Diseño y plan ejecutados; producto revisado e integrado localmente.
 Ledger detallado y logs conservados en
 `.superpowers/sdd/2026-11-13-evidence-integral/`.

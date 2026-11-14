@@ -1,5 +1,14 @@
 # AGENTS.md
 
+**Integración local 10, 2026-11-13:** usuario confirmó merge; `develop`
+avanzó por fast-forward de `3a63550` a `1979d7f` (código revisado `8518c91`,
+último commit solo documentación). Verificación posmerge desde develop:
+145 tests/rc0/GUARD OK; hash y modo de scope.yaml/targets.txt locales intactos.
+Las notas siguientes de integración pendiente son históricas. Worktree, rama
+y logs conservados; sin push. Estado detallado en
+`docs/EVIDENCIAS-INTEGRAL-2026-11-13.md`. No declara rama completa verde,
+compatibilidad operacional, autenticidad ni custodia legal.
+
 **Cierre de revisión 10, 2026-11-13 (integración pendiente):** las ocho tareas
 y la ola global I1/I2 tienen revisión independiente aprobada sobre `8518c91`.
 Verificación del controlador: `tests/run_evidence.sh` 145 tests/rc0/GUARD OK;

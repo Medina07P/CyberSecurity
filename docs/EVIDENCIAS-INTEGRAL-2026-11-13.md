@@ -112,7 +112,12 @@ stderr vacío y 18 AST Python correctos; diff sin incidencias. Cinco regresiones
 sintéticas constan en el reporte de fixes. Los estados de revisión pendientes
 que aparecen más abajo son históricos de la entrega, no el estado actual.
 
-Integración local en `develop` todavía pendiente de confirmación. No push,
+Integración local autorizada y realizada: fast-forward de `develop` desde
+`3a63550` a `1979d7f`. La suite dedicada ejecutada después del merge desde
+el checkout de develop devuelve 145 pruebas/rc0/GUARD OK. Hash y modo de los
+dos archivos locales modificados (`scope.yaml`, `targets.txt`) permanecen
+idénticos. Se conserva rama/worktree y logs, incluido `postmerge-develop.log`.
+Las referencias posteriores a integración pendiente son históricas. Sin push,
 no compatibilidad operacional, custodia legal ni afirmación de rama completa
 verde. Reportes y logs se conservan en
 `.superpowers/sdd/2026-11-13-evidence-integral/`.
