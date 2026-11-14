@@ -2,8 +2,16 @@
 
 ## Estado y autorización
 
-Esta enmienda Landlock sobre40db4f1 es **estática NOT RUN**, pendiente de revisión
-independiente y autorización de ejecución. El usuario YA concedió excepción
+**Sobre1fde308: implementación/verificación lista PARA revisión final
+independiente, NO aprobación global.** El controlador verificó suite rc0:
+60sandbox units PASS y159legacy/integration,0fallos0errores1SKIP dinámico pwsh;
+los25IDs con permiso ejecutados y workers Landlock ABI7. Carreras rc0:
+20recibos×8=160PASS. Cancelación externa controlada tras race01: SIGINT130,
+24descendientes observados salidos; SIGTERM143,23salidos. Según controlador,
+señales solo por pidfd al launcher directo. Los parciales se conservan.
+Esta entrega es solo documental: no reruns ni nueva autorización de ejecución.
+Falta review final independiente/controlador del aislador/global09; no se cierra
+Task4/Task9/global por estos recibos. El usuario YA concedió excepción
 acotada para25IDs y ruling posterior aclara que estados intermedios sintéticos
 NUEVOS son descartables, no evidencia de engagement; no necesitan before-images
 de cada versión. No repetir esa petición ni ampliar el permiso.
@@ -20,6 +28,22 @@ Fuente del historial:
 Los ledgers anteriores, el incidente de Nmap real y sus evidencias se conservan.
 No se afirma que la sesión histórica fuera exclusivamente sintética.
 
+### Recibos finales leídos como datos (sin reejecutar)
+
+| Comando del launcher fijo | Resultado verificado por controlador/recibos | Evidencia |
+|---|---|---|
+| `python3 -I -B CyberSecurity-Framework/tests/automation_sandbox_launch.py --suite` |60unit PASS;159legacy/integration,0fallos0errores1SKIP;25con permiso ejecutados,ABI7; probes6PASS,inside/host rc0 | `/tmp/opencode/automation-isolated-483f2446911e4dd99e8573f69b952e8a/evidence/` |
+| mismo launcher con `--races` |20recibos,8casos cada uno,160PASS;ABI7,inside/host rc0 | `/tmp/opencode/automation-isolated-f3855feac6bd45d0b985542ca5cf6831/evidence/` |
+| launcher con `--races`, señal externa controlada después de race01 |SIGINT130/24descendientes observados salidos;SIGTERM143/23salidos | `/tmp/opencode/automation-outer-cancel-a879a56f3bf748eab64f5b3395a1fbe7/{SIGINT,SIGTERM}.json` |
+
+Parciales de cancelación conservados:
+`/tmp/opencode/automation-isolated-006d51fcb3cf48eda197942ff1b82883/` y
+`/tmp/opencode/automation-isolated-9b5d756da824418ebe6f941e15c224a8/`.
+Las60unidades se repiten como gate por selector: no sumarlas entre runs como
+casos distintos ni llamar a estos resultados «rama completa verde». SKIP exacto:
+`PowerShellTests.test_ps_mock_contract_and_ast`, pwsh ausente del PATH preparado;
+no ejecución dinámica PowerShell ni prueba Windows/Docker.
+
 ## Todas las opciones del runner test-only
 
 Único wrapper: `bash CyberSecurity-Framework/tests/run_automation.sh [selector]`.
@@ -31,7 +55,7 @@ Launcher y wrapper rechazan reentrada desde `/source`; discovery no los invoca.
 | sin selector | Equivale a `--suite` | Mismos gates, nunca fallback al host. No autorización implícita. |
 | `--probes` | Solo observaciones sintéticas de frontera | Preparación nueva y seis checks; no importa tests/producto. |
 | `--suite` | Probes frescos,60unit tests puros y después suite09 | Cada caso legacy requiere worker Landlock ABI≥3 antes de setUp/run;25IDs permiten descartar temporales propios. Fallo de requisito=rc2, fallo real=rc1; solo ejecución observada puede acreditar PASS. |
-| `--races` | Probes frescos, mismos unit tests y ocho casos internos fijos ×20 | Cada repetición/caso tiene worker/scratch/logs nuevos. Habilitación escrita, NO160ejecuciones observadas. Requisito ausente bloquea sin fallback ni scripts/nested bwrap. |
+| `--races` | Probes frescos, mismos unit tests y ocho casos internos fijos ×20 | Cada repetición/caso tiene worker/scratch/logs nuevos.160ejecuciones PASS observadas en el run1fde308 documentado; no aprobación automática de otros runs. Requisito ausente bloquea sin fallback ni scripts/nested bwrap. |
 | cualquier otro argumento | Rechazo cerrado | rc2 antes de discovery; no `--unsafe`, token/env-bypass ni intérprete elegido por el usuario. |
 
 Códigos:0 PASS de lo seleccionado y sin bloqueos,1 fallo real de probes/tests,
@@ -39,8 +63,9 @@ Códigos:0 PASS de lo seleccionado y sin bloqueos,1 fallo real de probes/tests,
 subconjunto sigue siendo fallo aunque existan bloqueos; consultar ambos recibos.
 Timeouts: host900s (incluye preparación), probes10s, suite600s, races240s.
 I/O de kernel no interrumpible no tiene garantía hard-real-time. No matar procesos
-por nombre: se supervisa el hijo propio fijado; cancelación externa completa del
-launcher aún requiere evidencia autorizada, no la suple el probe interior.
+por nombre: se supervisa el hijo propio fijado. Cancelación externa del launcher
+observada en dos runs autorizados tras race01; no se infiere solo del probe
+interior ni garantiza todos los posibles puntos de cancelación futuros.
 
 ## Preparación, frontera y requisitos
 
@@ -117,7 +142,7 @@ concedió: delete/replace solo de temporales sintéticos NUEVOS descartables den
 del caso actual, sin borrar fuentes/config real/evidencias/logs ni runs previos.
 No permite limpieza global de fixtures/runlogs. Close sigue persistente.
 
-### Gate escrito: worker por caso y Landlock ABI≥3 (NOT RUN)
+### Gate implementado: worker por caso, Landlock ABI≥3 (ABI7 observado en estos runs)
 
 Controlador validado dentro de bwrap crea `/work/fixtures/case-<único>`700, fija
 descriptor O_PATH/no-follow y dev/ino/owner/mode, registra caseID y permiso25
@@ -134,7 +159,8 @@ solo WRITE_FILE para `/dev/null` CHAR1:3 del dev privado bwrap: O_PATH/no-follow
 descriptor/nombre/metadatos revalidados antes/después de restrict y handles
 cerrados. Ningún derecho TRUNCATE/REMOVE/MAKE/REFER para ese nodo, ni regla de
 directorio /dev ni bind hostdev. Permite O_RDWR usado por subprocess.DEVNULL;
-compatibilidad escrita NOT RUN hasta revisión/retry. Read/execute siguen
+compatibilidad ejercitada en la suite1fde308, no garantía para cualquier runtime.
+Read/execute siguen
 permitidos para runtime/fuentes. Instalación o ABI<3 falla cerrado antes del
 test. Rule/herencia fork/exec es SO, no audithook ni env-token. Regla no habilita
 network/backends/root; outer bwrap/mounts/seccomp/probes quedan intactos.
@@ -142,8 +168,10 @@ network/backends/root; outer bwrap/mounts/seccomp/probes quedan intactos.
 `/source` sigue ro por outer; `/evidence` y demás fixtures/recibos quedan fuera
 de la regla write del worker. Solo padre escribe recibos a partir de pipe acotado
 (64KiB), con caseID/ABI/identidad cotejados; stdio del hijo escribe únicamente
-logs nuevos explícitos preabiertos. Registro/result/logs por caso permanecen al
-fallar/cancelar. No before-images intermedios descartables ni monkeypatch de
+logs nuevos explícitos preabiertos. Registro/logs y recibos YA creados permanecen
+al fallar/cancelar. **M1 diferido:** interrupción puede dejar registro inicial
+sin receipt terminal por caso; no se afirma que todo parcial tenga result.json.
+No before-images intermedios descartables ni monkeypatch de
 unlink/replace/cleanup operacional. Guard local deja descartar solo si caseID25,
 scope actual fijado y Landlock ya instalado; otros/default siguen bloqueando.
 
@@ -154,11 +182,12 @@ en padre bloquea señales repetidas mientras mata/reapea hijos propios. No seña
 por nombre/hostPID. Reap puede esperar kernel no interrumpible; outer deadline
 no es garantía realtime. Resultado de caso/repetición conserva errores/bloqueos.
 
-**Límites que requieren revisión y runtime:** Landlock ABI3 NO media chmod,
+**Límites pendientes de revisión final:** Landlock ABI3 NO media chmod,
 chown, utime, xattrs y varios ioctls; “read-only” aquí es para derechos manejados,
-no certificación completa de metadatos frente a código hostil. Especial files,
-compatibilidad subprocess/DEVNULL, cancelación externa y kernel concreto no se
-han probado en esta enmienda. Fd stdio/pipe explícitos son excepciones de I/O
+no certificación completa de metadatos frente a código hostil. DEVNULL,
+subprocess y dos cancelaciones externas fueron ejercitados en el entorno de
+los recibos indicados, NO en Windows/Docker/otros kernels ni en toda combinación.
+Fd stdio/pipe explícitos son excepciones de I/O
 confiable, no ficheros heredados arbitrarios. Sin claims de sandbox hostil ni
 before-images universales. Si un requisito falla en ejecución se registra fallo/
 BLOCKED, no se amplía regla a /work, /tmp, /dev o /evidence para obtener verde.
@@ -183,11 +212,12 @@ manifiesto exacto y explicación/review. `automation_operational_baseline.json`
 fija hashes solo de fuentes operacionales de BASE367b9db, nunca config/evidencia.
 Docker conserva allowlist exacta: ninguna infraestructura sandbox entra al producto.
 
-Pendientes: revisión enfocada y nuevas regresiones de esta enmienda NOT RUN,
-verificación real Landlock/casos25/race8×20 y evidencia externa
-de cancelación y review global del aislador/global09. La excepción humana ya
-está concedida, no pendiente. Task9/I1 no se cierran por
-probes verdes; minors diferidos permanecen en el ledger09 de
+Pendientes: revisión final INDEPENDIENTE del paquete/aislador y global09, decisión
+del controlador y minors diferidos (M1 receipt terminal; históricos sin pulido).
+La suite159,25casos con permiso,160carreras y cancelación externa aquí descritos
+ya tienen evidencia; no repetirlos como si no existiera ni declarar aprobación
+global solo por pasar. La excepción humana ya está concedida, no pendiente.
+Task9/I1 no se cierran automáticamente por estos recibos; históricos en ledger09
 `.superpowers/sdd/2026-11-13-automation-integral/` (consultar ledger original al
 retomar, sin recrear logs). No repetir Tasks1–8/otros módulos. Operación autorizada
 con Internet/datos reales queda separada e intacta; aquí no se autoriza auditoría,

@@ -1,5 +1,26 @@
 # AGENTS.md
 
+**Estado actual Task4/aislador09, 2026-11-14 — LISTO PARA REVISIÓN FINAL
+INDEPENDIENTE, NO APROBACIÓN GLOBAL:** sobre1fde308 el controlador verificó
+suite rc0:60sandbox units PASS y159legacy/integration,0fallos0errores1SKIP
+dinámico por pwsh ausente del runtime;25casos con permiso ejecutados, workers
+Landlock ABI7 observado. Carreras rc0:20recibos×8=160PASS. Cancelación externa
+controlada después de race01: SIGINT130/24descendientes observados salidos y
+SIGTERM143/23salidos, señal solo al launcher directo por pidfd según controlador.
+Recibos: `/tmp/opencode/automation-isolated-483f2446911e4dd99e8573f69b952e8a/`,
+`/tmp/opencode/automation-isolated-f3855feac6bd45d0b985542ca5cf6831/` y
+`/tmp/opencode/automation-outer-cancel-a879a56f3bf748eab64f5b3395a1fbe7/`.
+Runs parciales/fuentes/evidencias/logs y el incidente Nmap histórico se conservan.
+Entrega documental actual NO ejecuta ni autoriza nuevos helpers/tests/probes.
+Falta review final independiente/controlador: no cerrar Task4/Task9/global ni
+ledger como aprobado. M1 terminal-receipt diferido; metadata/ioctl Landlock ABI3
+no cubiertos, sin certificado kernel/hostil ni garantías realtime/cgroupsper-tree.
+No compatibilidad Windows/Docker ni rama/suites antiguas completas verdes.
+No auditoría/red/install/sudo/push/merge/cleanupglobal. Ver guía/reporteTask4.
+**Los bloques fechados de seguimiento anteriores son históricos respecto a su
+estado.** Las reglas generales y de seguridad siguen vigentes; ningún bloque
+autoriza nuevas ejecuciones por sí solo.
+
 **Enmienda Task4 Landlock, 2026-11-14 — ESTÁTICA NOT RUN:** usuario autorizó
 descartar temporales sintéticos NUEVOS de25casos; estados intermedios run.json
 son descartables, no evidencia de engagement. Worker por caso escrito con
