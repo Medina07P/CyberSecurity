@@ -166,6 +166,24 @@ class Contracts(unittest.TestCase):
                     source.suffix not in ('.sh', '.py', '.ps1')):
                 continue
             explained_row(doc, relative.as_posix())
+        # Web Task4: source/doc semantics beyond a row merely being present.
+        # Existing contract ID only; no discovery/grant/runtime enlargement.
+        for leaf, tokens in (
+                ('rate_limit_probe.sh', ('RATE_LIMIT_ESQUEMA=http/https', 'default20/tope200',
+                                         'sin sondeos', '1MiB', 'ambiguos',
+                                         '403 sin señal explícita', 'NO DETERMINADO/rc1',
+                                         'Retry-After/cuota0', 'sin reintentos')),
+                ('web_login_bruteforce.sh', ('BRUTE_ESQUEMA=http/https', 'BRUTE_URL',
+                                            'autoridad absoluta idéntica a Host', 'override manda',
+                                            '1MiB', 'default200/tope1000', 'heurístico',
+                                            'no credencial válida acreditada', 'WM1'))):
+            row = explained_row(doc, '05_Exploitation/web/' + leaf)
+            for token in tokens:
+                self.assertIn(token, row)
+            source = (FW / '05_Exploitation/web' / leaf).read_text()
+            self.assertIn('hr_request_pair', source)
+            self.assertNotIn('hr_detect_scheme', source)
+            self.assertNotIn('$(hr_scheme', source)
 
     def test_source_manifest_leaf_deletion_and_addition_mutations(self):
         doc = (ROOT / 'docs/MENU-OPCIONES.md').read_text()

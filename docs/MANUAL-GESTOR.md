@@ -244,6 +244,22 @@ Detalles, riesgos y ejemplos: `CyberSecurity-Framework/04_Enumeration/README.md`
 
 Todas las opciones piden confirmación antes de ejecutar y no elevan privilegios automáticamente. Las hojas capturadas mantienen sus contratos y permisos independientes (`SQLMAP_SI`, `SQLMAP_ENUMERAR`, `SQLMAP_TABLA`).
 
+**Login/rate (2026-11-14):** capturas con ruta relativa necesitan
+`BRUTE_ESQUEMA=http|https` o `RATE_LIMIT_ESQUEMA=http|https`; no hay sondeo previo
+ni inferencia por puerto. Una URL absoluta capturada aporta esquema solo con
+autoridad idéntica a `Host:`; override definido manda y vacío/inválido rechaza.
+El modo manual usa `BRUTE_URL` explícita y cuerpo crudo, no el compositor `.req`.
+WM1 de sustitución manual permanece pendiente de RED/arreglo; no se acredita
+su cuerpo por el antiguo smoke. Campos ambiguos se rechazan localmente; `.req`
+codifica valores nuevos una vez, con presupuesto total1MiB de composición.
+Login conserva default200/tope1000 y produce candidatos heurísticos, no prueba
+de credencial válida. Rate conserva20/tope200 y `wrong-N`:403 sin señal explícita
+corta con NO DETERMINADO/rc1 aunque sea lento; Retry-After/cuota0 y429/503 tienen
+precedencia, sin nuevo reintento ni espera de Retry-After. Rechazo/EOF no autoriza
+transporte ni descargar diccionario. Las variables `*_SI=1` son consentimientos
+específicos existentes por hoja, no autorización global. Límites de tiempo,
+codificación, artefactos sensibles y diferencias del modo manual en la guía05.
+
 Detalles, riesgos y ejemplos: `CyberSecurity-Framework/05_Exploitation/README.md` y `docs/EXPLOTACION-2026-11-10.md`.
 
 ## Módulo 06: limpieza LOCAL separada
