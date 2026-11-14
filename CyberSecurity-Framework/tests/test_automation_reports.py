@@ -507,6 +507,9 @@ class ReportGenerationTests(unittest.TestCase):
         variants = ({'omit': ('stdout',)}, {'stdout': ''}, {'stdout': '{'},
                     {'stdout': '[]'}, {'stdout': '{}'}, {'stdout': '{}\n{}\n'},
                     {'stdout': lambda s: json.dumps(s)[:-1] + ',"run_id":"foreign"}'},
+                    # Last-wins yields the otherwise valid original summary;
+                    # only duplicate-key rejection can reject this object.
+                    {'stdout': lambda s: json.dumps(s)[:-1] + ',"run_id":' + json.dumps(RUN_ID) + '}'},
                     {'stdout': ' ' * (1024 * 1024 + 1)})
         for variant in variants:
             with self.subTest(variant=str(variant)[:100]):
@@ -548,6 +551,12 @@ class ReportGenerationTests(unittest.TestCase):
                 run, _ = self.fixture(receipt_changes=variant)
                 with self.assertRaises(PreflightError):
                     report_generation(run, 'report', 'example.test', 0)
+
+        # Both rc occurrences are valid0, matching COMPLETADO and process rc0.
+        # A last-wins parser must not pass by rejecting an unrelated mismatch.
+        run, _ = self.fixture(disk=lambda r: json.dumps(r)[:-1] + ',"rc":0}')
+        with self.assertRaises(PreflightError):
+            report_generation(run, 'report', 'example.test', 0)
 
     def test_missing_malformed_or_incomplete_disk_generation(self):
         from automation.reporting import report_generation
