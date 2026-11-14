@@ -128,8 +128,13 @@ no env/argv. Cada caso, incluso no autorizado para destruir, recibe su scratch.
 Worker fork cierra TODOS los fd heredados excepto stdio de logs NUEVOS, pipe de
 resultado CLOEXEC y descriptor O_PATH de scratch hasta aplicar regla. Verifica
 herencia NPROC sin repararla; no_new_privs y Landlock nativos x86_64 (syscalls
-444/445/446) manejan WRITE_FILE, REMOVE, todos MAKE, REFER y TRUNCATE. Única regla
-write/create/delete/reparent/truncate: scratch de ESE caso. Read/execute siguen
+444/445/446) manejan WRITE_FILE, REMOVE, todos MAKE, REFER y TRUNCATE. Regla completa
+write/create/delete/reparent/truncate: scratch de ESE caso. Segunda regla exacta
+solo WRITE_FILE para `/dev/null` CHAR1:3 del dev privado bwrap: O_PATH/no-follow,
+descriptor/nombre/metadatos revalidados antes/después de restrict y handles
+cerrados. Ningún derecho TRUNCATE/REMOVE/MAKE/REFER para ese nodo, ni regla de
+directorio /dev ni bind hostdev. Permite O_RDWR usado por subprocess.DEVNULL;
+compatibilidad escrita NOT RUN hasta revisión/retry. Read/execute siguen
 permitidos para runtime/fuentes. Instalación o ABI<3 falla cerrado antes del
 test. Rule/herencia fork/exec es SO, no audithook ni env-token. Regla no habilita
 network/backends/root; outer bwrap/mounts/seccomp/probes quedan intactos.
