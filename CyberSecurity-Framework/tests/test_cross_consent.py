@@ -457,7 +457,19 @@ class ConsentTests(unittest.TestCase):
         for coordinator in ('03_Scanners/run_all_scanners.sh',
                             '06_PostExploitation/run_all_post.sh'):
             f = self.fixture()
+            from cross_module_fixture import COORDINATOR_LEAVES
+            # Coordinator-only transports start absent: no copied child source
+            # (especially loot) may be needed just to initialize a fixture.
+            for relative in COORDINATOR_LEAVES:
+                self.assertFalse((f.framework / relative).exists())
+            originals = {relative: (f.framework / relative).read_bytes()
+                         for relative in (CLEANER, BURP)}
             f.record_coordinator_leaves()
+            for relative in COORDINATOR_LEAVES:
+                self.assertTrue((f.framework / relative).is_file())
+                self.assertFalse((f.framework / (relative + '.retained-source')).exists())
+            for relative, content in originals.items():
+                self.assertEqual((f.framework / (relative + '.retained-source')).read_bytes(), content)
             result = f.run_leaf(coordinator, ('example.test',))
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertTrue(f.records())

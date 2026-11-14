@@ -665,3 +665,177 @@ Final standalone stdlib AST/Git data check also verified the exact three-file
 scope and byte-for-byte preservation of the entire report prefix at FIX_BASE:
 `Final static check: exact two scoped sources + append-only report; 2 AST OK; no code imported/run`
 (rc0). Final `git diff --check` was rc0 with empty output.
+
+## Fix round3/5 — BASE42deb48 — fixture RED, static amendment only
+
+Status: **DONE_WITH_CONCERNS — amended runtime pending**. Controller results
+below are real runs of the prior SHA, not runs performed by this implementer or
+verification of this amendment. No business consent RED/GREEN is claimed.
+
+### Controller evidence read as data; preserved intact
+
+- Controller `--suite`: regression GREEN,65 infrastructure units plus179 selected
+  integration tests,0 failures,0 errors,1 SKIP(pwsh per controller). Evidence:
+  `/tmp/opencode/automation-isolated-310ffbc76ccc4e84a54e6979f30346f0/evidence/`.
+- Controller `--cross-consent`: rc1,65 infrastructure units PASS,9 case workers
+  ABI7 with all9 disposable permissions observed,16 errors and0 assertion
+  failures. Evidence:
+  `/tmp/opencode/automation-isolated-bc3a269e43f445948771356dd8a2cd2c/evidence/`.
+- Read the cross `case-00001.stderr.log` lines1–75. It shows initialization failing
+  before the cleaner's business code. The repeated causal traceback is:
+
+```text
+cross_module_fixture.py:79 -> copy_regular(Path('/source') / name, destination, 0o500)
+automation_sandbox_prepare.py -> _open_regular -> os.open(O_RDONLY|O_NOFOLLOW|...)
+automation_test_guard.py -> check_event -> PermissionError:
+Automation tests must not open checkout data:
+CyberSecurity-Framework/06_PostExploitation/loot/file_collector.sh
+... IsolationBlocked: Copy blocked: /work/fixtures/case-.../fixtures/cross-consent-.../
+CyberSecurity-Framework/06_PostExploitation/loot/file_collector.sh
+```
+
+The errors are **FIXTURE RED**, not confirmation of functional consent defects.
+JSON-only receipt inspection corroborated unit/selection counts, worker ABI7 and
+the9 permissions. No receipt/log/source/run was removed or rewritten.
+
+### Root cause / minimal ruling / tradeoff
+
+The unchanged audit guard deliberately rejects source reads whose ancestors
+include `loot`, even for a `.sh` basename. Fixture initialization attempted to
+copy all12 coordinator children, including two loot leaves, although the only
+consumer immediately replaced ALL those copied children with inert dispatch
+recorders. Those body copies were unnecessary for the approved coordinator
+exclusion tests and made every functional fixture fail during setup.
+
+**Ruling:** remove ALL unnecessary coordinator-child source copies, not just the
+two failing loot paths; create their NEW synthetic recorder files only in the
+coordinator test's scratch. Keep the data guard byte-for-byte unchanged. Do not
+add any prefix, extension, forbidden-directory or literal source-code exception.
+
+Tradeoff: the coordinator test exercises genuine coordinator dispatch/exclusion
+policy, not child business bodies. That was already its intended contract; these
+children were always replaced before dispatch. Their genuine source files remain
+in the unchanged RO `/source` manifest and original checkout. No business test of
+cleaner/Burp is replaced by this change: those two genuine leaves remain copied
+in every independent fixture and tested with their existing transport doubles.
+
+### Exact fixture/source/interface delta
+
+- Constructor copies **only `SOURCE_FILES` (the same13 exact paths listed in the
+  original report)**, rather than `SOURCE_FILES + COORDINATOR_LEAVES` (25 copies).
+  Every copied path still requires manifest membership and exclusive no-follow
+  copying. All13 lack guard-forbidden ancestors; no protected data is read.
+- `COORDINATOR_LEAVES` retains its exact12 literal path values but now denotes
+  synthetic dispatch DESTINATIONS, NOT a body-copy list:
+
+```text
+03_Scanners/network_scanners/nmap/nmap_smart.sh
+03_Scanners/network_scanners/masscan/masscan_scan.sh
+03_Scanners/web_scanners/nikto/nikto_scan.sh
+03_Scanners/web_scanners/nuclei/nuclei_scan.sh
+06_PostExploitation/privilege_escalation/linpeas.sh
+06_PostExploitation/privilege_escalation/suid_check.sh
+06_PostExploitation/privilege_escalation/capabilities_check.sh
+06_PostExploitation/privilege_escalation/cron_check.sh
+06_PostExploitation/credential_access/linux_creds.sh
+06_PostExploitation/credential_access/history_parser.sh
+06_PostExploitation/loot/file_collector.sh
+06_PostExploitation/loot/screenshot_collector.sh
+```
+
+- `record_coordinator_leaves()` archives ONLY the two genuine copied test leaves
+  (cleaner/Burp) to `.retained-source`, then creates those two exclusion recorders
+  plus all12 child recorders using exclusive `open('x')`. It creates missing
+  private scratch parents, never opens/renames the12 originals and never replaces
+  or deletes any existing recorder. Existing nmap backend double is unchanged.
+- `run_leaf` now accepts only `.sh` entries in SOURCE_FILES: genuine cleaner,
+  Burp and the two coordinators. The12 child destination paths are no longer an
+  independent leaf API; they are reachable only as inert coordinator transports.
+- Earlier report descriptions of copying/archiving all12 children are historical
+  and superseded by this section. No production source/interface implementation,
+  source manifest, runtime manifest or downstream consent package is added.
+  Later tasks must still explicitly add their actual consent sources when created.
+
+### Tests-first regression coverage (existing IDs only)
+
+Written BEFORE the fixture edit; execution of amended tests is **NOT RUN**:
+
+1. `test_automation_sandbox_boundary.SandboxBoundaryTests.test_suite_excludes_cross_modules`:
+   source and destination lists must be disjoint; pure guard diagnostics must
+   permit read-only access to each eager source and reject source mutation; both
+   exact loot source basenames AND an unlisted `.sh` under loot remain denied.
+   Calls are diagnostic only, not actual opens, forks or isolation syscalls.
+2. `test_cross_consent.ConsentTests.test_menu_cancel_and_coordinator_exclusions`:
+   all12 destinations must be absent after fixture creation, then exist as new
+   transports after recorder setup without fake `.retained-source` child copies;
+   cleaner/Burp scratch originals must remain byte-identical in their archives.
+   Existing genuine-coordinator dispatch/exclusion assertions remain in place.
+
+All nine functional IDs/grants and all boundary IDs remain unchanged. No case is
+omitted, skipped or renamed; missing future cores remain failures inside methods.
+The shared initialization copy blocker is removed by source inspection, but
+reaching business assertions on the amended SHA must be observed by controller
+execution, not asserted from this static amendment.
+
+### Other initialization checks / static commands and real results
+
+Inspected constructor/source-copy helper/guard as data. Beyond the12 unnecessary
+copies, the13 actual inputs are ordinary permitted source paths; config/HOME/
+history/optional session/output paths are constructed only under new scratch.
+Source manifest loading reads its fixed source JSON, not operator data. No other
+forbidden-ancestor source read was identified in eager initialization. No broad
+guard exemption, read-only boundary change or fallback is introduced.
+
+Actual static commands/operations:
+
+- `git status --short`: initially empty.
+- Data-only `python3 -I -B - <<'PY'` parsed exact `sandbox-units.json`/`suite.json`
+  from the suite evidence and `cross-consent-sandbox-units.json`/
+  `cross-consent.json` from cross evidence. Actual summaries:
+
+```text
+suite units: {'tests_run': 65, 'failures': 0, 'errors': 0, 'skipped': 0, 'successful': True}
+suite selected: {'tests_run': 179, 'failures': 0, 'errors': 0, 'skipped': 1, 'successful': True}
+suite worker count: 179 ABI values: [7]
+cross-consent units: {'tests_run': 65, 'failures': 0, 'errors': 0, 'skipped': 0, 'successful': True}
+cross-consent selected: {'tests_run': 9, 'failures': 0, 'errors': 16, 'skipped': 0, 'successful': False}
+cross-consent worker count: 9 ABI values: [7]
+cross disposable grants: 9
+Receipts parsed as data only; no amended repository code executed
+```
+
+- Separate inline `python3 -I -B - <<'PY'` used only stdlib ast/json/subprocess/
+  pathlib: parsed the three changed Python sources; extracted source/destination
+  tuples and guard forbidden parts as AST literals; checked constructor copy-loop
+  AST is SOURCE_FILES only; checked all25 listed source/destination paths remain
+  staged and guard bytes equal BASE using `git show 42deb48:<guard path>`;
+  compared existing test-ID sets; extracted sixteen literal menu/recorder strings
+  via a closed AST data visitor and passed them to `/bin/bash -n` with stderr
+  captured. No repository module/builder/helper was imported or run. Output rc0:
+
+```text
+AST OK: 3 changed Python sources; no repository imports
+Copy contract OK: only 13 non-protected source paths; 12 destinations remain RO-staged, not copied
+Guard byte-identical to FIX_BASE; no source/data exception added
+Boundary/functional test IDs unchanged; exact9 grants retained
+Bash -n: 16 AST-extracted menu/recorder strings rc0, empty stderr; none executed/sourced
+STATIC ONLY: amended fixtures/helpers/tests/launchers/probes/backends NOT RUN; no business RED/GREEN claimed
+```
+
+- `git diff 42deb48 --exit-code --` with exact tests-directory paths for guard,
+  source/runtime manifests, cross map/selection, historical25, sandbox policy,
+  worker/scope, inside/host launchers and suite selection: rc0, empty diff.
+- `git diff --check`: rc0, empty output.
+- `git diff 42deb48 --` with the three changed Python paths: full diff self-reviewed.
+
+No amended repo imports/tests/helpers/probes/launcher/backend were executed;
+no installs, sudo, network, cleanup, merge, push or subagents. This fix changes
+only fixture, the two covering test files and this appended report. Independent
+static review of the exact fix SHA precedes any separately authorized controller
+runtime. Prior regression GREEN does not verify this amended combination, and
+the fixture RED does not count as functional consent RED.
+
+Final inline stdlib AST/Git scope/prefix check returned0:
+`Final scope OK: fixture + two existing test files + append-only report; 3 AST OK`;
+`No amended runtime executed; business RED/GREEN pending controller review and authorization`.
+It confirmed all earlier report bytes remain an unchanged prefix.
