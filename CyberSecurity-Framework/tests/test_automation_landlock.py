@@ -1,7 +1,9 @@
 """Landlock/case-worker regressions written first. NOT RUN before review."""
 import ast
+from contextlib import ExitStack
 import ctypes
 import errno
+import json
 from pathlib import Path
 import unittest
 from unittest import mock
@@ -157,7 +159,11 @@ class LandlockContracts(unittest.TestCase):
         calls = {ast.unparse(n.func): n.lineno for n in ast.walk(child) if isinstance(n, ast.Call)}
         self.assertLess(calls['_close_except'], calls['landlock'])
         self.assertLess(calls['landlock'], calls['configure_worker'])
-        self.assertLess(calls['configure_worker'], calls['_run_inline'])
+        self.assertLess(calls['_inherited_nproc_gate'], calls['os.write'])
+        self.assertLess(calls['verify_outside_write_denied'], calls['os.write'])
+        self.assertLess(calls['identity'], calls['os.write'])
+        self.assertLess(calls['configure_worker'], calls['os.write'])
+        self.assertLess(calls['os.write'], calls['_run_inline'])
         self.assertIn('os.set_inheritable(result_fd, False)', text)
         self.assertNotIn('os.environ', text)
 
@@ -251,6 +257,128 @@ class LandlockContracts(unittest.TestCase):
             cases.append(case)
         with mock.patch('automation_case_worker.run_case', side_effect=rows):
             return selection._run(cases)
+
+    def collect_worker_result(self, chunks, status=0, times=(0,)):
+        # NOT RUN. Only transport/wait/clock doubles; classification is real.
+        import automation_case_worker as worker
+        with mock.patch.object(worker.os, 'read', side_effect=chunks), \
+                mock.patch.object(worker.os, 'waitpid', return_value=(123, status)), \
+                mock.patch.object(worker.time, 'monotonic', side_effect=times), \
+                mock.patch.object(worker.time, 'sleep'):
+            return worker._collect_result('case.synthetic', 123, 42)
+
+    def child_protocol(self, abi_missing=False):
+        """NOT RUN; real child control flow, no fork/fds/Landlock syscalls."""
+        import automation_case_worker as worker
+        import automation_case_scope as scope
+        import automation_sandbox_inside as inside
+        import automation_suite_selection as selection
+        case = mock.Mock()
+        case.id.return_value = 'case.synthetic'
+        events = []
+        receipts = []
+        with ExitStack() as stack:
+            for owner, name in ((worker.signal, 'signal'), (worker.os, 'setsid'),
+                    (worker.os, 'dup2'), (worker.os, 'set_inheritable'),
+                    (worker.os, 'close'), (worker, '_close_except'),
+                    (worker, 'identity'), (worker, '_prctl'),
+                    (worker, 'verify_outside_write_denied'),
+                    (inside, '_inherited_nproc_gate'), (scope, 'configure_worker'),
+                    (worker.io, 'FileIO'), (worker.io, 'TextIOWrapper'),
+                    (worker.sys, 'stdout'), (worker.sys, 'stderr')):
+                stack.enter_context(mock.patch.object(owner, name))
+            stack.enter_context(mock.patch.object(worker.os, 'open', return_value=50))
+            stack.enter_context(mock.patch.object(worker.os, 'write',
+                side_effect=lambda fd, raw: events.append(raw) or len(raw)))
+            stack.enter_context(mock.patch.object(worker, 'landlock',
+                side_effect=worker.WorkerBlocked('Landlock ABI>=3 required') if abi_missing else None,
+                return_value=3))
+            def started(cases):
+                events.append('case.run')
+                raise worker.WorkerBlocked('case raised after readiness')
+            stack.enter_context(mock.patch.object(selection, '_run_inline', side_effect=started))
+            stack.enter_context(mock.patch.object(worker, 'reap_owned',
+                side_effect=lambda: events.append('reap')))
+            stack.enter_context(mock.patch.object(worker, '_send',
+                side_effect=lambda fd, row: receipts.append(dict(row))))
+            stack.enter_context(mock.patch.object(worker.os, '_exit', side_effect=SystemExit(0)))
+            with self.assertRaises(SystemExit):
+                worker._child(case, Path('/synthetic'), 42, (), 43, 44, 45, False, '/synthetic.log')
+        return events, receipts
+
+    def test_child_missing_abi_sends_explicit_block_without_ready_or_case(self):
+        events, receipts = self.child_protocol(abi_missing=True)
+        self.assertEqual(events, ['reap'])
+        self.assertEqual(receipts[0]['state'], 'BLOCKED')
+        self.assertIn('ABI>=3', receipts[0]['reason'])
+
+    def test_child_ready_precedes_case_and_late_workerblocked_is_fail(self):
+        events, receipts = self.child_protocol()
+        self.assertEqual(events, [b'READY\n', 'case.run', 'reap'])
+        self.assertEqual(receipts[0]['state'], 'FAIL')
+        self.assertIn('after readiness', receipts[0]['reason'])
+
+    def test_ready_worker_timeout_is_fail_rc1_not_prerequisite_block(self):
+        import automation_case_worker as worker
+        for event, ready in ((b'READY\n', True), (b'', False)):
+            with self.subTest(ready=ready), \
+                    mock.patch.object(worker.os, 'read', return_value=event), \
+                    mock.patch.object(worker.os, 'waitpid', return_value=(0, 0)), \
+                    mock.patch.object(worker.time, 'monotonic', side_effect=[0, 61]):
+                row = worker._collect_result('case.synthetic', 123, 42)
+            self.assertEqual(row['state'], 'FAIL')
+            self.assertEqual(row['ready'], ready)
+            self.assertIsNone(row['wait_status'])
+            self.assertIn('timeout', row['reason'])
+            self.assert_both_selector_outcomes(self.aggregate_worker_results([row]), ('FAIL', 1))
+
+    def test_ready_worker_crash_retains_status_and_is_fail_rc1(self):
+        row = self.collect_worker_result([b'READY\n', b''], status=9, times=(0, 1))
+        self.assertEqual(row['state'], 'FAIL')
+        self.assertTrue(row['ready'])
+        self.assertEqual(row['wait_status'], 9)
+        self.assertIn('terminated', row['reason'])
+        self.assert_both_selector_outcomes(self.aggregate_worker_results([row]), ('FAIL', 1))
+
+    def test_explicit_abi_block_before_ready_remains_blocked_rc2(self):
+        receipt = json.dumps(dict(id='case.synthetic', state='BLOCKED',
+                                  reason='Landlock ABI>=3 required')).encode()
+        row = self.collect_worker_result([receipt, b''], times=(0, 1))
+        self.assertEqual(row['state'], 'BLOCKED')
+        self.assertFalse(row['ready'])
+        self.assertEqual(row['reason'], 'Landlock ABI>=3 required')
+        self.assert_both_selector_outcomes(self.aggregate_worker_results([row]), ('BLOCKED', 2))
+
+    def test_missing_malformed_or_post_ready_block_is_failure_not_inferred_abi(self):
+        for chunks, ready in (([b''], False), ([b'not-json', b''], False),
+                ([b'READY\n{', b''], True),
+                ([b'READY\n' + json.dumps(dict(id='case.synthetic', state='BLOCKED',
+                                              reason='late block')).encode(), b''], True)):
+            with self.subTest(chunks=chunks):
+                row = self.collect_worker_result(chunks, times=(0, 1))
+                self.assertEqual(row['state'], 'FAIL')
+                self.assertEqual(row['ready'], ready)
+                self.assert_both_selector_outcomes(self.aggregate_worker_results([row]), ('FAIL', 1))
+
+    def test_readiness_may_be_fragmented_and_receipt_stays_bounded(self):
+        receipt = json.dumps(dict(id='case.synthetic', state='DONE', successful=True)).encode()
+        row = self.collect_worker_result([b'RE', b'ADY\n' + receipt, b''], times=(0, 1, 2))
+        self.assertEqual(row['state'], 'DONE')
+        self.assertTrue(row['ready'])
+        import automation_case_worker as worker
+        row = self.collect_worker_result([b'READY\n' + b'x' * (worker.MAX_RESULT + 1)])
+        self.assertEqual(row['state'], 'FAIL')
+        self.assertIn('large', row['reason'])
+
+    def test_worker_transport_does_not_catch_cancellation(self):
+        import automation_case_worker as worker
+        for code in (130, 143):
+            with self.subTest(code=code), \
+                    mock.patch.object(worker.os, 'read', side_effect=SystemExit(code)), \
+                    mock.patch.object(worker.time, 'monotonic', return_value=0):
+                with self.assertRaises(SystemExit) as caught:
+                    worker._collect_result('case.synthetic', 123, 42)
+                self.assertEqual(caught.exception.code, code)
 
     def assert_both_selector_outcomes(self, result, expected):
         import automation_suite_selection as selection

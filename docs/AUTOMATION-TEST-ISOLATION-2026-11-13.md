@@ -171,6 +171,15 @@ de la regla write del worker. Solo padre escribe recibos a partir de pipe acotad
 logs nuevos explícitos preabiertos. Registro/logs y recibos YA creados permanecen
 al fallar/cancelar. **M1 diferido:** interrupción puede dejar registro inicial
 sin receipt terminal por caso; no se afirma que todo parcial tenga result.json.
+Corrección I2 final (fuente estática, regresiones **NOT RUN**): el mismo pipe
+transporta un evento fijo `READY` antes del recibo final acotado. Solo se emite
+tras validar Landlock, grant, scratch y límites, inmediatamente antes de ejecutar
+el caso. Timeout/crash tras READY es FAIL/rc1, con `ready`, razón y wait status
+observado (null si aún no terminó); ausencia de READY/recibo no demuestra ABI
+ausente y también falla conservadoramente. Solo un recibo BLOCKED explícito,
+normal y anterior a READY acredita bloqueo de prerrequisito/rc2. El padre puede
+escribir result.json de estos fallos de supervisión; no promete terminal durante
+cancelación ni sustituye reap propio. No hay nueva validación runtime implícita.
 No before-images intermedios descartables ni monkeypatch de
 unlink/replace/cleanup operacional. Guard local deja descartar solo si caseID25,
 scope actual fijado y Landlock ya instalado; otros/default siguen bloqueando.

@@ -19,6 +19,7 @@ SYSCALLS = (444, 445, 446)
 HANDLED = sum(1 << bit for bit in (1, *range(4, 15)))
 DEVNULL_ALLOWED = 1 << 1  # WRITE_FILE only; no TRUNCATE/REMOVE/MAKE/REFER.
 MAX_RESULT = 65536
+READY = b'READY\n'  # Fixed, bounded event on the private result pipe, before case.run.
 
 
 class WorkerBlocked(RuntimeError):
@@ -198,6 +199,7 @@ def _send(fd, value):
 
 def _child(case, root, root_fd, pinned, result_fd, stdout_fd, stderr_fd, permitted, outside_log):
     result = {'state': 'BLOCKED', 'id': case.id(), 'reason': 'Worker setup incomplete'}
+    ready = False
     try:
         for number in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM):
             signal.signal(number, signal.SIG_DFL)
@@ -223,11 +225,16 @@ def _child(case, root, root_fd, pinned, result_fd, stdout_fd, stderr_fd, permitt
         # wrappers for only the explicit per-case log descriptors duplicated above.
         sys.stdout = io.TextIOWrapper(io.FileIO(1, 'w', closefd=False), write_through=True)
         sys.stderr = io.TextIOWrapper(io.FileIO(2, 'w', closefd=False), write_through=True)
+        # All prerequisites, including the exact grant, are validated. The event
+        # is <= PIPE_BUF and the CLOEXEC descriptor is not inherited by exec.
+        if os.write(result_fd, READY) != len(READY):
+            raise RuntimeError('Worker readiness short write')
+        ready = True
         result = dict(_run_inline([case]), state='DONE', id=case.id(), abi=abi,
                       scratch=str(root), identity=list(pinned), disposable_permission=permitted,
                       nproc=inherited)
     except BaseException as exc:
-        result = {'state': 'BLOCKED' if isinstance(exc, WorkerBlocked) else 'FAIL',
+        result = {'state': 'BLOCKED' if isinstance(exc, WorkerBlocked) and not ready else 'FAIL',
                   'id': case.id(), 'reason': type(exc).__name__ + ': ' + str(exc)}
     finally:
         try:
@@ -238,6 +245,61 @@ def _child(case, root, root_fd, pinned, result_fd, stdout_fd, stderr_fd, permitt
             _send(result_fd, result)
         finally:
             os._exit(0)  # Never run inherited atexit hooks/finalizers.
+
+
+def _collect_result(case_id, pid, read_fd):
+    """Bounded readiness + final receipt; missing evidence is never an ABI block.
+
+    READY marks the case execution boundary, not proof that any assertion ran.
+    Cancellation exceptions propagate to run_case's masked owned-reap finally.
+    """
+    deadline = time.monotonic() + 60
+    raw = bytearray()
+    ready = False
+    status = None
+
+    def fail(reason):
+        return {'id': case_id, 'state': 'FAIL', 'successful': False,
+                'ready': ready, 'wait_status': status, 'reason': reason}
+
+    while True:
+        try:
+            data = os.read(read_fd, MAX_RESULT + len(READY) + 1 - len(raw))
+        except BlockingIOError:
+            data = None
+        except OSError as exc:
+            return fail('Worker pipe failed: ' + str(exc))
+        if data:
+            raw.extend(data)
+        if not ready and raw.startswith(READY):
+            ready = True
+            del raw[:len(READY)]
+        if len(raw) > MAX_RESULT:
+            return fail('Worker receipt too large')
+        if status is None:
+            waited, value = os.waitpid(pid, os.WNOHANG)
+            if waited == pid:
+                status = value
+        if status is not None and data == b'':
+            break
+        if time.monotonic() >= deadline:
+            return fail('Per-case timeout; owned children must be reaped')
+        time.sleep(0.005)
+    if status != 0:
+        return fail('Worker terminated without normal result')
+    try:
+        value = json.loads(raw)
+    except (ValueError, UnicodeError):
+        return fail('Worker receipt missing or malformed')
+    if (not isinstance(value, dict) or value.get('id') != case_id or
+            value.get('state') not in ('DONE', 'BLOCKED', 'FAIL')):
+        return fail('Worker receipt identity/state mismatch')
+    if value['state'] == 'DONE' and not ready:
+        return fail('Worker completed without readiness')
+    if value['state'] == 'BLOCKED' and (ready or not value.get('reason')):
+        return fail('Worker reported invalid prerequisite block: ' + str(value.get('reason')))
+    value.update(ready=ready, wait_status=status)
+    return value
 
 
 def run_case(case, permitted, index):
@@ -279,37 +341,12 @@ def run_case(case, permitted, index):
         os.close(write_fd)
         write_fd = None
         os.set_blocking(read_fd, False)
-        deadline = time.monotonic() + 60
         signal.pthread_sigmask(signal.SIG_SETMASK, oldmask)
-        raw = bytearray()
-        status = None
-        while True:
-            try:
-                data = os.read(read_fd, MAX_RESULT + 1 - len(raw))
-            except BlockingIOError:
-                data = None
-            if data:
-                raw.extend(data)
-            if len(raw) > MAX_RESULT:
-                raise WorkerBlocked('Worker receipt too large')
-            if status is None:
-                waited, value = os.waitpid(pid, os.WNOHANG)
-                if waited == pid:
-                    status = value
-            if status is not None and data == b'':
-                break
-            if time.monotonic() >= deadline:
-                raise WorkerBlocked('Per-case timeout; owned children must be reaped')
-            time.sleep(0.005)
-        if status != 0:
-            raise WorkerBlocked('Worker terminated without normal result')
-        value = json.loads(raw)
-        if value.get('id') != case.id() or value.get('state') not in ('DONE', 'BLOCKED', 'FAIL'):
-            raise WorkerBlocked('Worker receipt identity/state mismatch')
+        value = _collect_result(case.id(), pid, read_fd)
         if value['state'] == 'DONE' and (value.get('abi', 0) < 3 or
                 value.get('scratch') != str(root) or value.get('identity') != list(pinned) or
                 value.get('disposable_permission') is not permitted):
-            raise WorkerBlocked('Worker Landlock/root receipt mismatch')
+            value.update(state='FAIL', successful=False, reason='Worker Landlock/root receipt mismatch')
         identity(root, fd)
         write_json('/evidence/case-' + str(index).zfill(5) + '.result.json', value)
         return value

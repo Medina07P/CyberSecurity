@@ -63,6 +63,10 @@ SSH/SMB, Nikto, Hydra ni SQLmap implícitamente. `--domain example.com` añade
 OSINT con destino/autorización propios; `--url http://192.0.2.1` añade WhatWeb
 con host concordante; `--include-config` añade lectura local opt-in.
 `--report-input /ruta/scans` añade informe al final, solo si no falló antes.
+Los pasos `report` repetidos con IDs distintos son válidos: cada uno reserva
+`<run>/report-<step-id>/report-profile` y `reports/` privados, sin sobrescribir
+otro paso. El shim de informe único conserva sus nombres externos y códigos
+raw del motor; publica desde el namespace del paso `report`.
 `--phase scan` usa scan_basic; `--phase enum` pide permisos users y
 anonymous_access para SSH/shares, añade versiones BD y WhatWeb solo con URL;
 `--phase web` usa WhatWeb y Nikto. `--phase exploit` exige elegir `--action`.

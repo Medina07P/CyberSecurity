@@ -11,7 +11,7 @@ from automation_fixture import AutomationFixture, preserve
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / '00_Config/lib'))
 from automation.adapters import execute_plan, preflight
-from automation.model import Permissions, Plan, PlanError, PreflightError, RuntimeContext
+from automation.model import Permissions, Plan, PlanError, PreflightError, RuntimeContext, Step
 from automation.planner import build_plan
 
 
@@ -71,8 +71,65 @@ raise SystemExit(''' + str(rc) + ')\n')
             self.assertIn(flag, cmd.argv)
         for flag in ('--todos', '--incluir-sin-objetivo', '--abrir'):
             self.assertNotIn(flag, cmd.argv)
-        self.assertEqual(cmd.argv[cmd.argv.index('--salida') + 1], str(run / 'reports'))
+        self.assertEqual(cmd.argv[cmd.argv.index('--salida') + 1], str(run / 'report-report/reports'))
         self.assertEqual(Path(cmd.env['REPORT_PROFILE']).read_bytes(), b'')
+
+    def test_two_report_steps_keep_outputs_inputs_and_profiles_independent(self):
+        # NOT RUN. Catches global run/report-profile and run/reports collisions.
+        from automation.reporting import report_command
+        from automation.planner import validate_plan
+        second = self.f.repo / 'second scans'
+        second.mkdir()
+        (self.input / 'marker').write_text('first input')
+        (second / 'marker').write_text('second input')
+        plan = validate_plan(Plan('two-reports', (
+            Step('first', 'report', {'target': 'first.test', 'report_input': self.input}, ()),
+            Step('second', 'report', {'target': 'second.test', 'report_input': second}, ()),
+        ), 600))
+        engine = self.f.framework / '11_Reports/report_engine.py'
+        preserve(engine)
+        engine.write_text('''import argparse, json, os
+from pathlib import Path
+p = argparse.ArgumentParser()
+for name in ('objetivo', 'scans', 'salida', 'tipo', 'cliente', 'auditor'):
+    p.add_argument('--' + name, required=True)
+a = p.parse_args()
+profile = Path(os.environ['REPORT_PROFILE'])
+assert profile.read_bytes() == b''
+profile.write_text(a.objetivo)
+out = Path(a.salida)
+with (out / 'findings.json').open('x') as stream:
+    json.dump({'target': a.objetivo, 'input': (Path(a.scans) / 'marker').read_text()}, stream)
+''')
+        preflight(plan, self.ctx, Permissions(frozenset(), frozenset({
+            ('first', 'report_read'), ('second', 'report_read')})))
+        run = self.f.repo / 'run'
+        run.mkdir(mode=0o700)
+        commands = []
+        snapshots = []
+        for step in plan.steps:
+            command = report_command(step, run, self.ctx)
+            commands.append(command)
+            result = subprocess.run(command.argv, cwd=command.cwd, env=command.env,
+                                    text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            output = Path(command.argv[command.argv.index('--salida') + 1])
+            snapshots.append((output, (output / 'findings.json').read_bytes()))
+        self.assertNotEqual(snapshots[0][0], snapshots[1][0])
+        self.assertNotEqual(commands[0].env['REPORT_PROFILE'], commands[1].env['REPORT_PROFILE'])
+        for index, (output, snapshot) in enumerate(snapshots):
+            self.assertEqual((output / 'findings.json').read_bytes(), snapshot)
+            self.assertEqual(json.loads(snapshot), (
+                {'target': 'first.test', 'input': 'first input'},
+                {'target': 'second.test', 'input': 'second input'})[index])
+            profile = Path(commands[index].env['REPORT_PROFILE'])
+            self.assertEqual(profile.read_text(), ('first.test', 'second.test')[index])
+            self.assertEqual(profile.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(output.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(output.parent.stat().st_mode & 0o777, 0o700)
+        with self.assertRaises(PreflightError):
+            report_command(plan.steps[0], run, self.ctx)
+        self.assertEqual((snapshots[0][0] / 'findings.json').read_bytes(), snapshots[0][1])
 
     def test_report_engine_rc3(self):
         self.stub_engine()
@@ -243,7 +300,7 @@ raise SystemExit(''' + str(rc) + ')\n')
         from automation.reporting import report_command
         run = self.f.repo / 'run'
         run.mkdir(mode=0o700)
-        (run / 'reports').symlink_to(self.f.home, target_is_directory=True)
+        (run / 'report-report').symlink_to(self.f.home, target_is_directory=True)
         with self.assertRaises(PreflightError):
             report_command(self.plan().steps[0], run, self.ctx)
         self.assertFalse((self.f.home / 'findings.json').exists())
@@ -261,12 +318,35 @@ raise SystemExit(''' + str(rc) + ')\n')
 <ports><port protocol="tcp" portid="22"><state state="open"/><service name="ssh"/></port></ports>
 </host></nmaprun>''')
         (nmap / 'nmap_other.test.xml').write_text('<nmaprun><host><address addr="192.0.2.2"/></host></nmaprun>')
+        # Full runner regression in this already-authorized RunStore case; no
+        # expansion of the exact25 disposable-case inventory. NOT RUN here.
+        other_input = self.f.repo / 'other scans'
+        other_input.mkdir()
+        other_nmap = other_input / 'nmap'
+        other_nmap.mkdir()
+        (other_nmap / 'nmap_second.xml').write_text(
+            '<nmaprun><host><status state="up"/><address addr="192.0.2.2"/>'
+            '<ports><port protocol="tcp" portid="80"><state state="open"/>'
+            '<service name="http"/></port></ports></host></nmaprun>')
+        repeated = Plan('two-reports', (
+            Step('first', 'report', {'target': '192.0.2.1', 'report_input': self.input}, ()),
+            Step('second', 'report', {'target': '192.0.2.2', 'report_input': other_input}, ()),
+        ), 600)
+        repeated_result = execute_plan(repeated, self.ctx, Permissions(frozenset(), frozenset({
+            ('first', 'report_read'), ('second', 'report_read')})))
+        self.assertEqual(repeated_result.rc, 0, repeated_result.steps)
+        self.assertEqual([row.state for row in repeated_result.steps], ['completado', 'completado'])
+        for step_id, target in (('first', '192.0.2.1'), ('second', '192.0.2.2')):
+            private = repeated_result.run_dir / ('report-' + step_id)
+            data = json.loads((private / 'reports/findings.json').read_text())
+            self.assertEqual(data['meta']['objetivo'], target)
+            self.assertEqual((private / 'report-profile').read_bytes(), b'')
         # Nmap attributes assets by address, not XML hostnames. Use the
         # declared address as target; content identity must beat the filename.
         plan = build_plan('report', {'target': '192.0.2.1', 'report_input': self.input})
         result = execute_plan(plan, self.ctx, self.permissions)
         self.assertEqual(result.rc, 0, result.steps)
-        data = json.loads((result.run_dir / 'reports/findings.json').read_text())
+        data = json.loads((result.run_dir / 'report-report/reports/findings.json').read_text())
         self.assertEqual(data['meta']['objetivo'], '192.0.2.1')
         self.assertEqual(data['meta']['modo'], 'objetivo')
         self.assertNotIn('other.test', json.dumps(data.get('hallazgos')))
