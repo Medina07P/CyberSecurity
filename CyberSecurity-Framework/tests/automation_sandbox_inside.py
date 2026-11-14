@@ -53,7 +53,15 @@ def _read_nproc_observation():
     user_namespace = os.readlink('/proc/self/ns/user')
     if (type(host_uid) is not int or host_uid <= 0 or mapping != [[uid, host_uid, 1]] or
             user_namespace == context['host_namespaces']['user']):
-        raise NprocBlocked('NPROC accounting identity/user namespace not demonstrable')
+        # Already-read own/synthetic metadata only. Keep the rejection unchanged;
+        # JSON escaping makes stderr's diagnostic a single safe line, not a
+        # mapping guess, extra host read, or authority to continue to probes.
+        raise NprocBlocked('NPROC accounting identity/user namespace not demonstrable; '
+                           'identity_metadata=' + json.dumps({
+                               'uid': uid, 'euid': euid, 'host_uid': host_uid,
+                               'uid_map': mapping, 'user_namespace': user_namespace,
+                               'expected_user_namespace': context['host_namespaces']['user'],
+                           }, sort_keys=True, ensure_ascii=True))
     fields = {}
     with open('/proc/self/status', encoding='ascii') as status:
         for line in status:
