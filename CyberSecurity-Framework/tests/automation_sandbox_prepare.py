@@ -43,6 +43,8 @@ MAX_FILE = 32 * 1024 * 1024
 LIBDIR = Path('/usr/lib/x86_64-linux-gnu')
 STDLIB = Path('/usr/lib/python3.13')
 YAML = Path('/usr/lib/python3/dist-packages/yaml')
+PYTHON_ALIAS = '_sysconfigdata__x86_64-linux-gnu.py'
+PYTHON_CANONICAL = '_sysconfigdata__linux_x86_64-linux-gnu.py'
 UTILITIES = ('basename', 'cat', 'chmod', 'cp', 'date', 'dirname', 'env',
              'find', 'grep', 'head', 'mkdir', 'mktemp', 'mv', 'od', 'printf',
              'readlink', 'sed', 'sort', 'stat', 'tail', 'timeout', 'tr', 'wc')
@@ -264,7 +266,12 @@ _FORBIDDEN_PARTS = frozenset({'credentials', 'scans', '__pycache__',
 
 def _runtime_entries():
     data = load_json(HERE / 'automation_sandbox_manifest.json',
-                     {'version', 'executables', 'stdlib', 'yaml', 'extensions'})
+                     {'version', 'executables', 'stdlib', 'yaml', 'extensions', 'python_aliases'})
+    if data['python_aliases'] != [{
+            'destination': str(STDLIB / PYTHON_ALIAS),
+            'source': str(STDLIB / PYTHON_CANONICAL), 'link': PYTHON_CANONICAL}]:
+        raise IsolationBlocked('Python alias differs from fixed allowlist')
+    _python_alias_identity()
     expected = [('/usr/bin/python3.13', '/usr/bin/python3'),
                 ('/usr/bin/python3.13', '/usr/bin/python3.13'),
                 ('/usr/bin/bash', '/bin/bash'), ('/usr/bin/bash', '/usr/bin/bash'),
@@ -303,6 +310,35 @@ def _runtime_entries():
     return tuple(entries)
 
 
+def _python_alias_identity():
+    """Validate exactly one literal link; never resolve arbitrary Python links."""
+    directory = _open_directory(STDLIB)
+    canonical_fd = canonical_parent = None
+    try:
+        before = os.stat(PYTHON_ALIAS, dir_fd=directory, follow_symlinks=False)
+        if (not stat.S_ISLNK(before.st_mode) or
+                os.readlink(PYTHON_ALIAS, dir_fd=directory) != PYTHON_CANONICAL):
+            raise IsolationBlocked('Fixed Python alias metadata mismatch')
+        canonical_fd, canonical_parent, name = _open_regular(STDLIB / PYTHON_CANONICAL)
+        identity = _identity(os.fstat(canonical_fd))
+        if (identity != _identity(os.stat(name, dir_fd=canonical_parent, follow_symlinks=False)) or
+                identity != _identity(os.fstat(canonical_fd)) or
+                _identity(before) != _identity(os.stat(PYTHON_ALIAS, dir_fd=directory,
+                                                     follow_symlinks=False)) or
+                os.readlink(PYTHON_ALIAS, dir_fd=directory) != PYTHON_CANONICAL):
+            raise IsolationBlocked('Fixed Python alias identity changed')
+        return (_identity(before), identity)
+    except OSError as exc:
+        raise IsolationBlocked('Fixed Python alias unavailable or nonregular: ' +
+                               str(STDLIB / PYTHON_ALIAS)) from exc
+    finally:
+        if canonical_fd is not None:
+            os.close(canonical_fd)
+        if canonical_parent is not None:
+            os.close(canonical_parent)
+        os.close(directory)
+
+
 def _python_files(base, destination, category):
     # Enumerate names as data through no-follow fds, never import packages.
     result = []
@@ -316,9 +352,14 @@ def _python_files(base, destination, category):
                             'sitecustomize.py', 'usercustomize.py'):
                     continue
                 info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                if directory == STDLIB and name == PYTHON_ALIAS and category == 'python':
+                    _python_alias_identity()
+                    result.append(RuntimeFile(STDLIB / PYTHON_CANONICAL,
+                                              str(destination / relative / name), category))
+                    continue
                 if stat.S_ISLNK(info.st_mode):
                     if name.endswith('.py'):
-                        raise IsolationBlocked('Python source symlink denied')
+                        raise IsolationBlocked('Python source symlink denied: ' + str(directory / name))
                     continue  # Never traverse aliases or copy non-Python files.
                 rel = relative / name
                 if stat.S_ISDIR(info.st_mode):
@@ -367,6 +408,7 @@ def prepare(repo: Path) -> PreparedRun:
             raise IsolationBlocked('Only the checkout derived from __file__ is accepted')
         names = source_names()
         entries = resolve_runtime(_runtime_entries())
+        alias_identity = _python_alias_identity()
         # Do not mkdir the approved parent: it must already exist, no-follow.
         parent = _open_directory(RUN_PARENT)
         try:
@@ -402,7 +444,13 @@ def prepare(repo: Path) -> PreparedRun:
         for entry in entries:
             target = root / 'runtime' / entry.destination.lstrip('/')
             _mkdirs(target.parent)
+            is_python_alias = entry.destination == str(STDLIB / PYTHON_ALIAS)
+            if is_python_alias and _python_alias_identity() != alias_identity:
+                raise IsolationBlocked('Fixed Python alias changed before copy')
             record = copy_regular(entry.source, target, 0o500 if entry.category == 'elf' else 0o600)
+            if is_python_alias and (tuple(record['source_identity']) != alias_identity[1] or
+                                    _python_alias_identity() != alias_identity):
+                raise IsolationBlocked('Fixed Python alias changed during copy')
             snapshot = (record['sha256'], record['source_identity'])
             if entry.source in runtime_snapshots and runtime_snapshots[entry.source] != snapshot:
                 raise IsolationBlocked('Canonical runtime alias changed between copies')
@@ -432,12 +480,14 @@ def prepare(repo: Path) -> PreparedRun:
         return PreparedRun(root, root / 'source', root / 'runtime',
                            root / 'work', root / 'evidence', staged)
     except (OSError, ValueError, IsolationBlocked) as exc:
+        reason = ''.join(c if c.isprintable() else ' ' for c in str(exc)[:512])
         # No removal or overwrite even for failures. Initial state remains;
         # a separate failure receipt is best effort if space is exhausted.
         if root is not None:
             try:
                 _new_json(root / 'blocked.json', {'version': 1, 'state': 'BLOCKED',
-                                                 'reason': str(exc)})
+                                                 'reason': reason})
             except (OSError, IsolationBlocked):
                 pass
-        raise IsolationBlocked('Preparation blocked; artifacts retained: ' + str(root)) from exc
+        raise IsolationBlocked('Preparation blocked: ' + reason +
+                               '; artifacts retained: ' + str(root)) from exc

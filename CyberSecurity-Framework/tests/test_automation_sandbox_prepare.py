@@ -59,6 +59,82 @@ def elf_bytes(needed=(), interpreter=None, rpath=None):
 
 
 class Preparation(unittest.TestCase):
+    def test_exact_stdlib_alias_materialized_regular(self):
+        from automation_sandbox_prepare import _python_files
+        root = persistent_case()
+        canonical = root / '_sysconfigdata__linux_x86_64-linux-gnu.py'
+        alias = root / '_sysconfigdata__x86_64-linux-gnu.py'
+        canonical.write_bytes(b'# synthetic sysconfig\n')
+        alias.symlink_to(canonical.name)
+        with patch('automation_sandbox_prepare.STDLIB', root):
+            entries = _python_files(root, root, 'python')
+        entry = next(e for e in entries if e.destination == str(alias))
+        self.assertEqual(entry.source, canonical)
+        target = root / 'materialized'
+        copy_regular(entry.source, target)
+        self.assertFalse(target.is_symlink())
+        self.assertEqual(target.read_bytes(), canonical.read_bytes())
+
+    def test_stdlib_alias_changed_external_or_unknown_rejected(self):
+        from automation_sandbox_prepare import _python_files
+        for literal in ('other.py', '../external.py',
+                        '/usr/lib/python3.13/_sysconfigdata__linux_x86_64-linux-gnu.py'):
+            root = persistent_case()
+            (root / '_sysconfigdata__linux_x86_64-linux-gnu.py').write_bytes(b'# synthetic')
+            (root / '_sysconfigdata__x86_64-linux-gnu.py').symlink_to(literal)
+            with patch('automation_sandbox_prepare.STDLIB', root):
+                with self.subTest(literal=literal), self.assertRaises(IsolationBlocked):
+                    _python_files(root, root, 'python')
+        root = persistent_case()
+        (root / 'regular.py').write_bytes(b'# synthetic')
+        (root / 'unknown.py').symlink_to('regular.py')
+        with patch('automation_sandbox_prepare.STDLIB', root):
+            with self.assertRaises(IsolationBlocked):
+                _python_files(root, root, 'python')
+
+    def test_stdlib_alias_canonical_identity_change_rejected(self):
+        from automation_sandbox_prepare import _python_files
+        root = persistent_case()
+        name = '_sysconfigdata__linux_x86_64-linux-gnu.py'
+        (root / name).write_bytes(b'# synthetic')
+        (root / '_sysconfigdata__x86_64-linux-gnu.py').symlink_to(name)
+        with patch('automation_sandbox_prepare.STDLIB', root):
+            with patch('automation_sandbox_prepare._identity',
+                       side_effect=lambda info: object()):
+                with self.assertRaises(IsolationBlocked):
+                    _python_files(root, root, 'python')
+
+    def test_stdlib_alias_regular_replacement_rejected(self):
+        from automation_sandbox_prepare import _python_files
+        root = persistent_case()
+        for name in ('_sysconfigdata__linux_x86_64-linux-gnu.py',
+                     '_sysconfigdata__x86_64-linux-gnu.py'):
+            (root / name).write_bytes(b'# synthetic')
+        with patch('automation_sandbox_prepare.STDLIB', root):
+            with self.assertRaises(IsolationBlocked):
+                _python_files(root, root, 'python')
+
+    def test_stdlib_alias_canonical_link_rejected(self):
+        from automation_sandbox_prepare import _python_files
+        root = persistent_case()
+        canonical = '_sysconfigdata__linux_x86_64-linux-gnu.py'
+        (root / canonical).symlink_to('../external.py')
+        (root / '_sysconfigdata__x86_64-linux-gnu.py').symlink_to(canonical)
+        with patch('automation_sandbox_prepare.STDLIB', root):
+            with self.assertRaises(IsolationBlocked):
+                _python_files(root, root, 'python')
+
+    def test_preparation_reason_preserved_and_bounded(self):
+        from automation_sandbox_prepare import REPO, prepare
+        reason = 'Python source symlink denied: synthetic\n' + 'x' * 2000
+        with patch('automation_sandbox_prepare.source_names',
+                   side_effect=IsolationBlocked(reason)):
+            with self.assertRaises(IsolationBlocked) as raised:
+                prepare(REPO)
+        self.assertIn('Python source symlink denied: synthetic', str(raised.exception))
+        self.assertNotIn('\n', str(raised.exception))
+        self.assertLess(len(str(raised.exception)), 700)
+
     def test_source_symlink_rejected(self):
         root = persistent_case()
         (root / 'real').write_bytes(b'synthetic')
