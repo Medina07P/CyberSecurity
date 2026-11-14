@@ -61,6 +61,58 @@ class ConsentTests(unittest.TestCase):
                 self.assertEqual(cli.main(['--execute'], framework=f.framework, ops=ops), 2)
         ops.perform.assert_not_called()
         self.assertEqual(f.snapshot(), before)
+        # Exact LOCAL consent uses the real parser, plan, iteration and results;
+        # only the operation boundary is recorded (no real log/history backend).
+        f.set_session('remote.example.test')
+        class Recorder:
+            def __init__(self):
+                self.seen = []
+            def perform(self, operation, child):
+                self.seen.append((operation.kind, operation.path, child))
+                if operation.kind == 'snapshot':
+                    return b'synthetic TTY snapshot\n'
+                return None
+        recorder = Recorder()
+        stdout, stderr = io.StringIO(), TTY()
+        with mock.patch.dict(os.environ, {'HOME': str(f.home),
+                                         'CONFIRM_LOCAL_CLEANUP': '1',
+                                         'FRAMEWORK_ASSUME_YES': '1'}):
+            with mock.patch.object(cli.sys, 'stdin', TTY('LIMPIAR LOCAL\n')), \
+                    mock.patch.object(cli.sys, 'stderr', stderr), \
+                    mock.patch.object(cli.sys, 'stdout', stdout):
+                self.assertEqual(cli.main(['--execute'], framework=f.framework,
+                                          ops=recorder), 0)
+            expected = [('truncate', Path('/var/log') / name)
+                        for name in ('auth.log', 'syslog', 'btmp', 'wtmp')] + [
+                            ('history', f.home / '.bash_history'),
+                            ('child-history', None), ('snapshot', None)]
+            self.assertEqual([(kind, path) for kind, path, _ in recorder.seen], expected)
+            child = recorder.seen[0][2]
+            self.assertEqual(child.parent, f.repo / 'scans/cleanup')
+            uuid.UUID(child.name)
+            self.assertTrue(all(row[2] == child for row in recorder.seen))
+            self.assertEqual(stat.S_IMODE(child.stat().st_mode), 0o700)
+            self.assertEqual((child / 'last_access.txt').read_bytes(), b'synthetic TTY snapshot\n')
+            self.assertEqual(stat.S_IMODE((child / 'last_access.txt').stat().st_mode), 0o600)
+            self.assertIn('LIMPIAR LOCAL', stderr.getvalue())
+            self.assertEqual(len([row for row in stdout.getvalue().splitlines()
+                                  if row.startswith('OK LOCAL ')]), 7)
+            self.assertIn('Operaciones LOCAL completadas.', stdout.getvalue())
+            self.assertNotIn('FALLO', stdout.getvalue() + stderr.getvalue())
+            self.assertNotIn('remote.example.test', stdout.getvalue() + stderr.getvalue())
+            # A successful launch grants nothing to a subsequent invocation,
+            # even with stale global yes variables and the remote session intact.
+            after = f.snapshot()
+            accepted_rows = list(recorder.seen)
+            for answer in ('', 'no\n', 'si\n'):
+                with mock.patch.object(cli.sys, 'stdin', TTY(answer)), \
+                        mock.patch.object(cli.sys, 'stderr', TTY()), \
+                        mock.patch.object(cli.sys, 'stdout', io.StringIO()):
+                    self.assertEqual(cli.main(['--execute'], framework=f.framework,
+                                              ops=recorder), 2)
+                self.assertEqual(recorder.seen, accepted_rows)
+                self.assertEqual(f.snapshot(), after)
+        self.assertEqual(f.records(), [])
         # Fixture transport contracts use doubles only: no timed-out real leaf.
         for state in ('DONE', 'TIMEOUT', 'LAUNCH_ERROR'):
             f = self.fixture()
@@ -127,8 +179,18 @@ class ConsentTests(unittest.TestCase):
         prior_bytes = (prior / 'last_access.txt').read_bytes()
         prior_info = (prior / 'last_access.txt').stat()
         result = f.run_leaf(CLEANER, ('--execute', '--confirm-local-cleanup'))
-        # Synthetic sudo refuses every operation; cannot be complete success.
+        # Fixed system logs are missing/inaccessible in the confined fixture;
+        # no sudo escalation occurs, while the synthetic user history succeeds.
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual((f.home / '.bash_history').read_bytes(), b'')
+        self.assertFalse(any(row[0] == 'sudo' for row in f.records()))
+        failed_rows = [row for row in result.stderr.splitlines() if row.startswith('FALLO LOCAL ')]
+        self.assertEqual(len(failed_rows), 4, result.stdout + result.stderr)
+        for name in ('auth.log', 'syslog', 'btmp', 'wtmp'):
+            self.assertTrue(any(row.startswith('FALLO LOCAL truncate: /var/log/' + name + ':')
+                                for row in failed_rows), failed_rows)
+        self.assertIn('OK LOCAL history: ' + str(f.home / '.bash_history'), result.stdout)
+        self.assertIn('Resultado parcial: hay fallos.', result.stdout)
         self.assertNotIn('remote.example.test', result.stdout + result.stderr)
         self.assertTrue(f.records())
         self.assertNotIn('remote.example.test', repr(f.records()))

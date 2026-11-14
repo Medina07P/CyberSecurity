@@ -200,3 +200,84 @@ That prospective command is NOT authorization from this report. Cleanup's
 expected outcome requires runtime observation; Burp/UI failures remain explicit
 until later tasks. `--suite` needs separate authorization. Do not close Task2
 functionally, Task9/global09 or the consent block on this static delivery.
+
+## Refinement1 — M1/M2 coverage amendments, STATIC / runtime NOT RUN
+
+Base: `7630b163edcc4d39f356bbea2f837731cffe1c9e`. Read the full independent
+`task-2-static-review.md`: static spec PASS / quality APPROVE WITH NITS, no
+Important/Critical findings. Controller requested both minors before runtime.
+Only `tests/test_cross_consent.py` and this report change in this refinement;
+production sources, source/runtime manifests, fixtures, selection and grants
+remain unchanged. No subagents or artifact deletion.
+
+**M1**, existing `test_cleanup_requires_both_flags`: public both-flags launch
+now asserts the synthetic `.bash_history` is empty and no recorded backend is
+sudo. Its rc1 comment now identifies missing/inaccessible fixed system logs,
+not sudo refusal (superseding the historical comment discussion above).
+Assertions require exactly four failed rows, one per fixed log, successful
+history routing and truthful partial-result text. Existing remote-session,
+snapshot privacy and prior-artifact preservation assertions remain.
+
+**M2**, existing `test_cleanup_nonexecution_is_inert`: exact `LIMPIAR LOCAL`
+TTY input reaches production `cleanup_cli.main(['--execute'], ...)`, production
+planning/iteration/results and exclusive snapshot publication. Only
+`ops.perform` is replaced by a recorder returning synthetic snapshot bytes;
+no consent/parser/apply/result functions are mocked. Standard HOME is scoped
+to the new synthetic fixture; stdin/stderr TTY and stdout are stream doubles.
+The test asserts all seven operations in exact order/destinations, one UUID
+child0700, snapshot0600/content, seven real success rows and rc0, with no remote
+session disclosed and no backend calls. Despite stale global yes variables,
+later EOF/no/generic-yes invocations must return2 without additional operations
+or filesystem changes: prior success does not grant subsequent permission.
+This is written coverage, NOT evidence of executed TTY acceptance.
+
+### Actual static command and output
+
+```sh
+python3 -I -B - <<'PY'
+import ast
+from pathlib import Path
+import subprocess
+path = Path('CyberSecurity-Framework/tests/test_cross_consent.py')
+current = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+base_text = subprocess.check_output(['git', 'show', '7630b16:' + str(path)], text=True)
+base = ast.parse(base_text, filename='7630b16:' + str(path))
+def case_names(tree):
+    return sorted(node.name for node in ast.walk(tree)
+                  if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'))
+assert case_names(current) == case_names(base)
+assert len(case_names(current)) == 9
+print('AST OK CyberSecurity-Framework/tests/test_cross_consent.py')
+print('Existing test method IDs unchanged: 9')
+PY
+```
+
+Exit0, stdout exactly:
+
+```text
+AST OK CyberSecurity-Framework/tests/test_cross_consent.py
+Existing test method IDs unchanged: 9
+```
+
+`git diff --check` returned0/no output. Git diff inspection/self-review checked
+the two amended methods against the unchanged production parser/operation
+interface and reviewer requirements. No Bash source changed; no Bash or product
+execution was needed for this amendment. No repository import/helper/test/probe/
+launcher/backend was executed; the Python command above parses source as data
+and invokes only read-only Git for the base text.
+
+### Pending independent re-review and exact runtime gate
+
+**All amended tests remain NOT RUN on this refinement's commit.** Static AST
+parsing and unchanged method names do not establish functional acceptance or
+runtime isolation compatibility. Independent static re-review must precede
+any fresh exact controller authorization. Prospective test command, NOT RUN
+and not authorized by this report:
+
+`python3 -I -B CyberSecurity-Framework/tests/automation_sandbox_launch.py --cross-consent`
+
+No broader suite or direct unittest command is substituted. Burp/UI RED and
+Task2 functional/Task9/global gates remain pending. Refinement status:
+DONE_WITH_CONCERNS (runtime gate and independent static re-review outstanding).
+This tests/report amendment is recorded by its scoped Git commit; it does not
+alter or supersede any preserved historical runtime receipt.
