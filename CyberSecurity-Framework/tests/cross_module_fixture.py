@@ -11,6 +11,8 @@ from tempfile import mkdtemp
 
 SOURCE_FILES = (
     '00_Config/lib/consent/__init__.py',
+    '00_Config/lib/consent/burp.py',
+    '00_Config/lib/consent/burp_cli.py',
     '00_Config/lib/consent/files.py',
     '00_Config/lib/consent/cleanup.py',
     '00_Config/lib/consent/cleanup_cli.py',
