@@ -46,6 +46,17 @@ class SandboxBoundaryTests(unittest.TestCase):
                 self.assertFalse(selection.case_disposable_allowed(cross + '_changed'))
         with mock.patch.dict('sys.modules', {'__main__': None}):
             self.assertFalse(selection.case_disposable_allowed(cross))
+            self.assertFalse(selection.case_disposable_allowed(old[0]))
+        with mock.patch.dict('sys.modules') as modules:
+            modules.pop('__main__', None)
+            self.assertFalse(selection.case_disposable_allowed(cross))
+            self.assertFalse(selection.case_disposable_allowed(old[0]))
+        # A genuine validation error is not absence and must remain observable.
+        controller.validated_diagnostic_context.side_effect = RuntimeError('synthetic validation failure')
+        with mock.patch.dict('sys.modules', {'__main__': controller}):
+            with self.assertRaisesRegex(RuntimeError, 'synthetic validation failure'):
+                selection.case_disposable_allowed(cross)
+        controller.validated_diagnostic_context.side_effect = None
         import automation_case_worker as worker
         controller.validated_selection.return_value = '--cross-consent'
         with mock.patch.dict('sys.modules', {'__main__': controller}), \

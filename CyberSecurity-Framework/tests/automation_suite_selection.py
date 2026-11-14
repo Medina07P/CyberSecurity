@@ -60,7 +60,7 @@ def classify(cases):
 
 def case_disposable_allowed(case_id: str) -> bool:
     """Selection-bound local diagnostic; never OS authority or an env token."""
-    import __main__ as controller
+    controller = sys.modules.get('__main__')
     if (getattr(controller, '__file__', None) !=
             '/source/CyberSecurity-Framework/tests/automation_sandbox_inside.py' or
             not getattr(controller, 'validated_diagnostic_context', lambda: False)()):
