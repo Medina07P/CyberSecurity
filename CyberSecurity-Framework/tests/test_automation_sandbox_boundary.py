@@ -3,6 +3,7 @@
 No old fixtures, host launch, cleanup or backend execution.
 """
 import errno
+import ast
 from pathlib import Path
 import unittest
 from unittest import mock
@@ -11,6 +12,102 @@ import automation_sandbox_inside as inside
 
 
 class SandboxBoundaryTests(unittest.TestCase):
+    def test_entry_gate_precedes_sys_path_and_all_probe_dispatch(self):
+        tree = ast.parse(Path(inside.__file__).read_text())
+        entry = next(node for node in tree.body if isinstance(node, ast.If) and
+                     '__name__' in ast.unparse(node.test))
+        calls = [node for node in ast.walk(entry) if isinstance(node, ast.Call)]
+        gate = next(node.lineno for node in calls if ast.unparse(node.func) == '_workload_nproc_gate')
+        for node in calls:
+            if ast.unparse(node.func) in ('sys.path.extend', '_observe', '_capture',
+                                        '_cancel_worker', 'inside_main'):
+                self.assertLess(gate, node.lineno)
+
+    def test_unknown_accounting_and_privileged_identity_block(self):
+        with mock.patch.object(inside, '_read_nproc_observation',
+                               side_effect=PermissionError('metadata denied')):
+            with self.assertRaises(inside.NprocBlocked):
+                inside._nproc_observation()
+        with mock.patch.object(inside.resource, 'getrlimit', return_value=(256, 256)), \
+                mock.patch.object(inside.os, 'getuid', return_value=0), \
+                mock.patch.object(inside.os, 'geteuid', return_value=0), \
+                mock.patch.object(inside, 'read_json') as context:
+            with self.assertRaises(inside.NprocBlocked):
+                inside._nproc_observation()
+        context.assert_not_called()
+
+    def test_accounting_scope_mapping_caps_and_task_count_are_required(self):
+        status = ('Uid:\t1000 1000 1000 1000\nThreads:\t3\n'
+                  'CapInh:\t0\nCapPrm:\t0\nCapEff:\t0\nCapBnd:\t0\nCapAmb:\t0\n')
+        for mapping, metadata, valid in (
+                ('1000 1000 1\n', status, True),
+                ('0 1000 1\n', status, False),
+                ('1000 1000 65536\n', status, False),
+                ('1000 1000 1\n', status.replace('CapEff:\t0', 'CapEff:\t1'), False),
+                ('1000 1000 1\n', status.replace('Threads:\t3', 'Threads:\t256'), False)):
+            with self.subTest(mapping=mapping, valid=valid), \
+                    mock.patch.object(inside.resource, 'getrlimit', return_value=(256, 256)), \
+                    mock.patch.object(inside.os, 'getuid', return_value=1000), \
+                    mock.patch.object(inside.os, 'geteuid', return_value=1000), \
+                    mock.patch.object(inside, 'read_json', return_value={
+                        'host_uid': 1000, 'host_namespaces': {'user': 'user:[host]'}}), \
+                    mock.patch.object(Path, 'read_text', return_value=mapping), \
+                    mock.patch.object(inside.os, 'readlink', return_value='user:[private]'), \
+                    mock.patch.object(inside.os, 'listdir', return_value=['1']), \
+                    mock.patch('builtins.open', mock.mock_open(read_data=metadata)):
+                if valid:
+                    result = inside._nproc_observation()
+                    self.assertEqual(result['observed_uid_tasks'], 3)
+                    self.assertEqual(result['user_namespace'], 'user:[private]')
+                else:
+                    with self.assertRaises(inside.NprocBlocked):
+                        inside._nproc_observation()
+
+    def test_workload_limit_is_lowered_and_read_back_before_observation(self):
+        events = []
+        def impose(kind, values):
+            events.append(('set', values))
+        def inspect():
+            events.append(('observe',))
+            return {'soft': 256, 'hard': 256}
+        with mock.patch.object(inside.resource, 'setrlimit', side_effect=impose), \
+                mock.patch.object(inside.resource, 'getrlimit',
+                                  side_effect=[(4096, 8192), (256, 256)]), \
+                mock.patch.object(inside, '_nproc_observation', side_effect=inspect):
+            self.assertEqual(inside._workload_nproc_gate(), {
+                'soft': 256, 'hard': 256, 'inherited_soft_hard': [4096, 8192]})
+        self.assertEqual(events, [('set', (256, 256)), ('observe',)])
+
+    def test_nproc_gate_never_continues_after_wrong_readback_or_missing_identity(self):
+        for readback in ((256, 8192), (4096, 8192)):
+            with mock.patch.object(inside.resource, 'setrlimit'), \
+                    mock.patch.object(inside.resource, 'getrlimit',
+                                      side_effect=[(4096, 8192), readback]), \
+                    mock.patch.object(inside, '_nproc_observation') as observe:
+                with self.assertRaises(ValueError):
+                    inside._workload_nproc_gate()
+            observe.assert_not_called()
+        with mock.patch.object(inside, '_workload_nproc_gate',
+                               side_effect=ValueError('unprovable identity')), \
+                mock.patch.object(inside, '_NPROC_ENTRY', None), \
+                mock.patch.object(inside, '_context') as context, \
+                mock.patch.object(inside, 'run_probes') as probes, \
+                mock.patch.object(inside, 'write_json'):
+            self.assertEqual(inside.inside_main(['--probes']), 2)
+        context.assert_not_called()
+        probes.assert_not_called()
+
+    def test_descendants_preserve_hard256_and_unprivileged_identity(self):
+        for result in self.result['descendants']:
+            nproc = result['nproc']
+            self.assertEqual((nproc['soft'], nproc['hard']), (256, 256))
+            self.assertGreater(nproc['uid'], 0)
+            self.assertEqual(nproc['uid'], nproc['euid'])
+            self.assertTrue(all(value == 0 for value in nproc['capabilities'].values()))
+            self.assertGreaterEqual(nproc['observed_uid_tasks'], 1)
+            self.assertLess(nproc['observed_uid_tasks'], 256)
+            self.assertEqual(nproc['user_namespace'], self.result['nproc']['user_namespace'])
+
     def setUp(self):
         # Reuse the current fresh run's probe receipt, never invoke the launcher.
         self.result = inside.read_json(Path('/evidence/probes.json'))
@@ -60,6 +157,7 @@ class SandboxBoundaryTests(unittest.TestCase):
         leaked = {'valid': False, 'observed': [0, 1, 2, 3, 41],
                   'live': [0, 1, 2, 41], 'closed_transient': [3]}
         with mock.patch.object(inside, '_fd_observation', return_value=leaked), \
+                mock.patch.object(inside, '_nproc_observation', return_value={}), \
                 mock.patch.object(inside, '_context', return_value={'run_id': 'synthetic'}), \
                 mock.patch.object(inside, 'namespaces', return_value={'mnt': 'synthetic'}), \
                 mock.patch.object(inside, '_capture') as capture, \
@@ -84,6 +182,7 @@ class SandboxBoundaryTests(unittest.TestCase):
             events.append('spawn')
             raise ValueError('synthetic stop, no process')
         with mock.patch.object(inside, '_fd_observation', side_effect=snapshot), \
+                mock.patch.object(inside, '_nproc_observation', return_value={}), \
                 mock.patch.object(inside, '_context', return_value={'run_id': 'synthetic'}), \
                 mock.patch.object(inside, 'namespaces', return_value={'mnt': 'synthetic'}), \
                 mock.patch.object(inside, '_capture', side_effect=first_child):
@@ -128,7 +227,8 @@ class SandboxBoundaryTests(unittest.TestCase):
         descriptor = mock.Mock()
         with mock.patch.object(inside, '_context', return_value={
                 'run_id': 'synthetic', 'outside_canary': '/synthetic-outside',
-                'external_stub': '/synthetic-double'}), \
+                 'external_stub': '/synthetic-double'}), \
+                mock.patch.object(inside, '_nproc_observation', return_value={}), \
                 mock.patch.object(Path, 'read_text', return_value='synthetic'), \
                 mock.patch.object(Path, 'read_bytes', side_effect=FileNotFoundError(
                     errno.ENOENT, 'synthetic absent')), \
@@ -142,7 +242,8 @@ class SandboxBoundaryTests(unittest.TestCase):
 
     def test_visible_synthetic_canary_stops_before_socket_or_exec(self):
         with mock.patch.object(inside, '_context', return_value={
-                'run_id': 'synthetic', 'outside_canary': '/synthetic-outside'}), \
+                 'run_id': 'synthetic', 'outside_canary': '/synthetic-outside'}), \
+                mock.patch.object(inside, '_nproc_observation', return_value={}), \
                 mock.patch.object(Path, 'read_text', return_value='synthetic'), \
                 mock.patch.object(Path, 'read_bytes', return_value=b'synthetic'), \
                 mock.patch.object(inside.socket, 'socket') as create, \

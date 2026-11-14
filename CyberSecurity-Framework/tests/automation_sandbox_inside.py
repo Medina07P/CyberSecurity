@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import resource
 import signal
 import socket
 import subprocess
@@ -19,6 +20,89 @@ SELF = '/source/CyberSecurity-Framework/tests/automation_sandbox_inside.py'
 TESTS = '/source/CyberSecurity-Framework/tests'
 NAMESPACES = ('mnt', 'pid', 'net', 'user', 'ipc', 'uts', 'cgroup')
 _VALIDATED = False
+_NPROC_ENTRY = None
+
+
+class NprocBlocked(ValueError):
+    """Resource identity/accounting not established: never authorize workload."""
+
+
+def _nproc_observation():
+    try:
+        return _read_nproc_observation()
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+        raise NprocBlocked('NPROC identity/task metadata unavailable: ' + str(exc)) from exc
+
+
+def _read_nproc_observation():
+    """Effective limit/identity and visible local task metadata, not pids.max.
+
+    No argv/environ/data reads. Require one nonroot UID mapping in a distinct
+    user namespace and cap-free credentials; otherwise the scope is unproven.
+    Visible Threads is a corroborating snapshot, not an exported kernel ucount
+    or guarantee of256 free slots (ancestor/global limits still apply).
+    """
+    soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
+    uid, euid = os.getuid(), os.geteuid()
+    if (soft, hard) != (256, 256) or uid == 0 or uid != euid:
+        raise NprocBlocked('Workload NPROC/identity not enforceable')
+    context = read_json('/work/probe-context.json')
+    host_uid = context.get('host_uid')
+    mapping = [[int(part) for part in line.split()]
+               for line in Path('/proc/self/uid_map').read_text().splitlines()]
+    user_namespace = os.readlink('/proc/self/ns/user')
+    if (type(host_uid) is not int or host_uid <= 0 or mapping != [[uid, host_uid, 1]] or
+            user_namespace == context['host_namespaces']['user']):
+        raise NprocBlocked('NPROC accounting identity/user namespace not demonstrable')
+    fields = {}
+    with open('/proc/self/status', encoding='ascii') as status:
+        for line in status:
+            key, _, value = line.partition(':')
+            if key in ('Uid', 'CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'):
+                fields[key] = value.split()
+    if (set(fields) != {'Uid', 'CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'} or
+            any(len(value) != 1 for key, value in fields.items() if key != 'Uid')):
+        raise NprocBlocked('Credential metadata unavailable')
+    capabilities = {key: int(value[0], 16) for key, value in fields.items() if key != 'Uid'}
+    if [int(part) for part in fields['Uid']] != [uid] * 4 or any(capabilities.values()):
+        raise NprocBlocked('Workload identity privileged or capabilities present')
+    total = 0
+    for name in os.listdir('/proc'):
+        if not name.isdecimal():
+            continue
+        try:
+            metadata = {}
+            with open('/proc/' + name + '/status', encoding='ascii') as status:
+                for line in status:
+                    key, _, value = line.partition(':')
+                    if key in ('Uid', 'Threads'):
+                        metadata[key] = [int(part) for part in value.split()]
+        except FileNotFoundError:
+            continue
+        if (set(metadata) != {'Uid', 'Threads'} or len(metadata['Uid']) != 4 or
+                len(metadata['Threads']) != 1 or metadata['Threads'][0] < 1):
+            raise NprocBlocked('Local task counter unavailable')
+        if metadata['Uid'][0] == uid:
+            total += metadata['Threads'][0]
+    if not 1 <= total < 256:
+        raise NprocBlocked('Local UID task consumption unavailable or exhausted')
+    return {'soft': soft, 'hard': hard, 'uid': uid, 'euid': euid,
+            'uid_map': mapping, 'user_namespace': user_namespace,
+            'capabilities': capabilities, 'observed_uid_tasks': total,
+            'counter_scope': 'private-proc-visible-real-uid-threads'}
+
+
+def _workload_nproc_gate():
+    # Trusted stdlib only precedes this gate. Never raise an inherited ceiling.
+    inherited = resource.getrlimit(resource.RLIMIT_NPROC)
+    if any(value != resource.RLIM_INFINITY and value < 256 for value in inherited):
+        raise NprocBlocked('Inherited ceiling insufficient for workload256')
+    resource.setrlimit(resource.RLIMIT_NPROC, (256, 256))
+    if resource.getrlimit(resource.RLIMIT_NPROC) != (256, 256):
+        raise NprocBlocked('Workload NPROC readback differs from hard=soft256')
+    result = _nproc_observation()
+    result['inherited_soft_hard'] = list(inherited)
+    return result
 
 
 def read_json(path):
@@ -56,7 +140,7 @@ def _context():
         raise ValueError('Only fixed isolated entrypoint permitted')
     data = read_json('/work/probe-context.json')
     if (set(data) != {'version', 'run_id', 'outside_canary', 'external_stub',
-                     'external_marker', 'host_namespaces'} or data['version'] != 1 or
+                     'external_marker', 'host_namespaces', 'host_uid'} or data['version'] != 1 or
             re.fullmatch(r'automation-isolated-[0-9a-f]{32}', data['run_id']) is None):
         raise ValueError('Invalid fresh probe context')
     base = '/tmp/opencode/' + data['run_id'] + '/'
@@ -98,6 +182,7 @@ def _fd_observation():
 
 
 def _observe(role):
+    nproc = _nproc_observation()
     context = _context()
     inside = Path('/work/inside-canary').read_text() == context['run_id']
     try:
@@ -123,7 +208,7 @@ def _observe(role):
             descriptor.close()
             raise ValueError('Socket unexpectedly created; closed without traffic')
     fd_observation = _fd_observation()
-    return {'role': role, 'inside_canary_read': inside,
+    return {'role': role, 'nproc': nproc, 'inside_canary_read': inside,
             'outside_canary_read': outside, 'outside_errno': outside_errno,
             'socket_errno': errors, 'fds': fd_observation['live'],
             'fd_observation': fd_observation, 'namespaces': namespaces(),
@@ -150,6 +235,8 @@ def _capture(argv, timeout):
                              start_new_session=True)
     try:
         out, err = child.communicate(timeout=timeout)
+        if child.returncode == 2:
+            raise NprocBlocked('Synthetic descendant resource/boundary gate blocked')
         if child.returncode != 0 or len(out) > 65536 or len(err) > 65536:
             raise ValueError('Synthetic descendant failed')
         return json.loads(out)
@@ -161,10 +248,12 @@ def _capture(argv, timeout):
 
 
 def _cancel_worker():
+    _nproc_observation()
     _context()
     signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
     pid = os.fork()
     if pid == 0:
+        _nproc_observation()
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
         while True:
@@ -211,14 +300,17 @@ def run_probes(run_id: str) -> dict[str, object]:
     if run_id != context['run_id']:
         raise ValueError('Run identity mismatch')
     current = namespaces()
+    nproc = _nproc_observation()
     checks = [{'id': 'entry-fds', 'result': 'PASS' if entry_fds['valid'] else 'FAIL',
                'reason': 'exact entry stdio plus closed listdir fd3 transient'}]
+    checks.append({'id': 'workload-nproc', 'result': 'PASS',
+                   'reason': 'verified hard=soft256, nonroot single UID map, cap-free task snapshot'})
     if not entry_fds['valid']:
         # Persisted by inside_main even on failure; never sanitize or spawn in
         # order to make the failed entry observation look clean.
         return {'version': 1, 'run_id': run_id, 'state': 'FAIL', 'checks': checks,
                 'context': context, 'namespaces': current, 'entry_fds': entry_fds,
-                'descendants': [], 'cancel': None}
+                'descendants': [], 'cancel': None, 'nproc': nproc}
     deadline = time.monotonic() + 9.5
     descendants = _capture(_python('--probe-child'), max(0.001, deadline - time.monotonic()))
     descendants.append(_capture(_bash('--probe-bash'), max(0.001, deadline - time.monotonic())))
@@ -228,6 +320,12 @@ def run_probes(run_id: str) -> dict[str, object]:
               result['socket_errno'] == [errno.EPERM, errno.EPERM] and
               result['fds'] == [0, 1, 2] and result['fd_observation']['valid'] is True and
               result['namespaces'] == current and
+              result['nproc']['soft'] == result['nproc']['hard'] == 256 and
+              result['nproc']['uid'] == result['nproc']['euid'] == nproc['uid'] and
+              result['nproc']['uid_map'] == nproc['uid_map'] and
+              result['nproc']['user_namespace'] == nproc['user_namespace'] and
+              not any(result['nproc']['capabilities'].values()) and
+              1 <= result['nproc']['observed_uid_tasks'] < 256 and
               not result['external_stub_visible'] and not result['backend_visible'])
         checks.append({'id': result['role'], 'result': 'PASS' if ok else 'FAIL',
                        'reason': 'synthetic inherited boundary observations'})
@@ -238,7 +336,7 @@ def run_probes(run_id: str) -> dict[str, object]:
     return {'version': 1, 'run_id': run_id,
             'state': 'PASS' if all(c['result'] == 'PASS' for c in checks) else 'FAIL',
             'checks': checks, 'context': context, 'namespaces': current, 'entry_fds': entry_fds,
-            'descendants': descendants, 'cancel': cancel}
+            'descendants': descendants, 'cancel': cancel, 'nproc': nproc}
 
 
 def inside_main(argv: Sequence[str]) -> int:
@@ -250,6 +348,9 @@ def inside_main(argv: Sequence[str]) -> int:
     previous = None
     armed = False
     try:
+        nproc = _NPROC_ENTRY if _NPROC_ENTRY is not None else _workload_nproc_gate()
+        _nproc_observation()  # verify effective state, not just saved entry data
+        write_json('/evidence/workload-nproc.json', dict(nproc, version=1))
         context = _context()
         def expired(number, frame):
             raise TimeoutError('Global probe budget exhausted')
@@ -266,6 +367,8 @@ def inside_main(argv: Sequence[str]) -> int:
         else:
             _VALIDATED = True
             reason = 'Task4 preservation integration pending; suite/races blocked'
+    except NprocBlocked as exc:
+        state, code, reason = 'BLOCKED', 2, str(exc)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         state, code, reason = ('FAIL', 1, str(exc)) if armed else ('BLOCKED', 2, str(exc))
     finally:
@@ -292,6 +395,7 @@ if __name__ == '__main__':
         # fixed staged paths; never site.addsitedir (would process .pth files).
         if str(Path(__file__)) != SELF or not sys.flags.isolated:
             raise ValueError('Blocked outside fixed sandbox entrypoint')
+        _NPROC_ENTRY = _workload_nproc_gate()
         sys.path.extend(['/usr/lib/python3.13/site-packages', TESTS])
         if sys.argv[1:] == ['--probe-child']:
             observations = [_observe('python-child')]
