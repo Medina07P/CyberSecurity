@@ -1,5 +1,17 @@
 # AGENTS.md
 
+**Enmienda Task4 Landlock, 2026-11-14 — ESTÁTICA NOT RUN:** usuario autorizó
+descartar temporales sintéticos NUEVOS de25casos; estados intermedios run.json
+son descartables, no evidencia de engagement. Worker por caso escrito con
+Landlock ABI>=3, scratch nuevo fijado, registro exacto IDs y pipe/logs nuevos;
+guard default sin excepción fuera de worker/caso25. ABI ausente bloquea sin
+fallback. Revisión enfocada/controlador antes de helpers/tests/probes/syscalls.
+Outer bwrap/seccomp/mounts/producto intactos; fuente/evidencia/logs/previos y
+árboles finales preservados, fixture.close no borra. ABI3 no media chmod/xattrs/
+utime: límite documentado, NO certificado kernel/hostil. Runtime histórico
+ea414a9:60unit+109elegibles sin fallos,1SKIP/rc2; ni25casos ni160carreras nuevas
+acreditados. Ver reporteTask4/guía; sin auditoría/install/push/merge/cleanupglobal.
+
 **Aislador test-only09 — Task4 estática sobre367b9db, 2026-11-13:** Tasks1/2
 revisadas; el controlador observó seis probes PASS/rc0 en367b9db, con
 tests_started=false. Integración fixture persistente/discovery por manifiesto,

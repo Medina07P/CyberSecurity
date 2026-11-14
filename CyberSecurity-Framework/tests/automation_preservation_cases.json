@@ -3,7 +3,8 @@
   "authorization": {
     "grant": "explicit-user-new-synthetic-disposables-only",
     "scope": "registered-current-case-fixture-only",
-    "required_observer": "inherited-before-images-and-own-fixture-boundary",
+    "required_observer": "landlock-abi3-current-case-worker",
+    "disposable_states": "new-synthetic-intermediate-states",
     "case_ids": [
       "test_automation_adapters.AdapterTests.test_execute_wrapper_with_real_synthetic_child",
       "test_automation_cli.CliTests.test_execute_real_core_with_fake_backend",

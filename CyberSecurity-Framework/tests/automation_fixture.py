@@ -4,6 +4,7 @@ import json
 import shutil
 import sys
 from tempfile import mkdtemp
+from automation_case_scope import fixture_parent
 
 
 def preserve(path):
@@ -78,7 +79,7 @@ SOURCE_FILES += ('09_Automation/USE.md',)
 
 class AutomationFixture:
     def __init__(self):
-        self.repo = Path(mkdtemp(prefix='automation-', dir='/work/fixtures'))
+        self.repo = Path(mkdtemp(prefix='automation-', dir=fixture_parent()))
         self.framework = self.repo / 'CyberSecurity-Framework'
         self.bin = self.repo / 'bin'
         self.home = self.repo / 'home'
