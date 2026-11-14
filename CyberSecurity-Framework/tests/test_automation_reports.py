@@ -319,13 +319,13 @@ with (out / 'findings.json').open('x') as stream:
 </host></nmaprun>''')
         (nmap / 'nmap_other.test.xml').write_text('<nmaprun><host><address addr="192.0.2.2"/></host></nmaprun>')
         # Full runner regression in this already-authorized RunStore case; no
-        # expansion of the exact25 disposable-case inventory. NOT RUN here.
+        # expansion of the exact25 disposable-case inventory.
         other_input = self.f.repo / 'other scans'
         other_input.mkdir()
         other_nmap = other_input / 'nmap'
         other_nmap.mkdir()
         (other_nmap / 'nmap_second.xml').write_text(
-            '<nmaprun><host><status state="up"/><address addr="192.0.2.2"/>'
+            '<nmaprun><host><status state="up"/><address addr="192.0.2.2" addrtype="ipv4"/>'
             '<ports><port protocol="tcp" portid="80"><state state="open"/>'
             '<service name="http"/></port></ports></host></nmaprun>')
         repeated = Plan('two-reports', (
@@ -336,10 +336,13 @@ with (out / 'findings.json').open('x') as stream:
             ('first', 'report_read'), ('second', 'report_read')})))
         self.assertEqual(repeated_result.rc, 0, repeated_result.steps)
         self.assertEqual([row.state for row in repeated_result.steps], ['completado', 'completado'])
-        for step_id, target in (('first', '192.0.2.1'), ('second', '192.0.2.2')):
+        for step_id, target, other in (('first', '192.0.2.1', '192.0.2.2'),
+                                      ('second', '192.0.2.2', '192.0.2.1')):
             private = repeated_result.run_dir / ('report-' + step_id)
             data = json.loads((private / 'reports/findings.json').read_text())
             self.assertEqual(data['meta']['objetivo'], target)
+            self.assertIn(target, data['activos'])
+            self.assertNotIn(other, data['activos'])
             self.assertEqual((private / 'report-profile').read_bytes(), b'')
         # Nmap attributes assets by address, not XML hostnames. Use the
         # declared address as target; content identity must beat the filename.
