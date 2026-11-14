@@ -206,12 +206,18 @@ class CrossModuleFixture:
         if name not in ('scanners_menu', 'postexploitation_menu'):
             raise ValueError('Unknown fixed consent menu')
         # Consume the real manager consent classifier as source, without sourcing
-        # its initialization/main. Only display/pause/dispatch are transports.
+        # its initialization/main. Display policy is also real; only clear/pause
+        # and execution/list transports are doubled.
         source = (self.framework / 'cyber_framework.sh').read_text()
-        header = '\nask_confirm() {\n'
-        if source.count(header) != 1:
-            raise ValueError('Manager confirmation source shape changed')
-        confirmation = 'ask_confirm() {\n' + source.split(header, 1)[1].split('\n}', 1)[0] + '\n}\n'
+        policies = ''
+        for function in ('ask_confirm', 'script_arguments_summary'):
+            header = '\n' + function + '() {\n'
+            if source.count(header) != 1:
+                raise ValueError('Manager policy source shape changed')
+            body, closing, _ = source.split(header, 1)[1].partition('\n}')
+            if not closing:
+                raise ValueError('Manager policy closing brace missing')
+            policies += function + '() {\n' + body + '\n}\n'
         driver = self.output / ('menu-' + str(self._invocations) + '.sh')
         with driver.open('x') as stream:
             stream.write('source "$1/00_Config/lib/params.bash"\n'
@@ -219,8 +225,10 @@ class CrossModuleFixture:
                          'source "$1/00_Config/lib/session.bash"\n'
                          'source "$1/00_Config/lib/' + name + '.bash"\n'
                          'clear_screen() { :; }; pause() { :; }\n'
-                         + confirmation +
-                         'execute_script() { record-dispatch "$@"; }\n'
+                         + policies +
+                         'execute_script() { local -a original=("$@"); local script_path="$1"; shift 2; '
+                         '[[ "${1:-}" != --prepared ]] || shift; '
+                         'script_arguments_summary "$script_path" "$@"; record-dispatch "${original[@]}"; }\n'
                          'run_module_scripts() { record-dispatch "$@"; }\n' + name + '\n')
         return self._run(['/bin/bash', '--noprofile', '--norc', str(driver), str(self.framework)], stdin)
 

@@ -74,7 +74,7 @@ scanners_burp_menu() {
                 [[ "$port" != 0 && "$port" != '!' ]] || continue
                 [[ "$port" =~ ^[0-9]{1,5}$ ]] && (( 10#$port >= 1 && 10#$port <= 65535 )) || { echo 'Puerto no válido.' >&2; continue; }
                 echo 'Se enviará un GET por 127.0.0.1 al puerto indicado; no certifica origen ni captura.'
-                echo 'La URL indicada, no el objetivo de sesión, es el destino. El gestor muestra argumentos: evita secretos en la URL.'
+                echo 'La URL indicada, no el objetivo de sesión, es el destino. El resumen omite ruta/query; la URL sigue visible en argv del proceso.'
                 ask_confirm '¿Autorizas ENVIAR este GET a la URL explícita mediante el proxy local?' || continue
                 execute_script '03_Scanners/web_scanners/burpsuite/burp_launcher.sh' '03_Scanners' --prepared --verificar "$url" --proxy-port "$port" --execute --confirm-network
                 ;;

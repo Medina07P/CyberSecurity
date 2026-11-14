@@ -76,8 +76,9 @@ acredita dueño Burp ni captura. Si no puede observar informa `NO_DETERMINADO`.
 para enviar un GET vía `127.0.0.1:N`. No propone la sesión como URL/permiso.
 `0`/`!`, no o EOF cancelan; un sí a abrir no autoriza tráfico posterior.
 El código HTTP observado no certifica origen ni captura. La query puede contener
-secretos y la URL aparece en argv del proceso y argumentos del gestor: no es
-almacenamiento secreto. Evita secretos en la URL de esta comprobación GET.
+secretos: el resumen del gestor y la hoja omiten ruta/query y muestran solo GET,
+proxy y origen de destino. La URL original se entrega intacta y sigue visible
+en argv del proceso: no es almacenamiento secreto ni garantía frente a inspección local.
 **03.6 → 3** pide ID propio y consentimiento para TERM y posible KILL;
 **parar tiene efectos**, no es una consulta. La hoja verifica identidad y usa
 pidfd, sin señales por nombre/grupo ni adopción de PID legacy.

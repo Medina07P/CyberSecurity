@@ -199,6 +199,57 @@ change_target() {
 
 # ─── FUNCIÓN PARA EJECUTAR SCRIPTS ─────────────────────────
 
+# Display policy only: never rewrite the argv delivered to the selected leaf.
+script_arguments_summary() {
+    local script_path="$1" url='' proxy_port='' verify=0
+    shift
+    if [[ $# -eq 0 ]]; then
+        echo -e "${DIM}Ejecución directa; sigue las indicaciones de la herramienta.${NC}"
+        return
+    fi
+    case "$script_path" in
+        06_PostExploitation/lateral_movement/ps_exec.sh)
+            echo -e "${DIM}Argumentos: [ocultos: contienen credenciales]${NC}"
+            ;;
+        03_Scanners/web_scanners/burpsuite/burp_launcher.sh)
+            # Never print raw Burp arguments, even malformed/manual ones.
+            while (( $# )); do
+                case "$1" in
+                    --verificar) verify=1; url="${2:-}"; (( $# < 2 )) || shift ;;
+                    --proxy-port) proxy_port="${2:-}"; (( $# < 2 )) || shift ;;
+                esac
+                shift
+            done
+            if (( verify )); then
+                python3 -I -B -X utf8 - "$url" "$proxy_port" <<'PY'
+import re
+import sys
+from urllib.parse import urlsplit
+try:
+    value, proxy = sys.argv[1:]
+    parsed = urlsplit(value)
+    host = parsed.hostname or ''
+    port = parsed.port
+    proxy = int(proxy)
+    if (parsed.scheme not in ('http', 'https') or parsed.username is not None or
+            parsed.password is not None or not re.fullmatch(r'[A-Za-z0-9.:-]+', host) or
+            any(ord(c) < 33 or ord(c) == 127 for c in value) or
+            (port is not None and not 1 <= port <= 65535) or not 1 <= proxy <= 65535):
+        raise ValueError
+    authority = '[' + host + ']' if ':' in host else host
+    origin = parsed.scheme + '://' + authority + (':' + str(port) if port is not None else '')
+    print(f'GET | Proxy: 127.0.0.1:{proxy} | Destino: {origin} (sin ruta/query)')
+except ValueError:
+    print('GET | Proxy/destino: NO_DETERMINADO (argumentos omitidos)')
+PY
+            else
+                echo 'Burp: argumentos omitidos (apertura/estado/parada; sin URL publicada).'
+            fi
+            ;;
+        *) echo -e "${DIM}Argumentos: $*${NC}" ;;
+    esac
+}
+
 execute_script() {
     # Module 10 is a fixed inventory even for direct/prepared calls. Route before
     # generic cd/chmod/argument UI; noncanonical paths are rejected, not resolved.
@@ -284,16 +335,7 @@ execute_script() {
         mapfile -t argv <<< "$values"
     fi
 
-    if [[ ${#argv[@]} -gt 0 ]]; then
-        case "$script_path" in
-            06_PostExploitation/lateral_movement/ps_exec.sh)
-                echo -e "${DIM}Argumentos: [ocultos: contienen credenciales]${NC}"
-                ;;
-            *) echo -e "${DIM}Argumentos: ${argv[*]}${NC}" ;;
-        esac
-    else
-        echo -e "${DIM}Ejecución directa; sigue las indicaciones de la herramienta.${NC}"
-    fi
+    script_arguments_summary "$script_path" "${argv[@]}"
     echo ""
 
     if [[ "$rel_path" == *.py ]]; then
