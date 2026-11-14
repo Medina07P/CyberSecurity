@@ -2,7 +2,20 @@
 
 ## Combinación develop/09: estado actual acotado
 
-Task3 Phase B,2026-11-14: el puente específico09 muestra ahora la ficha antes
+**Observación acotada del controlador,2026-11-14, sobre82663d7
+(`82663d746e1b9347a74c7f7836fa6722f04c92a1`):** selector `--suite` rc0;
+60sandbox units,0fallos0errores0SKIP;179integration,0fallos0errores1SKIP.
+SKIP explícito: `test_automation_powershell.PowerShellTests.test_ps_mock_contract_and_ast`,
+pwsh dinámico ausente del runtime; no acredita Windows. Recibos existentes:
+`/tmp/opencode/automation-isolated-7708be2f5ddb4d5fb021a35bccce754b/evidence/`
+(`inside-result.json` PASS/rc0/tests_started=true, `host-wait.json` rc0,
+`sandbox-units.json`, `suite.json`). Es GREEN del selector en ese SHA, no del
+finalfix posterior (GREEN **NOT RUN**). No cierra Task4/Task9/global09 ni toda
+la rama, ni acredita nuevas carreras/cancelación, Docker u operación real.
+Esta conciliación documental no ejecuta nada ni autoriza repetir el selector;
+el siguiente gate es revisión independiente acotada y autorización exacta del controlador.
+
+**Historia Task3 Phase B previa al GREEN**,2026-11-14: el puente específico09 muestra ahora la ficha antes
 de abrir opciones, también standalone, cargando solo el helper informativo si
 no está definido. Helper ausente/enlace/inválido o error de carga bloquea la
 entrada; no se oculta stderr ni se recurre al dispatcher genérico. No consulta
