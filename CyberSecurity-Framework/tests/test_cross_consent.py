@@ -687,6 +687,18 @@ class ConsentTests(unittest.TestCase):
     def test_menu_cancel_and_coordinator_exclusions(self):
         for menu, stdin in (('scanners_menu', '6\n0\n0\n'),
                             ('scanners_menu', '6\n2\n\n'),
+                            ('scanners_menu', '6\n2\n0\n0\n0\n'),
+                            ('scanners_menu', '6\n2\nhttps://example.test/a\n'),
+                            ('scanners_menu', '6\n2\nhttps://example.test/a\n0\n0\n0\n'),
+                            ('scanners_menu', '6\n2\nhttps://example.test/a\n8080\nno\n0\n0\n'),
+                            ('scanners_menu', '6\n2\nhttps://example.test/a\n8080\n'),
+                            ('scanners_menu', '6\n3\n'),
+                            ('scanners_menu', '6\n3\n0\n0\n0\n'),
+                            ('scanners_menu', '6\n3\nburp-' + 'a' * 32 + '\nno\n0\n0\n'),
+                            ('scanners_menu', '6\n3\nburp-' + 'a' * 32 + '\n'),
+                            ('scanners_menu', '4\nno\n0\n'),
+                            ('scanners_menu', '4\n'),
+                            ('postexploitation_menu', '7\n'),
                             ('postexploitation_menu', '7\n0\n0\n'),
                             ('postexploitation_menu', '7\n2\nno\n0\n'),
                             ('postexploitation_menu', '7\n2\n'),
@@ -717,12 +729,45 @@ class ConsentTests(unittest.TestCase):
         result = f.run_menu('scanners_menu', '4\ns\n0\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(f.records(), [['record-dispatch', BURP, '03_Scanners']])
+        self.assertIn('Community', result.stdout)
+        # Acceptance applies to that launch only, not the next network prompt.
         f = self.fixture()
+        f.set_session('remote.example.test')
+        result = f.run_menu('scanners_menu',
+                            '4\ns\n6\n2\nhttps://example.test/a\n8080\nno\n0\n0\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(f.records(), [['record-dispatch', BURP, '03_Scanners']])
+        for stdin, expected in (
+                ('6\n1\n0\n0\n', ['--estado']),
+                ('6\n3\nburp-' + 'a' * 32 + '\ns\n0\n0\n',
+                 ['--parar', '--instance', 'burp-' + 'a' * 32, '--execute'])):
+            f = self.fixture()
+            f.set_session('remote.example.test')
+            before = f.snapshot()
+            result = f.run_menu('scanners_menu', stdin)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(f.records(), [['record-dispatch', BURP, '03_Scanners',
+                                            '--prepared', *expected]])
+            self.assertEqual(f.snapshot(), before)
+        for stdin in ('7\n\n0\n', '7\n1\n0\n'):
+            f = self.fixture()
+            f.set_session('remote.example.test')
+            before = f.snapshot()
+            result = f.run_menu('postexploitation_menu', stdin)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(f.records(), [['record-dispatch', CLEANER, '06_PostExploitation',
+                                            '--prepared', '--preview']])
+            self.assertIn('LOCAL', result.stdout)
+            self.assertEqual(f.snapshot(), before)
+        f = self.fixture()
+        f.set_session('remote.example.test')
+        before = f.snapshot()
         result = f.run_menu('scanners_menu', '6\n2\nhttps://example.test/a\n8080\ns\n0\n0\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(f.records(), [[
             'record-dispatch', BURP, '03_Scanners', '--prepared', '--verificar',
             'https://example.test/a', '--proxy-port', '8080', '--execute', '--confirm-network']])
+        self.assertEqual(f.snapshot(), before)
         f = self.fixture()
         f.set_session('remote.example.test')
         session = f.framework / '00_Config/.session'
@@ -734,6 +779,9 @@ class ConsentTests(unittest.TestCase):
             'record-dispatch', CLEANER, '06_PostExploitation', '--prepared',
             '--execute', '--confirm-local-cleanup']])
         self.assertIn('LOCAL', result.stdout + result.stderr)
+        self.assertIn('UID', result.stdout)
+        self.assertIn('Sin sudo automático', result.stdout)
+        self.assertIn('no al shell padre', result.stdout)
         self.assertEqual((session.read_bytes(), stat.S_IMODE(session.stat().st_mode)), before_session)
         self.assertEqual(f.snapshot(), before_tree)
         # Coordinator leaves are replaced ONLY with inert transport recorders;

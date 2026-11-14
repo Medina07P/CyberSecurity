@@ -10,6 +10,7 @@ no uses `run_all_scanners.sh` como prueba de instalación.
 | **3 · Analizar una URL** | Elige Nikto o Nuclei, introduce URL completa y confirma el análisis activo. |
 | **4 · Burp manual** | Abre el lanzador, pide puerto de proxy y explica la captura. Community no escanea ni guarda proyectos. |
 | **5 · Avanzado** | Conserva los diez scripts originales, incluidos todos los puertos, NSE, Masscan y RustScan. Los perfiles intensivos piden confirmación adicional. |
+| **6 · Control Burp** | 1 estado local, 2 verificar un GET explícito, 3 parar instancia propia acreditada, 0 volver. No abre GUI al entrar. |
 | **0** | Vuelve al menú principal. |
 
 El objetivo de sesión aparece en pantalla y se propone para el escaneo básico.
@@ -61,6 +62,51 @@ opcional solo para IPv4 explícita con root, descubrimiento 80/443/8080/8443
 y Nikto/Nuclei por puerto. El esquema por puerto es una **heurística**, no
 detección de TLS. Para una URL conocida usa la opción web del menú.
 
+## Burp: apertura, estado, tráfico y parada separados
+
+**03.4** conserva la apertura GUI y guía manual de navegador/CA/Repeater/exportación.
+Abrir no envía el antiguo curl al objetivo de sesión ni autoriza una verificación.
+Burp puede generar tráfico propio de la aplicación; no se promete una GUI sin red.
+Community no escanea ni guarda proyectos; la asistencia GUI opcional requiere su
+propio consentimiento TTY (`INICIAR GUI`) y puede fallar: sigue disponible el flujo manual.
+
+**03.6 → 1** consulta estado sin conectar ni crear artefactos. Puerto ocupado no
+acredita dueño Burp ni captura. Si no puede observar informa `NO_DETERMINADO`.
+**03.6 → 2** pide URL HTTP(S) completa, puerto proxy explícito y permiso propio
+para enviar un GET vía `127.0.0.1:N`. No propone la sesión como URL/permiso.
+`0`/`!`, no o EOF cancelan; un sí a abrir no autoriza tráfico posterior.
+El código HTTP observado no certifica origen ni captura. La query puede contener
+secretos y la URL aparece en argv del proceso y argumentos del gestor: no es
+almacenamiento secreto. Evita secretos en la URL de esta comprobación GET.
+**03.6 → 3** pide ID propio y consentimiento para TERM y posible KILL;
+**parar tiene efectos**, no es una consulta. La hoja verifica identidad y usa
+pidfd, sin señales por nombre/grupo ni adopción de PID legacy.
+
+CLI pública (ejemplos, no instrucciones de validación automática):
+
+```bash
+bash 03_Scanners/web_scanners/burpsuite/burp_launcher.sh [puerto]
+bash 03_Scanners/web_scanners/burpsuite/burp_launcher.sh --estado [--instance ID]
+bash 03_Scanners/web_scanners/burpsuite/burp_launcher.sh --verificar https://example.test/ruta --proxy-port 8080 --execute --confirm-network
+bash 03_Scanners/web_scanners/burpsuite/burp_launcher.sh --parar --instance ID --execute
+```
+
+Los corchetes indican argumentos opcionales, no literales. Verificar en TTY
+puede sustituir `--confirm-network` por la frase exacta `ENVIAR GET`, pero nunca
+omite `--execute`. Curl recibe **`--disable` primero**, GET, max-time5, sin
+redirects/reintentos/`-k` ni expansión de URL. Solo la solicitud explícita.
+ID tiene forma `burp-` seguida de32hex minúsculas. CLI sin ID al parar solo acepta
+una instancia nueva inequívoca; el menú exige ID. Falta de recibo/pidfd o identidad
+incongruente bloquea. No se garantiza controlar descendientes/daemonización.
+
+Migración: el curl automático desaparece; `--parar` antiguo sin `--execute`
+ya no actúa. Cada apertura crea config/log/recibo privados nuevos bajo
+`<repo>/scans/burp/instances/<ID>/`; conserva todas las instancias y rutas legacy,
+sin migrar, borrar o adoptar sus PIDs. `BURP_LAUNCHER_ESPERA` antiguo ya no se usa.
+Community puede ignorar el puerto: revisar Settings → Proxy → Proxy settings y
+`--estado`, sin confundir listener con captura. Ni `run_all_scanners` ni99
+adquieren acciones Burp.
+
 ## Resultados y fallos
 
 Los resultados van a **`<repo>/scans/<herramienta>/`**, nunca al cwd.
@@ -96,6 +142,13 @@ bash CyberSecurity-Framework/tests/run_scanners_menu.sh
 La suite copia solo fuentes a un temporal, crea objetivos sintéticos y usa
 herramientas simuladas en PATH cerrado. Las suites antiguas se ejecutan solo
 en un clon limpio: algunas borran salidas compartidas.
+
+Para este bloque de consentimiento, los equivalentes Burp y menús están en los
+nueve IDs cerrados de `test_cross_consent.py`, no en el runner legacy.
+Las enmiendas Task4 están **NOT RUN**: revisión estática independiente y permiso
+exacto del controlador antes de `automation_sandbox_launch.py --cross-consent`;
+`--suite` requiere autorización separada. No ejecutar el comando anterior como
+atajo al gate ni interpretar esta guía como autorización de ejecución.
 
 La autorización real debe existir en el alcance del proyecto. Registrar un
 objetivo de sesión **no concede autorización**.

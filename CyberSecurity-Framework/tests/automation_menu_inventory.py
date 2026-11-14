@@ -113,6 +113,20 @@ def evidence_menu_options(source):
     return frozenset('0' if value == '!' else value for value in choices)
 
 
+def consent_menu_options(sources):
+    """Fixed consent consumers, source strings only; aliases retain their rows."""
+    rows = set()
+    for owner, function, variable, prefix in (
+            ('scanners', 'scanners_menu', 'choice', '03'),
+            ('scanners', 'scanners_burp_menu', 'burp_choice', '03.burp'),
+            ('postexploitation', 'postexploitation_menu', 'choice', '06'),
+            ('postexploitation', 'postexploitation_menu', 'cleanup_choice', '06.cleanup')):
+        rows.update(prefix + '.' + value for value in
+                    literal_options(function_body(sources[owner], function), variable)
+                    if value != '!')
+    return frozenset(rows)
+
+
 def special_options(sources):
     """All non-module namespaces from source dispatch or pinned dynamic contract.
 

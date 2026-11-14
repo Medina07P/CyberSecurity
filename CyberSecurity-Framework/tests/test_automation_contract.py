@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import unittest
 
-from automation_menu_inventory import (case_body, evidence_manage_flags, evidence_menu_options,
+from automation_menu_inventory import (case_body, consent_menu_options, evidence_manage_flags, evidence_menu_options,
                                        function_body, literal_options, special_options)
 
 FW = Path(__file__).resolve().parents[1]
@@ -99,6 +99,16 @@ def numeric_case_options(text, variable, occurrence=0):
     return choices
 
 
+def explain_consent_options(doc, sources):
+    required = consent_menu_options(sources)
+    for prefix in ('03.burp.', '06.cleanup.'):
+        documented = set(re.findall(r'^\| `(' + re.escape(prefix) + r'[\w!-]+)` \|', doc, re.M))
+        if documented != {key for key in required if key.startswith(prefix)}:
+            raise AssertionError('Consent source/doc namespace changed: ' + prefix)
+    for key in required:
+        explained_row(doc, key)
+
+
 class Contracts(unittest.TestCase):
     def test_no_legacy_success_or_shell_execution(self):
         for source in source_paths():
@@ -170,6 +180,38 @@ class Contracts(unittest.TestCase):
     def test_every_menu_option_explained(self):
         doc = (ROOT / 'docs/MENU-OPCIONES.md').read_text()
         explain_special_options(doc, special_sources())
+        consent = {name: (FW / f'00_Config/lib/{name}_menu.bash').read_text()
+                   for name in ('scanners', 'postexploitation')}
+        explain_consent_options(doc, consent)
+        required = consent_menu_options(consent)
+        self.assertEqual({key for key in required if key.startswith('03.burp.')},
+                         {'03.burp.' + str(n) for n in range(4)})
+        self.assertEqual({key for key in required if key.startswith('06.cleanup.')},
+                         {'06.cleanup.' + str(n) for n in range(3)})
+        self.assertIn('03.6', required)
+        self.assertIn('6) scanners_burp_menu ;;', consent['scanners'])
+        for owner, fragments in (
+                ('scanners', ('--prepared --estado',
+                              '--prepared --verificar "$url" --proxy-port "$port" --execute --confirm-network',
+                              '--prepared --parar --instance "$instance" --execute')),
+                ('postexploitation', ('--prepared --preview',
+                                     '--prepared --execute --confirm-local-cleanup'))):
+            for fragment in fragments:
+                self.assertIn(fragment, consent[owner])
+        # Source addition/deletion and documented-row deletion must all fail.
+        # Mutations are text only, never dispatch a menu or relax a grant.
+        for key in required:
+            with self.assertRaises(AssertionError):
+                explain_consent_options(doc.replace(explained_row(doc, key), '', 1), consent)
+        for owner, anchor, key in (
+                ('scanners', '1)\n                execute_script', '03.burp.1'),
+                ('postexploitation', "0|'!') continue ;;", '06.cleanup.0')):
+            self.assertEqual(consent[owner].count(anchor), 1)
+            changed = dict(consent, **{owner: consent[owner].replace(anchor, '99)' + anchor.split(')', 1)[1], 1)})
+            self.assertEqual(required - consent_menu_options(changed), {key})
+            self.assertIn(key.rsplit('.', 1)[0] + '.99', consent_menu_options(changed))
+            with self.assertRaises(AssertionError):
+                explain_consent_options(doc, changed)
         # Main case arms of each source function; nested case arms are checked
         # separately below. New numeric options cannot silently lose coverage.
         for module, name in (('03', 'scanners'), ('04', 'enumeration'),
