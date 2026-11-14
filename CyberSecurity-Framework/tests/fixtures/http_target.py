@@ -18,6 +18,7 @@ conexión, y uno que acepta credenciales falsas con un 200.
 
 import html
 import json
+import os
 import socket
 import sys
 import time
@@ -247,4 +248,9 @@ class Manejador(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     puerto = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
     servidor = ThreadingHTTPServer(("127.0.0.1", puerto), Manejador)
+    # Recibo opcional para el helper: solo se publica tras bind/listen exitosos.
+    # Puerto0 deja que el kernel reserve el puerto sin ventana de liberar/reusar.
+    if len(sys.argv) > 2:
+        with open(sys.argv[2], 'x', encoding='ascii') as ready:
+            ready.write(f'{os.getpid()} {servidor.server_port}\n')
     servidor.serve_forever()

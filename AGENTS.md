@@ -1,5 +1,17 @@
 # AGENTS.md
 
+**Reanudación e integración hacia09, 2026-11-14:** usuario autorizó corregir
+también fallos funcionales de otros módulos y el merge local de develop
+`1e6d0fe` hacia el worktree09 basado en `c80da1a`; NO integración inversa ni push.
+Conservar ambos históricos, logs y artefactos. La revisión semántica independiente
+de130hojas/217filas está en el workspace09: detectó discrepancias pendientes,
+por lo que Task9/global09 NO están cerrados. develop ya elimina el empaquetado
+automático de informes; no repetir ese arreglo. Integración global de develop
+documentada en `docs/INTEGRACION-PRUEBAS-GLOBALES-2026-11-14.md`: sus resultados
+no verifican esta combinación. Las restricciones de pruebas aisladas y revisión
+previa siguen vigentes; no ejecutar suites/helpers/probes ni herramientas reales
+por completar este merge. Bloques de estados anteriores conservados como historia.
+
 **Estado actual Task4/aislador09, 2026-11-14 — LISTO PARA REVISIÓN FINAL
 INDEPENDIENTE, NO APROBACIÓN GLOBAL:** sobre1fde308 el controlador verificó
 suite rc0:60sandbox units PASS y159legacy/integration,0fallos0errores1SKIP
@@ -79,6 +91,64 @@ de respaldo. No afirmar que toda la sesión fue exclusivamente sintética ni
 operacionalmente autorizada/validada. Sin instalaciones, Docker build/up,99,
 merge ni push; conservar todos los logs/workspace. Nota de próxima sesión bajo
 este bloque es histórica:09 sí fue solicitado posteriormente.
+
+**Integración local 11, 2026-11-14:** por petición expresa del usuario, los dos
+bloques de informes se consolidaron en `1682fa1` y se integraron por fast-forward
+en develop desde `e558207`. Posmerge desde develop:
+`tests/run_reports_evidence.sh`175tests/rc0/GUARD OK; hash y modo de scope.yaml/
+targets.txt locales intactos. Se conservó el plan inicial no versionado en
+`/tmp/opencode/merge-reports-6di_p716/untracked-initial-plan.md` antes de incorporar
+su versión actual. Evidencia y límites en `docs/INTEGRACION-11-2026-11-14.md`;
+guía `11_Reports/USE.md`. Worktree, rama de informes y logs conservados; sin push.
+Revisión propia, no independiente; run_tests global heredada mantiene sus cuatro
+fallos observados/timeout. No declarar rama completa verde, compatibilidad
+operacional universal ni custodia legal. No iniciar siguiente módulo sin petición.
+
+**Integración local 10, 2026-11-13:** usuario confirmó merge; `develop`
+avanzó por fast-forward de `3a63550` a `1979d7f` (código revisado `8518c91`,
+último commit solo documentación). Verificación posmerge desde develop:
+145 tests/rc0/GUARD OK; hash y modo de scope.yaml/targets.txt locales intactos.
+Las notas siguientes de integración pendiente son históricas. Worktree, rama
+y logs conservados; sin push. Estado detallado en
+`docs/EVIDENCIAS-INTEGRAL-2026-11-13.md`. No declara rama completa verde,
+compatibilidad operacional, autenticidad ni custodia legal.
+
+**Cierre de revisión 10, 2026-11-13 (integración pendiente):** las ocho tareas
+y la ola global I1/I2 tienen revisión independiente aprobada sobre `8518c91`.
+Verificación del controlador: `tests/run_evidence.sh` 145 tests/rc0/GUARD OK;
+9 Bash sin stderr y 18 AST Python correctos, diff sin incidencias. Cinco
+regresiones sintéticas rc0 según reporte final. Evidencia de cierre en
+`.superpowers/sdd/2026-11-13-evidence-integral/final-fix-review.md` y
+`controller-verification.log`. No implica rama completa verde, compatibilidad
+operacional ni custodia legal. Conservar worktree/logs y pendientes ajenos.
+Sin push; integración en develop requiere confirmación final.
+
+**Fixes globales 10, 2026-11-13 (re-review e integración pendientes):**
+I1 corregido en `5a02c8c`: ownership acreditado antes de entregar INT/TERM,
+cleanup conserva interrupción y no borra reemplazos ajenos; copia larga sigue
+interrumpible. I2 en `ebc19fb`: fase reconoce `FILE:` con espacios en raíz/subárboles
+de seis categorías; excluye `logs/runs` y enlaces, sin leer cuerpos ni hashes.
+Fixtures legacy compartidos con inventario. Reporte/logs de esta ola en
+`.superpowers/sdd/2026-11-13-evidence-integral/final-fix-report.md`.
+No equivale a revisión global aprobada, integración, compatibilidad operacional,
+custodia legal ni rama completa verde. Conservar workspace/logs; sin push.
+
+**Entrega implementación 10, 2026-11-13 (pendiente revisión global/integración):**
+Tasks1–7 revisadas según controlador; Task8 entregables1–6 añade runner allowlist
+y guardas de fuentes permitidas (hash/modo/layout sin leer config/evidencia real),
+HOME/scope/targets/session sintéticos y PATH cerrado. Suite dedicada actual:
+`tests/run_evidence.sh` (142 tests). Contratos en `10_Evidence/{README,USE,FLUJO}.md`,
+`docs/MANUAL-GESTOR.md` y `docs/EVIDENCIAS-INTEGRAL-2026-11-13.md`.
+Tres wrappers conservados, núcleo `00_Config/lib/evidence/`: cinco tipos públicos,
+SHA-256 nuevo/MD5 legacy no migrado, empaquetado bloqueante confidencial sin
+cifrado, captura solo explícita y sin sudo/instalaciones. `10` no adopta TARGET;
+fase done significa presencia, no integridad. `<TARGET>` antiguo retorna2 sin
+adquirir: no se declara reparado99. Pruebas exclusivamente sintéticas/stubs,
+no compatibilidad operacional, autenticidad ni custodia legal. Regresiones solo
+en archivo git versionado con configuración/HOME sintéticos; nunca sobre este
+checkout con datos. Revisión independiente e integración son gates del controlador,
+no aprobados por esta nota; no declarar rama completa verde. Conservar workspace,
+logs, pendientes ajenos y notas históricas; sin push ni tocar checkout original.
 
 **Próxima sesión, 2026-11-13:** usuario pide continuar con `09_Automation`;
 leer `docs/RETOMAR-09-2026-11-13.md`. No iniciar09 ahora ni asumir diseño

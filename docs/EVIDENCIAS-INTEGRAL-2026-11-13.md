@@ -1,0 +1,123 @@
+# Módulo 10 — entrega integral de implementación
+
+2026-11-13. **Pendiente de revisión global independiente e integración local.**
+No es aprobación futura, rama completa verde, compatibilidad operacional,
+autenticidad ni custodia legal. No se ha hecho push ni tocado el checkout original.
+
+## Ola de fixes tras revisión global
+
+La revisión global de `093b6b4` pidió cambios I1/I2; **re-review aún pendiente**.
+I1 (`5a02c8c`) acredita ownership antes de entregar señales en copia, metadata,
+reserva y publicación; conserva 130/143 aun si cleanup encuentra material ajeno.
+No bloquea la copia larga ni borra reemplazos sin identidad propia.
+I2 (`ebc19fb`) alinea fase con `FILE:` legacy, incluidos espacios y pares en raíz
+o subdirectorios de las seis categorías; excluye específicamente `logs/runs`.
+Fixtures compartidos con inventario; sondeo sin lectura de cuerpos ni hashes.
+Evidencia RED/GREEN, regresiones sintéticas y self-review en
+`.superpowers/sdd/2026-11-13-evidence-integral/final-fix-report.md`;
+logs conservados en `/tmp/opencode/evidence-final-fix-logs/`.
+No se modifica el ledger ni se aprueba integración mediante esta nota.
+
+## Alcance
+
+Conservadas `evidence_manager.sh`, `auto_capture.sh`, `run_all_evidence.sh`;
+núcleo estándar en `00_Config/lib/evidence/`, UI en `evidence_menu.bash` y
+conexiones limitadas de gestor/estado/introducción. Las Tasks1–7 llegaron
+revisadas por el controlador; Task8 entrega guardas, contratos documentados y
+regresiones sintéticas. No cambia 08, 09 ni el motor de informes.
+
+Las CLI y límites exactos están en `10_Evidence/README.md`, `USE.md`, `FLUJO.md`
+bajo el framework y en `docs/MANUAL-GESTOR.md`. Puntos incompatibles intencionales:
+
+- Importación de cinco tipos por copia regular, con espacios, sin symlinks ni
+  atribución automática. Nuevos registros SHA-256/UUID, legacy MD5 solo lectura.
+- Listar no verifica; verificar vacío/error falla. Exportación bloqueada salvo
+  inventario completo verificado; paquete privado sin cifrar, no entrega automática.
+- Captura/red solo con selección y autorización explícitas; perfiles/deadlines
+  documentados, contexto OPERADOR separado, validación PNG/PCAP/Nmap limitada.
+- Supervisión Linux de procesos propios y señales, no sandbox de backends hostiles.
+- `<TARGET>` antiguo devuelve2 sin adquirir; no se declara reparado el flujo99.
+  Entrar al menú no cambia TARGET y fase done significa presencia, no integridad.
+
+## Verificación Task8
+
+Base de Task8: `b790f66`. Logs privados conservados en
+`/tmp/opencode/evidence-task8-logs/`; reporte de entrega (con commits/rc/resultados)
+en `.superpowers/sdd/2026-11-13-evidence-integral/task-8-report.md`.
+
+RED: seis guardas ejecutadas, cuatro fallos reproducidos: permisos de copia,
+documentación ausente de allowlist, guarda de origen ausente y runner que
+aceptaba mutación del origen durante la suite. Symlinks y PATH cerrado ya
+funcionaban y se conservan como caracterización. GREEN: seis guardas rc0;
+suite dedicada: 142 tests rc0 (136 previos más seis guardas).
+
+El runner usa exclusivamente `SOURCES`, una allowlist fija de código/tests/las
+tres guías; no descubre ni copia config, credenciales o evidencias del origen.
+Solo hashea esos archivos y lstat de sus componentes de ruta (layout permitido),
+antes/después de copiar y ejecutar; no inventaría evidencia real para probar
+preservación. Raíces de datos/config excluidas se prueban con FIFOs sintéticos
+venenosos y enlaces que no se siguen. No es protección ante escritura hostil
+concurrente que restaure contenido/modos entre comprobaciones.
+Las copias/config nuevas son privadas, HOME/scope/targets/session sintéticos,
+PATH cerrado a utilidades mínimas/stubs. También verifica la copia al terminar.
+
+## Regresiones y gates
+
+Las regresiones se ejecutaron desde `git archive 2b74bf6` de fuentes versionadas
+tras el commit de implementación, no desde este checkout: sin ignorados, sin copiar
+scope/targets/credenciales del origen, con config/HOME/sesión sintéticos antes
+de ejecutar. Scripts y fixtures inspeccionados previamente.
+
+Seleccionadas: smoke (navegación), e2e (argv con nmap stub), reports (datos y
+render sintéticos), config_menu (UI/registro ficticio), module_intro (11 tests,
+PATH cerrado interno). `run_forensics.sh` descartada: no se modifica08; añadir
+296 pruebas de su runtime sin necesidad amplía la revisión de fixtures, mientras
+las conexiones de UI compartidas están en module_intro/dedicada.
+`run_tests.sh` completa opcional descartada: fallos heredados conocidos y
+eliminación de árboles compartidos, sin beneficio para los contratos de esta
+entrega. No se reparan heredados ajenos ni se proclama rama verde.
+
+| Verificación sobre `2b74bf6` | Resultado |
+|---|---|
+| `tests/run_smoke.sh` | 24 comprobaciones OK, fallos0, rc0 (también se examinó el contador, no solo rc) |
+| `tests/run_e2e.sh` | 11 pasan, 0 fallan, rc0 |
+| `tests/run_reports.sh` | 78 tests Python + 28 comprobaciones shell, rc0 |
+| `tests/run_config_menu.sh` | 19 tests, guardas intactas, rc0 |
+| `test_module_intro.py` | 11 tests, rc0 |
+
+Copias independientes conservadas en
+`/tmp/opencode/evidence-task8-regression-qa996pp0/`; comandos, allowlist de fuentes
+archivadas y logs completos en `evidence-task8-logs/regression-*` y
+`regressions.json`. PATH restringido a utilidades locales permitidas y backends
+denegados (e2e añade su nmap stub propio); cero llamadas a backends denegados.
+Python tiene bloqueo adicional de conexión/resolución de red. El smoke no
+propaga su contador de fallos como rc: se comprobó además `fallos: 0`.
+El `py_compile` heredado de reports solo escribió en su copia archivada; la
+verificación de Python nuevo/cambiado de Task8 fue por AST, sin pyc.
+
+`bash -n` del runner modificado: rc0 y stdout/stderr vacíos; AST de los dos Python
+nuevos/cambiados correcto; `git diff --check` rc0 sin salida. Logs en `syntax.log`.
+No se observaron fallos nuevos bloqueantes en las suites ejecutadas; las suites
+no ejecutadas y fallos heredados quedan fuera de esta afirmación.
+
+Los pasos7–8 (revisión independiente/integración)
+pertenecen al controlador y no quedan aprobados por esta entrega. Conservar
+worktree, logs y pendientes históricos/deferred ajenos.
+# Estado final de revisión — controlador
+
+Revisión independiente global y re-review de I1/I2 completados: ambos
+ADDRESSED, sin hallazgos nuevos bloqueantes sobre `8518c91`. Verificación
+posterior del controlador: 145 pruebas, rc0, GUARD OK; 9 archivos Bash con
+stderr vacío y 18 AST Python correctos; diff sin incidencias. Cinco regresiones
+sintéticas constan en el reporte de fixes. Los estados de revisión pendientes
+que aparecen más abajo son históricos de la entrega, no el estado actual.
+
+Integración local autorizada y realizada: fast-forward de `develop` desde
+`3a63550` a `1979d7f`. La suite dedicada ejecutada después del merge desde
+el checkout de develop devuelve 145 pruebas/rc0/GUARD OK. Hash y modo de los
+dos archivos locales modificados (`scope.yaml`, `targets.txt`) permanecen
+idénticos. Se conserva rama/worktree y logs, incluido `postmerge-develop.log`.
+Las referencias posteriores a integración pendiente son históricas. Sin push,
+no compatibilidad operacional, custodia legal ni afirmación de rama completa
+verde. Reportes y logs se conservan en
+`.superpowers/sdd/2026-11-13-evidence-integral/`.

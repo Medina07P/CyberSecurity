@@ -14,6 +14,17 @@ source "$FW/00_Config/lib/phase_status.bash"
 
 # Sesión aislada: no toca la configuración real
 TMPD="$(mktemp -d)"
+source "$TESTS_DIR/fixtures/global_http_runtime.bash"
+cleanup_global_tests() {
+    local rc=$?
+    limpiar_evidencia_http
+    detener_servidor_http
+    rm -rf -- "$TMPD"
+    return "$rc"
+}
+trap cleanup_global_tests EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 export SESSION_FILE="$TMPD/.session"
 export SESSION_TARGETS_FILE="$TMPD/targets.txt"
 export SESSION_SCOPE_FILE="$TMPD/scope.yaml"
@@ -41,7 +52,11 @@ ok()  { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }
 bad() { FAIL=$((FAIL + 1)); printf '  FALLO %s\n' "$1"; [ -n "${2:-}" ] && printf '        %s\n' "$2"; }
 eq()  { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "esperado [$3] / obtenido [$2]"; fi; }
 
-section() { printf '\n── %s\n' "$1"; }
+section() {
+    [[ -z "${SECTION_START:-}" ]] || printf '  tiempo del bloque: %ss\n' "$((SECONDS - SECTION_START))"
+    SECTION_START=$SECONDS
+    printf '\n── %s\n' "$1"
+}
 
 # ──────────────────────────────────────────────────────────
 section "Regresión: el prompt no se cuela en el valor"
@@ -62,24 +77,34 @@ case "$err" in
 esac
 
 # ──────────────────────────────────────────────────────────
-section "Parser: recuentos sobre los .sh"
-# Se excluye tests/ (este mismo fichero); la librería usa extensión .bash
+section "Parser: contratos sobre los .sh"
+# El inventario puede crecer: los contratos no dependen de cifras históricas.
 total=$(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | wc -l | tr -d ' ')
-eq "118 scripts .sh en el framework" "$total" "118"
+[[ "$total" -gt 0 ]] && ok "inventario no vacío ($total entradas)" || bad "inventario vacío"
 eq "la librería no se cuenta como script" "$(find "$FW/00_Config/lib" -name '*.sh' | wc -l | tr -d ' ')" "0"
 
-dos=0
-oblig=0
-for f in $(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" | sort); do
-    n=$(params_slot_count "$f")
-    [ "$n" -ge 2 ] && dos=$((dos + 1))
-    o=$(params_slots "$f" | awk -F'|' '$3=="obligatorio"' | wc -l | tr -d ' ')
-    [ "$o" -ge 2 ] && oblig=$((oblig + 1))
+while IFS= read -r -d '' f; do
+    mode=$(params_mode "$f")
+    case "$mode" in
+        none|manual) ok "modo válido: ${f#"$FW/"}" ;;
+        slots) [[ $(params_slot_count "$f") -gt 0 ]] && ok "slots no vacíos: ${f#"$FW/"}" || bad "slots vacíos: $f" ;;
+        *) bad "modo inválido: $f ($mode)" ;;
+    esac
+done < <(find "$FW" -name '*.sh' -type f -not -path "$FW/tests/*" -print0)
+for grammar in 'ninguno|# Uso: ./fixture.sh|0|none' \
+               'obligatorio|# Uso: ./fixture.sh <IP>|1|slots' \
+               'opcional|# Uso: ./fixture.sh [PUERTO]|1|slots' \
+               'varios|# Uso: ./fixture.sh <IP> <USUARIO> [PUERTO]|3|slots' \
+               'manual|# Uso: ./fixture.sh --input <ARCHIVO>|1|manual'; do
+    IFS='|' read -r label usage want_count want_mode <<< "$grammar"
+    printf '%s\n' "$usage" > "$TMPD/grammar.sh"
+    eq "gramática $label: número de slots" "$(params_slot_count "$TMPD/grammar.sh")" "$want_count"
+    eq "gramática $label: modo" "$(params_mode "$TMPD/grammar.sh")" "$want_mode"
 done
-# OSINT declara ahora el directorio de salida antes oculto en email, metadata,
-# social y subdomains: cuatro scripts pasan de uno a varios huecos.
-eq "45 scripts con 2+ huecos (incluido perfil Smart)" "$dos" "45"
-eq "7 scripts con 2+ obligatorios (puertos Masscan opcionales)" "$oblig" "7"
+printf '# Uso: ./fixture.sh <IP> <USUARIO> [PUERTO]\n' > "$TMPD/grammar.sh"
+eq "gramática: dos obligatorios y un opcional tipados" "$(params_slots "$TMPD/grammar.sh")" '1|IP|obligatorio|IP
+2|USUARIO|obligatorio|USUARIO
+3|PUERTO|opcional|PUERTO'
 
 # ──────────────────────────────────────────────────────────
 section "Parser: casos concretos"
@@ -531,9 +556,10 @@ chmod +x "$QSTUB/sqlmap"
 # Escenario 1: servidor catch-all, toda respuesta idéntica
 printf '#!/bin/bash\necho "200:433"\n' > "$QSTUB/curl"
 chmod +x "$QSTUB/curl"
-rm -f "$WOUT_SQL"/sqli_findings_192.0.2.1.txt
+rm -f "$WOUT_SQL"/sqli_findings_192.0.2.1_443.txt
 PATH="$QSTUB:$PATH" bash "$SQLI" 192.0.2.1 443 / >/dev/null 2>&1
-N1=$([ -f "$WOUT_SQL/sqli_findings_192.0.2.1.txt" ] && wc -l < "$WOUT_SQL/sqli_findings_192.0.2.1.txt" || echo 0)
+eq "sqli: catch-all completa la tanda" "$?" "0"
+N1=$([ -f "$WOUT_SQL/sqli_findings_192.0.2.1_443.txt" ] && wc -l < "$WOUT_SQL/sqli_findings_192.0.2.1_443.txt" || echo 0)
 eq "sqli: catch-all no genera hallazgos" "$N1" "0"
 
 # Escenario 2: servidor normal que solo cambia con la carga de inyección
@@ -548,14 +574,18 @@ EOS
 chmod +x "$QSTUB/curl"
 rm -f "$WOUT_SQL"/sqli_findings_192.0.2.*.txt
 PATH="$QSTUB:$PATH" bash "$SQLI" 192.0.2.1 443 / >/dev/null 2>&1
-N2=$([ -f "$WOUT_SQL/sqli_findings_192.0.2.1.txt" ] && wc -l < "$WOUT_SQL/sqli_findings_192.0.2.1.txt" || echo 0)
-[ "$N2" -ge 1 ] && ok "sqli: detecta la diferencia real ($N2)" || bad "sqli: no detectó la diferencia real" "obtenido $N2"
+eq "sqli: diferencial completa la tanda" "$?" "0"
+N2=$([ -f "$WOUT_SQL/sqli_findings_192.0.2.1_443.txt" ] && wc -l < "$WOUT_SQL/sqli_findings_192.0.2.1_443.txt" || echo 0)
+eq "sqli: 10 parámetros por 9 payloads diferenciales" "$N2" "90"
+eq "sqli: filas fuertes del objetivo por HTTPS (443 implícito)" "$(awk -F'|' '$1 ~ /^https:\/\/192[.]0[.]2[.]1\// && $3=="fuerte" {n++} END{print n+0}' "$WOUT_SQL/sqli_findings_192.0.2.1_443.txt")" "90"
+eq "sqli: tamaño distinto no confirma inyección" "$(awk -F'|' '$3=="confirmado" {n++} END{print n+0}' "$WOUT_SQL/sqli_findings_192.0.2.1_443.txt")" "0"
 
 # El fichero lleva el objetivo: lo de 192.0.2.1 no se le atribuye a 192.0.2.2
-rm -f "$WOUT_SQL/sqli_findings_192.0.2.2.txt"
+rm -f "$WOUT_SQL/sqli_findings_192.0.2.2_443.txt"
 PATH="$QSTUB:$PATH" bash "$SQLI" 192.0.2.2 443 / >/dev/null 2>&1
+eq "sqli: segundo objetivo completa la tanda" "$?" "0"
 eq "sqli: hallazgos por objetivo, sin arrastrar los ajenos" \
-   "$([ -f "$WOUT_SQL/sqli_findings_192.0.2.2.txt" ] && wc -l < "$WOUT_SQL/sqli_findings_192.0.2.2.txt" || echo 0)" "90"
+   "$(awk -F'|' '$1 ~ /^https:\/\/192[.]0[.]2[.]2\// && $3=="fuerte" {n++} END{print n+0}' "$WOUT_SQL/sqli_findings_192.0.2.2_443.txt")" "90"
 
 # Escenario 3: 8443 es TLS, no HTTP en claro
 cat > "$QSTUB/curl" <<'EOS'
@@ -782,21 +812,9 @@ hr_db_error "$TMPD/ok" >/dev/null; eq "hr_db_error: página normal no coincide" 
 
 # ──────────────────────────────────────────────────────────
 section "http_inject: arranque y guardas"
-# Helper compartido por las secciones de las tareas 4-7
-iniciar_servidor_http() {
-    command -v python3 >/dev/null 2>&1 || return 1
-    local p i
-    p=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
-    python3 "$FW/tests/fixtures/http_target.py" "$p" >/dev/null 2>&1 &
-    HTTP_SRV_PID=$!
-    for i in 1 2 3 4 5 6 7 8 9 10; do
-        curl -s -o /dev/null "http://127.0.0.1:$p/safe" && break
-        sleep 0.3
-    done
-    printf '%s\n' "$p"
-}
-
-if HPORT=$(iniciar_servidor_http); then
+# Sin pausas entre peticiones al fixture; sus retardos y umbrales se conservan.
+export HTTP_INJECT_RETARDO=0
+if iniciar_servidor_http; then
     export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5
 
     # El directorio de configuración se puede aislar: sin esto, el aviso de
@@ -835,15 +853,15 @@ if HPORT=$(iniciar_servidor_http); then
 
     eq "dangerous.txt incluye http_inject" "$(grep -cxF '05_Exploitation/web/http_inject.sh' "$FW/00_Config/lib/dangerous.txt")" "1"
     eq "http_inject se declara en modo slots" "$(bash -c "source '$FW/00_Config/lib/params.bash'; params_mode '$FW/05_Exploitation/web/http_inject.sh'")" "slots"
-    kill "$HTTP_SRV_PID" 2>/dev/null
-    rm -f "$FW/../scans/web/http_inject_127.0.0.1_"*.txt
+    limpiar_evidencia_http
+    detener_servidor_http
 else
-    echo "  SKIP     python3 no instalado: sin servidor de prueba"
+    bad "no se pudo iniciar el servidor HTTP sintético"
 fi
 
 # ──────────────────────────────────────────────────────────
 section "http_inject: SQLi por niveles"
-if HPORT=$(iniciar_servidor_http); then
+if iniciar_servidor_http; then
     export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5
     printf 'GET /sqli?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_sqli.txt"
     bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_sqli.txt" 127.0.0.1 >/dev/null 2>&1
@@ -866,15 +884,15 @@ if HPORT=$(iniciar_servidor_http); then
     bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_echo3.txt" 127.0.0.1 >/dev/null 2>&1
     eq "sqli: un parámetro que solo refleja no da SQLi confirmada" \
        "$(awk -F'\t' '$1=="CONFIRMADO" && $3 ~ /^sqli/' "$TSV" | wc -l | tr -d ' ')" "0"
-    rm -f "$FW/../scans/web/http_inject_127.0.0.1_"*
-    kill "$HTTP_SRV_PID" 2>/dev/null
+    limpiar_evidencia_http
+    detener_servidor_http
 else
-    echo "  SKIP     python3 no instalado"
+    bad "no se pudo iniciar el servidor HTTP sintético"
 fi
 
 # ──────────────────────────────────────────────────────────
 section "http_inject: XSS, comandos y SSTI"
-if HPORT=$(iniciar_servidor_http); then
+if iniciar_servidor_http; then
     export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5
     TSV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT".tsv"
     printf 'GET /xss?q=hola HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_xss.txt"
@@ -903,22 +921,23 @@ if HPORT=$(iniciar_servidor_http); then
     printf 'GET /safe?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_safe3.txt"
     bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_safe3.txt" 127.0.0.1 >/dev/null 2>&1
     eq "catch-all: ningún hallazgo CONFIRMADO" "$(awk -F'\t' '$1=="CONFIRMADO"' "$TSV" | wc -l | tr -d ' ')" "0"
-    rm -f "$FW/../scans/web/http_inject_127.0.0.1_"*
-    kill "$HTTP_SRV_PID" 2>/dev/null
+    limpiar_evidencia_http
+    detener_servidor_http
 else
-    echo "  SKIP     python3 no instalado"
+    bad "no se pudo iniciar el servidor HTTP sintético"
 fi
 
 # ──────────────────────────────────────────────────────────
 section "http_inject: evidencia y resumen"
-if HPORT=$(iniciar_servidor_http); then
+if iniciar_servidor_http; then
     export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5
     printf 'GET /sqli?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$HPORT" > "$TMPD/req_ev.txt"
     bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/req_ev.txt" 127.0.0.1 >/dev/null 2>&1
     EV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT
-    eq "evidencia: hay pares .req" "$(ls "$EV"/*.req 2>/dev/null | wc -l | tr -d ' ' | awk '{print ($1>0)}')" "1"
-    eq "evidencia: hay pares .resp" "$(ls "$EV"/*.resp 2>/dev/null | wc -l | tr -d ' ' | awk '{print ($1>0)}')" "1"
-    eq "evidencia: el .req lleva la línea de petición" "$(head -1 "$(ls "$EV"/*.req | head -1)" | grep -c '^GET /sqli')" "1"
+    EV_REQ=$(find "$EV" -mindepth 2 -type f -name '*.req' -print -quit)
+    eq "evidencia: hay petición no vacía en el run" "$([[ -n "$EV_REQ" && -s "$EV_REQ" ]] && echo 1)" "1"
+    eq "evidencia: su respuesta pareada no está vacía" "$([[ -n "$EV_REQ" && -s "${EV_REQ%.req}.resp" ]] && echo 1)" "1"
+    eq "evidencia: el .req lleva la línea de petición" "$(head -1 "$EV_REQ" | grep -c '^GET /sqli')" "1"
     eq "evidencia: el .resp no pasa de 64 KB" "$(find "$EV" -name '*.resp' -size +64k | wc -l | tr -d ' ')" "0"
     eq "contexto: el directorio de evidencia guarda el esquema" "$(grep -cx 'esquema=http' "$EV/contexto.txt" 2>/dev/null)" "1"
     eq "contexto: guarda el Host enviado" "$(grep -c '^host=127.0.0.1:' "$EV/contexto.txt" 2>/dev/null)" "1"
@@ -930,10 +949,10 @@ if HPORT=$(iniciar_servidor_http); then
     TSV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT".tsv"
     eq "filtro fuertes: el fichero conserva lo confirmado" "$(awk -F'\t' '$1=="CONFIRMADO"' "$TSV" | wc -l | tr -d ' ' | awk '{print ($1>0)}')" "1"
     eq "resumen: cuenta por nivel" "$(printf '%s' "$OUT" | grep -cE '[0-9]+ confirmado')" "1"
-    rm -rf "$FW/../scans/web/http_inject_127.0.0.1_"*
-    kill "$HTTP_SRV_PID" 2>/dev/null
+    limpiar_evidencia_http
+    detener_servidor_http
 else
-    echo "  SKIP     python3 no instalado"
+    bad "no se pudo iniciar el servidor HTTP sintético"
 fi
 
 # ──────────────────────────────────────────────────────────
@@ -1015,7 +1034,7 @@ rm -rf "$FW/../scans/burp" "$BSTUB"
 
 # ──────────────────────────────────────────────────────────
 section "http_inject: guardas que pide la revisión"
-if HPORT=$(iniciar_servidor_http); then
+if iniciar_servidor_http; then
     export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5
     TSV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT".tsv"
 
@@ -1037,7 +1056,8 @@ if HPORT=$(iniciar_servidor_http); then
     printf 'GET /sqli?id=1 HTTP/1.1\nHost: 127.0.0.1:%s\nCookie: a=b\n\n' "$HPORT" > "$TMPD/reqev2.txt"
     bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/reqev2.txt" 127.0.0.1 >/dev/null 2>&1
     EV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT
-    eq "evidencia: una sola cabecera Host en el .req" "$(grep -c '^Host:' "$(ls "$EV"/*.req | head -1)")" "1"
+    EV_REQ=$(find "$EV" -mindepth 2 -type f -name '*.req' -print -quit)
+    eq "evidencia: una sola cabecera Host en el .req" "$(grep -c '^Host:' "$EV_REQ")" "1"
 
     printf 'POST /pedido HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"qty":1,"sku":"A1"}' "$HPORT" > "$TMPD/reqjson.txt"
     OUT=$(bash "$FW/05_Exploitation/web/http_inject.sh" "$TMPD/reqjson.txt" 127.0.0.1 2>&1)
@@ -1057,15 +1077,15 @@ if HPORT=$(iniciar_servidor_http); then
        "$(printf '<p>a &#x27; b</p>' > "$TMPD/e1"; printf '<p>a &#39; b</p>' > "$TMPD/e2"; \
          [ "$(hr_signature "$TMPD/e1" 200 30 "'")" = "$(hr_signature "$TMPD/e2" 200 30 "'")" ] && echo igual || echo distinto)" "igual"
 
-    rm -rf "$FW/../scans/web/http_inject_127.0.0.1_"*
-    kill "$HTTP_SRV_PID" 2>/dev/null
+    limpiar_evidencia_http
+    detener_servidor_http
 else
-    echo "  SKIP     python3 no instalado"
+    bad "no se pudo iniciar el servidor HTTP sintético"
 fi
 
 # ──────────────────────────────────────────────────────────
 section "http_inject: freno por 429/503"
-if HPORT=$(iniciar_servidor_http); then
+if iniciar_servidor_http; then
     export HTTP_INJECT_SI=1 HTTP_INJECT_UMBRAL=0.5 HTTP_INJECT_ESPERA=0
     TSV="$FW/../scans/web/http_inject_127.0.0.1_"$HPORT".tsv"
 
@@ -1097,11 +1117,11 @@ if HPORT=$(iniciar_servidor_http); then
     eq "freno: línea base frenada sale 1" "$RC" "1"
     eq "freno: línea base frenada no puntúa" "$(awk -F'\t' '$1=="FUERTE" || $1=="CONFIRMADO"' "$TSV" | wc -l | tr -d ' ')" "0"
 
-    rm -rf "$FW/../scans/web/http_inject_127.0.0.1_"*
+    limpiar_evidencia_http
     unset HTTP_INJECT_ESPERA
-    kill "$HTTP_SRV_PID" 2>/dev/null
+    detener_servidor_http
 else
-    echo "  SKIP     python3 no instalado"
+    bad "no se pudo iniciar el servidor HTTP sintético"
 fi
 
 # ──────────────────────────────────────────────────────────
@@ -1150,10 +1170,13 @@ eq "sqlmap_request: '-' lee de la entrada estándar" "$(grep -c -- '--batch' "$S
 # Directorio: un sqlmap por .req y ficheros que no se pisan
 mkdir -p "$TMPD/ev"; cp "$TMPD/req_sm.req" "$TMPD/ev/001_id_sqli_bool.req"; cp "$TMPD/req_sm.req" "$TMPD/ev/002_q_xss.req"
 : > "$SSTUB_LOG"
-PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/ev" >/dev/null 2>&1
+OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/ev" 2>&1)
+SM_RESUMEN=$(printf '%s\n' "$OUT" | sed -n 's/^📊 Resumen: //p')
+SM_RUN=$(dirname "$SM_RESUMEN")
 eq "sqlmap_request: directorio = un sqlmap por fichero" "$(grep -c -- '--batch' "$SSTUB_LOG")" "2"
-eq "sqlmap_request: dos logs, uno por fichero" "$(find "$FW/../scans/sqlmap/127.0.0.1_18001" -name '*.log' | wc -l | tr -d ' ')" "2"
-eq "sqlmap_request: un solo resumen para la tanda" "$(find "$FW/../scans/sqlmap" -name '*.txt' | wc -l | tr -d ' ')" "1"
+eq "sqlmap_request: dos logs en el run observado" "$(find "$SM_RUN" -name '*.log' | wc -l | tr -d ' ')" "2"
+eq "sqlmap_request: un solo resumen para la tanda" "$(find "$SM_RUN" -name '*.txt' | wc -l | tr -d ' ')" "1"
+eq "sqlmap_request: conserva los dos resúmenes previos" "$(find "$FW/../scans/sqlmap" -name 'sqlmap_*.txt' | wc -l | tr -d ' ')" "3"
 
 # POST: pide confirmación y, si se niega, no llama a sqlmap
 : > "$SSTUB_LOG"
@@ -1164,9 +1187,10 @@ eq "sqlmap_request: si se niega, no ejecuta sqlmap" "$(wc -l < "$SSTUB_LOG" | tr
 
 # Host reescrito: conserva el puerto del .req
 printf 'GET /?id=1 HTTP/1.1\nHost: app.inventado.example:8443\n\n' > "$TMPD/req_sm_vhost.req"
-PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm_vhost.req" 10.0.0.5 >/dev/null 2>&1
+OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm_vhost.req" 10.0.0.5 2>&1)
+SM_RUN=$(dirname "$(printf '%s\n' "$OUT" | sed -n 's/^📊 Resumen: //p')")
 eq "sqlmap_request: el Host reescrito conserva el puerto" \
-   "$(grep -ho 'Host: 10\.0\.0\.5:[0-9]*' "$FW/../scans/sqlmap/"*/copia_*.req 2>/dev/null | head -1 | grep -c ':8443')" "1"
+   "$(grep -ho 'Host: 10\.0\.0\.5:[0-9]*' "$SM_RUN"/copia_*.req | head -1 | grep -c ':8443')" "1"
 
 unset SQLMAP_SI
 rm -rf "$FW/../scans/sqlmap" "$SSTUB"
@@ -1417,19 +1441,13 @@ eq "rate_limit: «0310» por encima del tope sale 1" "$RC" "1"
 
 # ──────────────────────────────────────────────────────────
 section "rate_limit_probe: sonda"
-# Arranca el fixture sin el defecto de `iniciar_servidor_http`: aquí el PID se
-# guarda en el shell padre (nada de $(...)), para que el kill funcione.
+# Mismo ciclo de vida verificado para las sondas de login.
 rl_servidor() {
-    RLPORT=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
-    python3 "$FW/tests/fixtures/http_target.py" "$RLPORT" >/dev/null 2>&1 &
-    RL_SRV=$!
-    for i in 1 2 3 4 5 6 7 8 9 10; do
-        curl -s -o /dev/null "http://127.0.0.1:$RLPORT/safe" && break
-        sleep 0.3
-    done
+    iniciar_servidor_http || return 1
+    RLPORT=$HPORT
 }
 if command -v python3 >/dev/null 2>&1; then
-    rl_servidor
+    rl_servidor || exit 1
     printf 'POST /login-sin-freno HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_sinfreno.req"
 
     OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno.req" 20 2>&1); RC=$?
@@ -1451,7 +1469,8 @@ if command -v python3 >/dev/null 2>&1; then
     eq "sonda: el aviso de alcance habla de regla, no de fichero ilegible" "$(printf '%s' "$OUT" | grep -c 'no tiene una regla aplicable')" "1"
     eq "sonda: el aviso ya no dice ilegible" "$(printf '%s' "$OUT" | grep -ci 'ilegible')" "0"
 
-    rm -rf "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT"*; kill "$RL_SRV" 2>/dev/null
+    rm -rf "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT" "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT.txt" "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT.tsv"
+    detener_servidor_http
 else
     echo "  SKIP     python3 no instalado"
 fi
@@ -1459,7 +1478,7 @@ fi
 # ──────────────────────────────────────────────────────────
 section "rate_limit_probe: freno"
 if command -v python3 >/dev/null 2>&1; then
-    rl_servidor
+    rl_servidor || exit 1
     printf 'POST /login-freno HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_freno.req"
     OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_freno.req" 20 2>&1); RC=$?
     RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
@@ -1551,7 +1570,8 @@ if command -v python3 >/dev/null 2>&1; then
     eq "freno: la contraseña real de la query no se filtra" "$(grep -c 'supersecreto' "$RLTXT")" "0"
     eq "freno: el target se redacta con ***" "$(grep -cF 'password=***' "$RLTXT")" "1"
 
-    rm -rf "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT"*; kill "$RL_SRV" 2>/dev/null
+    rm -rf "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT" "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT.txt" "$FW/../scans/web/rate_limit_127.0.0.1_$RLPORT.tsv"
+    detener_servidor_http
 else
     echo "  SKIP     python3 no instalado"
 fi

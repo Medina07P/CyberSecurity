@@ -35,9 +35,9 @@ _RULES: dict[str, tuple[str, str, str, str, str, str, str, tuple[str, ...]]] = {
     ),
     "nmap.cve": (
         "alta",
-        "confirmado",
-        "Vulnerabilidad conocida en un servicio expuesto",
-        "El script vulners de nmap asoció {cve} al servicio del activo. "
+        "candidato",
+        "Referencia CVE pendiente de validación",
+        "Una salida de script de nmap cita {cve} para el activo. "
         "Puntuación de referencia: {cvss}. Es una coincidencia de versión, no "
         "una explotación demostrada: hay que confirmarla contra la fuente del "
         "fabricante.",
@@ -70,7 +70,7 @@ _RULES: dict[str, tuple[str, str, str, str, str, str, str, tuple[str, ...]]] = {
     ),
     "nikto.cve": (
         "media",
-        "confirmado",
+        "candidato",
         "Referencia a vulnerabilidad conocida en el servidor web",
         "nikto encontró una referencia a {cve} mientras revisaba el servidor "
         "web. La marca sale de una coincidencia de versión o de recurso, no de "
@@ -400,6 +400,16 @@ _RULES: dict[str, tuple[str, str, str, str, str, str, str, tuple[str, ...]]] = {
             "https://owasp.org/www-project-top-ten/",
         ),
     ),
+    "nuclei.observation": (
+        "info",
+        "observacion",
+        "Información de servicio observada",
+        "La plantilla {plantilla} registró información sobre el servicio. No constituye por sí sola una vulnerabilidad.",
+        "La información permite caracterizar la superficie observada, sin acreditar un compromiso.",
+        "Revisar si la información expuesta es necesaria y limitar detalles innecesarios.",
+        "bajo",
+        ("https://nuclei.projectdiscovery.io/",),
+    ),
     "exploitation.hallazgo": (
         "alta",
         "confirmado",
@@ -498,11 +508,23 @@ _RULES: dict[str, tuple[str, str, str, str, str, str, str, tuple[str, ...]]] = {
 
 }
 
+for _scanner in ('masscan', 'rustscan'):
+    _RULES[_scanner + '.open_port'] = (
+        'info', 'observacion', 'Puerto de red observado',
+        f'{_scanner} registró el puerto {{puerto}}/{{protocolo}} abierto. '
+        'Es una observación del archivo conservado, no una vulnerabilidad ni prueba del último intento.',
+        'Un servicio expuesto amplía la superficie accesible; no acredita compromiso.',
+        'Confirmar que el servicio sea necesario y restringir su acceso cuando corresponda.',
+        'bajo', ('https://nmap.org/book/man-port-scanning-basics.html',),
+    )
+
 KNOWN_RULES: tuple[str, ...] = tuple(_RULES)
 
 # Familia de la regla (prefijo) -> (categoría, técnica tal como se cita en el
 # informe técnico).
 _FAMILIA: dict[str, tuple[str, str]] = {
+    "masscan": ("red", "masscan"),
+    "rustscan": ("red", "rustscan"),
     "nmap": ("red", "nmap"),
     "nuclei": ("web", "nuclei"),
     "nikto": ("web", "nikto"),
@@ -525,6 +547,7 @@ _DEFAULTS: dict[str, str] = {
     "endpoint": "el endpoint de autenticación",
     "parametro": "afectado",
     "puerto": "detectado",
+    "protocolo": "no especificado",
     "servicio": "el servicio detectado",
     "recurso": "el recurso detectado",
     "metodo": "un método de escritura",

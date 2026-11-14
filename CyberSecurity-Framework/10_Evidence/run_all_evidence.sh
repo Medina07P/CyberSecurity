@@ -1,42 +1,16 @@
 #!/bin/bash
+# Coordinación explícita; sin ejecución de hermanos ni captura implícita.
+# Uso: ./run_all_evidence.sh [OPCIONES]
+# Ejemplo: ./run_all_evidence.sh --offline
 
-# ============================================================
-# RUN ALL EVIDENCE - Gestión completa de evidencias
-# Uso: ./run_all_evidence.sh <TARGET>
-# Ejemplo: ./run_all_evidence.sh 192.168.1.10
-# ============================================================
-
-TARGET="$1"
-
-if [[ -z "$TARGET" ]]; then
-    echo "Uso: ./run_all_evidence.sh <TARGET>"
-    echo "Ejemplo: ./run_all_evidence.sh 192.168.1.10"
+EVIDENCE_DIR="$(cd -- "${BASH_SOURCE[0]%/*}" && pwd)" || exit 1
+HELPER="$EVIDENCE_DIR/../00_Config/lib/evidence/cli.py"
+if ! command -v python3 >/dev/null 2>&1; then
+    echo 'ERROR: Python 3 no disponible' >&2
     exit 1
 fi
-
-echo "════════════════════════════════════════════════════════"
-echo "  GESTIÓN DE EVIDENCIAS PARA: $TARGET"
-echo "════════════════════════════════════════════════════════"
-
-# Los hijos se invocan con rutas relativas: ejecutar desde este directorio.
-cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
-
-echo ""
-echo "📸 CAPTURA AUTOMÁTICA"
-echo "────────────────────────────────────────"
-./auto_capture.sh "$TARGET"
-
-echo ""
-echo "📋 LISTA DE EVIDENCIAS"
-echo "────────────────────────────────────────"
-./evidence_manager.sh --list
-
-echo ""
-echo "🔍 VERIFICACIÓN DE INTEGRIDAD"
-echo "────────────────────────────────────────"
-./evidence_manager.sh --verify
-
-echo ""
-echo "════════════════════════════════════════════════════════"
-echo "  ✅ EVIDENCIAS COMPLETADAS"
-echo "════════════════════════════════════════════════════════"
+if [[ ! -f "$HELPER" || -L "$HELPER" ]]; then
+    echo 'ERROR: auxiliar de evidencias no disponible' >&2
+    exit 1
+fi
+exec python3 -B "$HELPER" --root "$EVIDENCE_DIR" run "$@"

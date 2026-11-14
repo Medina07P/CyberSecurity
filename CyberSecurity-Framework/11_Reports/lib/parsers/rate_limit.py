@@ -123,6 +123,9 @@ def parse(path: Path, repo_root: Path) -> ParseResult:
             Evidence(archivo=archivo, linea=veredicto_linea, extracto=f"- Veredicto: {veredicto_texto}")
         ]
         tsv_path = path.with_suffix(".tsv")
+        if tsv_path.exists() or tsv_path.is_symlink():
+            from lib.coverage import regular
+            regular(tsv_path)
         fila_tsv = _primera_fila_tsv(tsv_path)
         if fila_tsv:
             evidencia.append(Evidence(

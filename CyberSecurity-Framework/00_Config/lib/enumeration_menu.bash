@@ -35,6 +35,7 @@ enumeration_menu() {
         clear_screen
         target=$(session_target)
         printf '━━━ 04 · ENUMERACIÓN GUIADA ━━━\nObjetivo: %s\n\n' "${target:-sin definir}"
+        if declare -F module_intro >/dev/null; then module_intro '04_Enumeration'; fi
         echo '  1. Comprobar herramientas (local, sin red)'
         echo '  2. SSH — versión, autenticación, usuarios y algoritmos'
         echo '  3. FTP — banner, anónimo/listado y NSE ftp-*'

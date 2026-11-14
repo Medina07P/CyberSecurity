@@ -7,6 +7,7 @@
 # ─── Configuración ──────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
+source "$SCRIPT_DIR/../00_Config/lib/module_intro.bash"
 
 # Colores para mejor visualización
 RED='\033[0;31m'
@@ -90,6 +91,7 @@ show_stats() {
 main_menu() {
     clear_screen
     show_banner
+    module_intro '13_Labs'
     show_vpn_status
     show_stats
     

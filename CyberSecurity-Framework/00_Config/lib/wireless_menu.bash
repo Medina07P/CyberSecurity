@@ -28,6 +28,7 @@ wireless_menu() {
     while :; do
         clear_screen
         echo '━━━ 07 · WIRELESS — MANTENIMIENTO ━━━'
+        if declare -F module_intro >/dev/null; then module_intro '07_Wireless'; fi
         echo '  1. Comprobar herramientas (local, sin ejecutar)'
         echo '  2. Guía y límites de mantenimiento'
         echo ' 11. Lista original de scripts (diez entradas conservadas)'

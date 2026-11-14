@@ -65,6 +65,29 @@ Cada script declara sus parámetros en su propia línea `Uso:`, así que el gest
 
 ---
 
+## Fichas de entrada: elegir sin ejecutar
+
+Los catorce módulos (`00`–`13`) muestran bajo su cabecera y antes de las opciones
+una ficha breve: **Para qué sirve**, **Entrada**, **Incluye** y **Precauciones**.
+La ficha vuelve a aparecer al redibujar el menú, sin pausas ni preguntas nuevas.
+Entrar y leerla no lanza pruebas ni selecciona herramientas automáticamente;
+las opciones, confirmaciones y argumentos de cada acción se mantienen.
+Las herramientas mencionadas no están necesariamente instaladas o disponibles,
+y una entrada conservada no implica un flujo operacional integrado.
+
+No necesitas recorrer todos los módulos: elige los que correspondan al trabajo
+autorizado. Por ejemplo, para una **Metasploitable propia en una red de laboratorio**
+con IP privada `192.168.56.101`, normalmente puedes saltar `01_OSINT`: sus fuentes
+públicas no describen esa IP privada. Tras comprobar alcance y autorización en
+`00`, usa `02` para reconocimiento, `03` para puertos/servicios y `04` para
+profundizar en los servicios encontrados. Esas acciones generan tráfico y debes
+seleccionarlas y confirmarlas; leer la ficha no las ejecuta. La IP es un ejemplo,
+no un objetivo que debas copiar sin verificar tu laboratorio.
+
+**`99` no es una comprobación rápida**: encadena fases activas, incluida fuerza
+bruta, explotación, persistencia y limpieza. No lo uses para explorar el menú ni
+como prueba de funcionamiento.
+
 ## Objetivo de sesión
 
 El objetivo se guarda en `00_Config/.session` (git-ignored) y se usa para:
@@ -261,15 +284,32 @@ El gestor:
 1. Pide **cliente** y **auditor** la primera vez y los guarda en `11_Reports/.report_profile` (git-ignored). Enter conserva el valor.
 2. Usa el objetivo de la sesión.
 3. Ejecuta el motor de informes (`11_Reports/report_engine.py`).
-4. Muestra las rutas de los informes generados.
-5. Ofrece abrir el HTML con `xdg-open`.
+4. Muestra solo los archivos escritos en esa ejecución, respetando salidas personalizadas.
+5. Ofrece abrir el HTML del tipo elegido; nunca uno histórico tras error.
+
+El motor lee evidencias existentes: no vuelve a ejecutar los módulos ni
+empaqueta evidencias automáticamente. Integra fuentes soportadas de `scans/`
+y contexto/metadata de 01, 02, 07, 08 y 10. No mezcla objetivos sin `--todos`
+explícito. Sin objetivo ni sesión falla, en lugar de agregar otros clientes.
+La sección **Cobertura de evidencias** indica fuentes evaluadas, contexto,
+no evaluables y no soportadas. Capturas, etiquetas y referencias CVE no son
+por sí solas vulnerabilidades. Detalles en `11_Reports/USE.md`.
 
 ### Los dos informes
 
 - **Técnico** (`informe_tecnico.md` y `.html`): hallazgos con severidad, activo, técnica, evidencia (`archivo:línea`), reproducción, recomendación y referencias.
 - **Cliente** (`informe_cliente.md` y `.html`): resumen ejecutivo, riesgo de negocio, plan de acción, sin payloads ni rutas internas.
 
-Ambos se generan en `11_Reports/generated/<objetivo>/`.
+Ambos se generan en `11_Reports/generated/<objetivo>/runs/<id>/`. Cada ejecución
+conserva sus documentos y recibo `run.json`, sin sobrescribir informes anteriores.
+`--todos` usa raíz `_todos`, sin tratar el host de sesión como alcance agregado.
+`--salida`/`REPORT_OUT_DIR` seleccionan raíz: se añade `runs/<id>/` dentro.
+Las automatizaciones deben usar `salida`/`archivos` del recibo `--json`.
+
+Masscan JSON y RustScan texto estructurado aportan observaciones de puertos,
+combinadas con Nmap sin duplicados TCP/UDP. No acreditan último intento ni
+finalización; vacío o truncado no es «sin puertos». Consulte `11_Reports/USE.md`
+para formatos admitidos y límites. Rerender genera un nuevo run sin releer fuentes.
 
 ### Línea de comandos
 
@@ -291,12 +331,13 @@ python3 11_Reports/report_engine.py \
 | `--objetivo` | objetivo de `.session` | solo entra lo atribuible a ese host |
 | `--tipo` | `ambos` | `tecnico` / `cliente` / `ambos` |
 | `--scans` | `<repo>/scans` | raíz de resultados |
-| `--salida` | `11_Reports/generated/<slug>` | destino |
+| `--fuentes` | raíz del framework si scans no se personalizó | árboles anteriores; con scans externo debe seleccionarse explícitamente |
+| `--salida` | `11_Reports/generated/<slug>` | raíz de historial: salida real dentro de runs/<id>/ |
 | `--cliente` / `--auditor` | perfil / usuario del sistema | portada |
 | `--todos` | no | agrega todos los objetivos en un informe multiobjetivo |
 | `--incluir-sin-objetivo` | no | añade fuentes no atribuibles, marcadas |
 | `--desde-json <ruta>` | no | re-renderiza sin volver a escanear: edita `findings.json` (no el Markdown) y vuelve a generar |
-| `--json` | no | imprime el resumen JSON por stdout |
+| `--json` | no | imprime run_id, salida efectiva y archivos escritos (incluido run.json); también con rc3 |
 | `--abrir` | no | abre el HTML al terminar |
 
 ### Perfil de cliente
@@ -311,6 +352,55 @@ auditor=Ana
 Se crea la primera vez que usas `R` o puedes editarlo manualmente. Enter conserva el valor.
 
 ---
+
+## Evidencias: módulo 10
+
+`10` abre un menú sin adquisición/red ni cambio de TARGET: disponibilidad mediante
+`command -v`, importación explícita, listado, verificación, empaquetado, captura,
+coordinación offline y lista fija de las tres hojas originales. EOF/cancelar
+retorna 0 sin acciones. Nunca ejecuta código recuperado/importado; el modo
+preparado tampoco evita confirmaciones sensibles. `done` en fase 10 significa
+presencia de evidencia reconocible, **no integridad**.
+
+`evidence_manager.sh --add TIPO ARCHIVO [DESCRIPCION] [--target ETIQUETA]`
+acepta `screenshot`, `pcap`, `credential`, `finding` y `proof`. Las rutas relativas
+son del llamador y los espacios deben entrecomillarse. Solo archivos regulares,
+por copia sin ejecutar ni reemplazar el original; directorios nuevos 700,
+archivos 600. No hay atribución por sesión: la etiqueta es explícita y no cambia
+scope/targets. Registros nuevos SHA-256, históricos `.meta` MD5 de solo lectura,
+sin migración ni elevación automática de confianza.
+
+`--list` no verifica cuerpos y vacío es informativo (0); `--verify` vacío,
+huérfanos, corrupción o errores da 1. `--package [NOMBRE]` bloquea ante cualquier
+problema y publica datos/metadatos/manifiesto en `11_Reports/evidence/`, sin
+scripts/configuración/diagnósticos ni reemplazar salidas. **No hay cifrado** y
+puede incluir credenciales: confirme exportación en menú y custodie el resultado.
+No certifica autenticidad, firma ni custodia legal.
+
+`auto_capture.sh` exige acciones explícitas: `--web URL` (HTTP/HTTPS sin
+credenciales/fragmentos), `--traffic HOST --interface IFACE`,
+`--scan HOST --scan-profile basic|full` o `--system` (solo contexto OPERADOR).
+Red requiere `--authorize-network`; no es una barrera de alcance. Los subrecursos
+y redirecciones web también deben estar autorizados. No hay sudo/instalaciones.
+Tráfico: 10 s/100 paquetes por defecto, límites 1–300 s y 1–10000;
+web: deadline 60 s; Nmap basic: 100 TCP connect sin NSE/versionado, 120 s;
+full: `-sV -p-`, 1800 s, mayor intrusividad. Validaciones PNG/PCAP/finalización
+Nmap limitadas, no certifican contenido visual/protocolos/hallazgos.
+PCAP válido sin paquetes es `SIN TRÁFICO`. Diagnósticos privados en `logs/runs/`
+excluidos de exportación. Supervisión Linux de procesos propios, INT/TERM
+130/143, sin éxito del paso interrumpido; no aislamiento de backends hostiles.
+
+`run_all_evidence.sh --offline` lista/verifica; `--capture` coordina selecciones
+explícitas. La antigua llamada `<TARGET>` ahora devuelve 2 sin adquirir: bloquea
+la captura implícita de 10 desde 99, **no arregla el flujo 99 global**.
+Ayuda explícita 0, CLI inválida 2, fallo/parcial 1, éxito solicitado 0.
+
+Guías completas y ejemplos offline sintéticos:
+[`10_Evidence/README.md`](../CyberSecurity-Framework/10_Evidence/README.md),
+[`USE.md`](../CyberSecurity-Framework/10_Evidence/USE.md) y
+[`FLUJO.md`](../CyberSecurity-Framework/10_Evidence/FLUJO.md).
+Implementación pendiente de revisión global e integración; stubs no acreditan
+compatibilidad operacional.
 
 ## Cómo leer los veredictos
 
