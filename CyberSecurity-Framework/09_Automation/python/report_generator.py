@@ -15,7 +15,7 @@ sys.path.insert(0, str(_FRAMEWORK / '00_Config/lib'))
 from automation.adapters import execute_plan
 from automation.model import Permissions, PlanError, PreflightError, RuntimeContext
 from automation.planner import build_plan, render_plan
-from automation.reporting import check_report_destination, publish_reports
+from automation.reporting import check_report_destination, publish_reports, report_generation
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -53,7 +53,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if result.steps and result.steps[0].state in ('completado', 'fallido') and raw_rc in (0, 3):
             if raw_rc == 0 and result.rc != 0:
                 return result.rc
-            publish_reports(result.run_dir / 'report-report/reports', destination, parent_identity)
+            generation = report_generation(result.run_dir, 'report', plan.steps[0].inputs['target'], raw_rc)
+            publish_reports(generation, destination, parent_identity)
         return raw_rc if raw_rc is not None and result.rc in (0, 1) else result.rc
     except PlanError as exc:
         print(f'Error: {exc}', file=sys.stderr)

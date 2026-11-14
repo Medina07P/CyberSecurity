@@ -1,6 +1,10 @@
-"""Explicit integration with engine 11; no parsers or implicit configuration."""
+"""Explicit engine 11 commands and publication receipts; no evidence parsers."""
+from contextlib import ExitStack
+from datetime import datetime, timedelta
+import json
 import os
 from pathlib import Path
+import re
 import stat
 import sys
 from uuid import uuid4
@@ -12,11 +16,16 @@ from .planner import validate_plan
 ENGINE_SOURCES = ('11_Reports/report_engine.py',
                   '00_Config/lib/postexploitation_evidence.py') + tuple(
     '11_Reports/lib/' + name + '.py' for name in (
-        '__init__', 'attribution', 'catalog', 'engine', 'model', 'render', 'sources',
+        '__init__', 'attribution', 'catalog', 'coverage', 'engine',
+        'exploitation_metadata', 'history', 'model', 'publication', 'render',
+        'sources', 'validation',
         'parsers/__init__', 'parsers/exploitation', 'parsers/ffuf', 'parsers/headers',
         'parsers/host_sources', 'parsers/http_inject', 'parsers/nikto', 'parsers/nmap',
-        'parsers/nuclei', 'parsers/postexploitation', 'parsers/rate_limit',
-        'parsers/sqli_findings', 'parsers/sqlmap'))
+        'parsers/nuclei', 'parsers/postexploitation', 'parsers/prior_modules',
+        'parsers/rate_limit', 'parsers/scanner_ports',
+        'parsers/sqli_findings', 'parsers/sqlmap')) + tuple(
+    '00_Config/lib/evidence/' + name + '.py'
+    for name in ('__init__', 'inventory', 'model', 'storage'))
 REPORT_FILES = ('findings.json', 'informe_tecnico.md', 'informe_tecnico.html',
                 'informe_cliente.md', 'informe_cliente.html')
 
@@ -49,7 +58,7 @@ def report_preflight(step: Step, ctx: RuntimeContext) -> None:
 
 
 def report_command(step: Step, run_dir: Path, ctx: RuntimeContext) -> Command:
-    """Compile exactly three arguments; gates belong to adapters/preflight."""
+    """Compile explicit engine inputs and JSON receipt; gates belong to preflight."""
     from .adapters import _directory, _path, _private_root, _private_write, child_env
     report_preflight(step, ctx)
     env = dict(child_env(ctx, run_dir))
@@ -70,8 +79,116 @@ def report_command(step: Step, run_dir: Path, ctx: RuntimeContext) -> Command:
                     '--objetivo', step.inputs['target'],
                     '--scans', str(_path(ctx, step.inputs['report_input'])),
                     '--salida', str(private / 'reports'), '--tipo', 'ambos',
-                    '--cliente', 'No indicado', '--auditor', 'No indicado'),
+                    '--cliente', 'No indicado', '--auditor', 'No indicado', '--json'),
                    ctx.framework, env, 300)
+
+
+def _receipt_object(pairs):
+    data = {}
+    for key, value in pairs:
+        if key in data:
+            raise ValueError('Clave duplicada en recibo')
+        data[key] = value
+    return data
+
+
+def _receipt_constant(value):
+    raise ValueError('Constante JSON no válida: ' + value)
+
+
+def _receipt_read(stack, path):
+    """Keep the no-follow file identity pinned through the whole validation."""
+    from .adapters import _regular
+    stream = stack.enter_context(_regular(path))
+    info = os.fstat(stream.fileno())
+    if (info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600
+            or info.st_nlink != 1):
+        raise PreflightError('Recibo de informes no privado')
+    raw = stream.read(1024 * 1024 + 1)
+    if len(raw) > 1024 * 1024:
+        raise ValueError('Recibo de informes demasiado grande')
+    data = json.loads(raw.decode('utf-8'), object_pairs_hook=_receipt_object,
+                      parse_constant=_receipt_constant)
+    if not isinstance(data, dict):
+        raise ValueError('Se requiere un único objeto de recibo')
+    return data
+
+
+def _receipt_files(actual, expected):
+    return (isinstance(actual, list) and all(isinstance(p, str) for p in actual)
+            and sorted(actual) == sorted(expected))
+
+
+def _receipt_utc(value):
+    if not isinstance(value, str):
+        raise ValueError('Fecha de recibo inválida')
+    stamp = datetime.fromisoformat(value)
+    if stamp.tzinfo is None or stamp.utcoffset() != timedelta(0):
+        raise ValueError('Fecha UTC requerida en recibo')
+    return stamp
+
+
+def report_generation(run_dir: Path, step_id: str, target: str, rc: int) -> Path:
+    """Resolve only this step's stdout receipt and its final private generation.
+
+    Stdout paths are compared as strings, never used as authority for open().
+    No engine import, directory discovery, latest selection or flat fallback.
+    """
+    from .adapters import _directory, _private_root, _regular
+    from .validation import validate
+    if (not isinstance(step_id, str) or not re.fullmatch(r'[a-z][a-z0-9_]{0,47}', step_id)
+            or type(rc) is not int or rc not in (0, 3)):
+        raise PreflightError('Paso o rc de informes inválido')
+    try:
+        if validate('target', target) != target:
+            raise ValueError('Objetivo no canónico')
+        run_dir = Path(run_dir)
+        private = run_dir / ('report-' + step_id)
+        with ExitStack() as stack:
+            # Pin/check every private directory until all file checks complete.
+            for path in (run_dir, run_dir / 'logs', private, private / 'reports',
+                         private / 'reports/runs'):
+                _private_root(stack.enter_context(_directory(path)))
+            summary = _receipt_read(stack, run_dir / 'logs' / (step_id + '.stdout.log'))
+            if (set(summary) != {'objetivo', 'hallazgos', 'criticos', 'no_evaluable',
+                                'salida', 'archivos', 'run_id'}
+                    or summary['objetivo'] != target
+                    or any(type(summary[key]) is not int or summary[key] < 0
+                           for key in ('hallazgos', 'criticos', 'no_evaluable'))):
+                raise ValueError('Resumen de informes inválido')
+            run_id = summary['run_id']
+            if (not isinstance(run_id, str)
+                    or not re.fullmatch(r'run-[0-9]{8}T[0-9]{12}Z-[0-9a-f]{32}', run_id)):
+                raise ValueError('Identidad de generación inválida')
+            generation = private / 'reports/runs' / run_id
+            names = (*REPORT_FILES, 'run.json')
+            if (summary['salida'] != str(generation)
+                    or not _receipt_files(summary['archivos'], [str(generation / n) for n in names])):
+                raise ValueError('Rutas del resumen ajenas a este paso')
+            _private_root(stack.enter_context(_directory(generation)))
+            receipt = _receipt_read(stack, generation / 'run.json')
+            if (set(receipt) != {'schema_version', 'module', 'run_id', 'started_at',
+                                'finished_at', 'objetivo', 'modo', 'tipo', 'entrada',
+                                'estado', 'rc', 'archivos'}
+                    or type(receipt['schema_version']) is not int or receipt['schema_version'] != 1
+                    or receipt['module'] != '11' or receipt['run_id'] != run_id
+                    or receipt['objetivo'] != target or receipt['modo'] != 'objetivo'
+                    or receipt['tipo'] != 'ambos' or receipt['entrada'] != 'scans'
+                    or type(receipt['rc']) is not int or receipt['rc'] != rc
+                    or receipt['estado'] != ('COMPLETADO' if rc == 0 else 'NO_EVALUABLE')
+                    or not _receipt_files(receipt['archivos'], REPORT_FILES)):
+                raise ValueError('Recibo final incongruente con este paso')
+            if _receipt_utc(receipt['finished_at']) < _receipt_utc(receipt['started_at']):
+                raise ValueError('Fechas del recibo fuera de orden')
+            for name in REPORT_FILES:
+                stream = stack.enter_context(_regular(generation / name))
+                info = os.fstat(stream.fileno())
+                if (info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600
+                        or info.st_nlink != 1):
+                    raise PreflightError('Archivo de informes no privado')
+        return generation
+    except (OSError, ValueError, TypeError, RecursionError) as exc:
+        raise PreflightError('Generación de informes ausente o inválida: ' + str(exc)) from None
 
 
 def check_report_destination(destination: Path) -> tuple[int, int]:
