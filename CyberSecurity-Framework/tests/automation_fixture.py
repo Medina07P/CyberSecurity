@@ -54,10 +54,13 @@ SOURCE_FILES += tuple('00_Config/lib/' + name for name in (
 SOURCE_FILES += ('09_Automation/python/report_generator.py',
                  '00_Config/lib/postexploitation_evidence.py') + tuple(
     '11_Reports/lib/' + name + '.py' for name in (
-        '__init__', 'attribution', 'catalog', 'engine', 'model', 'render', 'sources',
+        '__init__', 'attribution', 'catalog', 'coverage', 'engine',
+        'exploitation_metadata', 'history', 'model', 'publication', 'render',
+        'sources', 'validation',
         'parsers/__init__', 'parsers/exploitation', 'parsers/ffuf', 'parsers/headers',
         'parsers/host_sources', 'parsers/http_inject', 'parsers/nikto', 'parsers/nmap',
-        'parsers/nuclei', 'parsers/postexploitation', 'parsers/rate_limit',
+        'parsers/nuclei', 'parsers/postexploitation', 'parsers/prior_modules',
+        'parsers/rate_limit', 'parsers/scanner_ports',
         'parsers/sqli_findings', 'parsers/sqlmap'))
 
 SOURCE_FILES += ('tests/fixtures/automation/powershell_contract.ps1',)
@@ -75,6 +78,21 @@ SOURCE_FILES += ('00_Config/lib/automation/cli.py',
                  '09_Automation/docker/docker-compose.yml',
                  '09_Automation/README.md')
 SOURCE_FILES += ('09_Automation/USE.md',)
+
+# Exact eager manager sources and their fixed sibling dependencies. Copying
+# sources never authorizes menu actions or discovery of another test suite.
+SOURCE_FILES += tuple('00_Config/lib/' + name + '.bash' for name in (
+    'params', 'phase_status', 'prompt', 'report_profile', 'module_intro',
+    'scanners_menu', 'exploitation_menu', 'enumeration_menu',
+    'postexploitation_menu', 'wireless_menu', 'forensics_menu', 'evidence_menu',
+    'exploitation_runtime', 'postexploitation_runtime'))
+
+# 11's prior_modules loads inventory/model/storage; the three fixed 10 wrappers
+# reach cli and its eager package/capture/process imports, even for offline help.
+SOURCE_FILES += tuple('00_Config/lib/evidence/' + name + '.py' for name in (
+    '__init__', 'model', 'storage', 'inventory', 'cli', 'package', 'capture',
+    'process')) + ('10_Evidence/evidence_manager.sh', '10_Evidence/auto_capture.sh',
+                  '10_Evidence/run_all_evidence.sh')
 
 
 class AutomationFixture:

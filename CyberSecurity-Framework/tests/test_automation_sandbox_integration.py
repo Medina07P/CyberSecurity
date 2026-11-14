@@ -7,6 +7,51 @@ from unittest import mock
 
 
 class IntegrationTests(unittest.TestCase):
+    def test_fixture_current_report_and_evidence_dependencies_are_explicit(self):
+        # Definitions only until the controller gate; never import production.
+        from automation_fixture import SOURCE_FILES
+        required = tuple('11_Reports/lib/' + name + '.py' for name in (
+            'coverage', 'exploitation_metadata', 'history', 'publication',
+            'validation', 'parsers/prior_modules', 'parsers/scanner_ports'))
+        required += tuple('00_Config/lib/evidence/' + name + '.py' for name in (
+            '__init__', 'model', 'storage', 'inventory', 'cli', 'package',
+            'capture', 'process'))
+        required += ('00_Config/lib/module_intro.bash',
+                     '00_Config/lib/evidence_menu.bash',
+                     '10_Evidence/evidence_manager.sh', '10_Evidence/auto_capture.sh',
+                     '10_Evidence/run_all_evidence.sh')
+        self.assertTrue(set(required) <= set(SOURCE_FILES),
+                        sorted(set(required) - set(SOURCE_FILES)))
+
+    def test_fixture_inventory_is_unique_present_and_manifested(self):
+        from automation_fixture import SOURCE_FILES
+        here = Path(__file__).parent
+        names = json.loads((here / 'automation_sandbox_sources.json').read_text())['files']
+        self.assertEqual(len(SOURCE_FILES), len(set(SOURCE_FILES)))
+        for relative in SOURCE_FILES:
+            with self.subTest(relative=relative):
+                self.assertIn('CyberSecurity-Framework/' + relative, names)
+                self.assertTrue((here.parent / relative).is_file())
+                self.assertNotIn(relative, ('00_Config/scope.yaml', '00_Config/targets.txt'))
+
+    def test_fixture_manager_source_edges_are_closed_without_sourcing(self):
+        import re
+        from automation_fixture import SOURCE_FILES
+        framework = Path(__file__).resolve().parents[1]
+        # Manager and its eagerly sourced menu libraries use fixed sibling names.
+        # Read those edges as text; do not source the UI or dispatch any action.
+        queue = ['cyber_framework.sh']
+        seen = set()
+        while queue:
+            relative = queue.pop()
+            if relative in seen:
+                continue
+            seen.add(relative)
+            self.assertIn(relative, SOURCE_FILES)
+            text = (framework / relative).read_text()
+            for name in re.findall(r'^source "\$[A-Z_]+/([^"\n]+\.bash)"', text, re.M):
+                queue.append('00_Config/lib/' + name)
+
     def test_user_exception_requires_landlock_worker_not_blanket_permission(self):
         data = json.loads(Path(__file__).with_name('automation_preservation_cases.json').read_text())
         self.assertEqual(data['version'], 2)
@@ -240,8 +285,9 @@ class IntegrationTests(unittest.TestCase):
         bwrap.assert_not_called()
 
     def test_operational_entrypoints_unchanged(self):
-        # Source-only BASE367b9db; two report sources revised for final I1.
-        # No data/config hashes; final-fix-report records the exact old/new digests.
+        # Reviewed per-file baseline, not a blanket post-merge refresh. The manager
+        # includes develop's module intro, evidence menu and report history UI.
+        # See task-1-report for provenance; no config/data hashes are included.
         import hashlib
         root = Path(__file__).resolve().parents[2]
         baseline = json.loads(Path(__file__).with_name('automation_operational_baseline.json').read_text())
