@@ -311,7 +311,7 @@ recibo stdout y `run.json` concordante antes de consumir/publicar documentos;
 no busca HTML plano antiguo ni `latest`. El shim obsoleto conserva nombres
 externos fijos al publicar y los rc raw0/3 del motor. No implica que el input
 histórico proceda del plan actual. Véase `09_Automation/USE.md` para el estado
-acotado de la combinación y la ficha09 aún pendiente de Phase B.
+acotado de la combinación: ficha09 implementada en Phase B, GREEN aún NOT RUN.
 
 Masscan JSON y RustScan texto estructurado aportan observaciones de puertos,
 combinadas con Nmap sin duplicados TCP/UDP. No acreditan último intento ni

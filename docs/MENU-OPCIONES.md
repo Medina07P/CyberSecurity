@@ -1,7 +1,7 @@
 # Gestor: todas las opciones y entradas (00–13)
 
 Inventario por lectura de fuentes, 2026-11-13; reconciliación acotada09/10/11
-2026-11-14 sobre fdf578f (Phase A: contratos/docs, ficha09 pendiente). No se ejecutaron
+2026-11-14 (Phase A contratos/docs; Phase B ficha09 implementada, GREEN NOT RUN). No se ejecutaron
 menús ni herramientas reales para redactarlo. Rutas relativas a
 `CyberSecurity-Framework/`. Una entrada presente **no** equivale a capacidad
 integrada operacional, resultado válido, autorización ni instalación comprobada.
@@ -442,7 +442,13 @@ acreditado. `tests/run_automation.sh` solo contiene un diagnóstico builtin y
 exit2; no discovery, intérpretes, probes ni fallback. Los resultados anteriores
 son históricos, no autorización para reanudar.
 
-**Combinación actual, Task3 Phase A (2026-11-14):** el controlador ya observó
+**Combinación actual, Task3 Phase B (2026-11-14):** el controlador observó RED
+sobre37c558b:60units PASS;179integration,6fallos0errores1SKIP, solo ficha09
+ausente en seis subcasos del casoCLI existente; contratos10/informes sin fallos.
+El puente/texto09 se implementan ahora, sin modificar las pruebas Phase A.
+GREEN NOT RUN; requiere revisión independiente y comando exacto del controlador.
+
+**Historia Task3 Phase A (2026-11-14):** el controlador ya observó
 sobre fdf578f60units PASS y179integration con10fallos,0errores,1SKIP;
 los10fallos restantes eran tres casos del contrato10 antiguo (1+8+1), no fallos
 de sus backends. Los25casos de informes quedaron GREEN. Esta entrega cambia

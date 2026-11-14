@@ -2,7 +2,17 @@
 
 ## Estado y autorización
 
-**Combinación actual,2026-11-14 (Task3 Phase A sobre fdf578f):** datos del run
+**Combinación actual,2026-11-14 (Task3 Phase B):** el controlador observó RED
+sobre37c558b en
+`/tmp/opencode/automation-isolated-31cf271903d14a3c9e9bd7f3a618d224/evidence/`:
+60units PASS;179integration,6fallos0errores1SKIP; único ID fallido
+`CliTests.test_manager_dispatch_09`, seis subcasos por ficha ausente0!=1.
+Contratos10/informes sin fallos. Puente/texto09 implementados después de ese
+RED; GREEN NOT RUN, pendiente revisión independiente/autorización exacta.
+Pruebas Phase A, manifiesto/selector y grant25sin cambios; solo se concilia el
+digest individual del puente dentro del baseline25, no el resto del baseline.
+
+**Historia Task3 Phase A sobre fdf578f:** datos del run
 del controlador conservado en
 `/tmp/opencode/automation-isolated-4c408f2a815143d99afa09605769f2c3/evidence/`:
 60units PASS;179integration,10fallos0errores1SKIP; host/inside rc1, estado FAIL,

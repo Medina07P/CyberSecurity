@@ -85,10 +85,10 @@ module_intro() {
         # 09_Automation/run_all_automation.sh; 09_Automation/workflows/*.yaml.
         09_Automation)
             printf '%s\n' \
-                'Para qué sirve: Consultar scripts de automatización presentes, sin prometer un flujo integral validado.' \
-                'Entrada: Objetivo y fase para algunos scripts; directorios de resultados para el adaptador de informes.' \
-                'Incluye: Scripts Bash/Python/PowerShell y adaptador hacia 11; workflows declarativos no consumidos.' \
-                'Precauciones: No se declara integración operacional completa; algunos scripts encadenan acciones activas. Revisar código, alcance y autorización antes de ejecutarlos.'
+                'Para qué sirve: Preparar planes de automatización con preview antes de una ejecución explícita.' \
+                'Entrada: Objetivo y campos explícitos; workflows YAML validados o resultados existentes para informes, sin heredar sesión.' \
+                'Incluye: Perfiles conservadores, acciones del catálogo, planes YAML consumidos y adaptador hacia 11; lista de entradas originales sin ejecutarlas.' \
+                'Precauciones: Entrar no ejecuta backends. La ejecución exige confirmación y permisos explícitos por destino y acción; revisar alcance e impacto. No acredita integración operacional completa.'
             ;;
         # 10_Evidence/evidence_manager.sh; 10_Evidence/auto_capture.sh.
         10_Evidence)
