@@ -770,6 +770,40 @@ class ConsentTests(unittest.TestCase):
             'record-dispatch', BURP, '03_Scanners', '--prepared', '--verificar',
             'https://example.test/a', '--proxy-port', '8080', '--execute', '--confirm-network']])
         self.assertEqual(f.snapshot(), before)
+        # Exercise the SAME argument display function called by execute_script,
+        # not a replacement display/classifier. Only dispatch transport records.
+        f = self.fixture()
+        secret_url = 'https://example.test:9443/private-path-secret?token=literal-query-secret'
+        result = f.run_menu('scanners_menu', '6\n2\n' + secret_url + '\n8080\ns\n0\n0\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(f.records(), [[
+            'record-dispatch', BURP, '03_Scanners', '--prepared', '--verificar',
+            secret_url, '--proxy-port', '8080', '--execute', '--confirm-network']])
+        for output in (result.stdout, result.stderr):
+            self.assertNotIn('private-path-secret', output)
+            self.assertNotIn('literal-query-secret', output)
+            self.assertNotIn('token=', output)
+        self.assertIn('GET', result.stdout)
+        self.assertIn('Proxy: 127.0.0.1:8080', result.stdout)
+        self.assertIn('Destino: https://example.test:9443', result.stdout)
+        manager = (f.framework / 'cyber_framework.sh').read_text()
+        dispatcher = manager.split('\nexecute_script() {\n', 1)[1].split('\n}', 1)[0]
+        self.assertIn('script_arguments_summary "$script_path" "${argv[@]}"', dispatcher)
+        self.assertNotIn('${argv[*]}', dispatcher)
+        self.assertIn('./"$rel_path" "${argv[@]}"', dispatcher)
+        # Moving display policy must retain the existing PSExec concealment and
+        # original command/password positions. No PSExec leaf is executed here.
+        f = self.fixture()
+        result = f.run_menu('postexploitation_menu',
+                            '6\n3\nexample.test\nLAB\noperator\nliteral-psexec-secret\nwhoami\n0\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(f.records(), [[
+            'record-dispatch', '06_PostExploitation/lateral_movement/ps_exec.sh',
+            '06_PostExploitation', '--prepared', 'example.test', 'LAB', 'operator',
+            'literal-psexec-secret', 'whoami']])
+        for output in (result.stdout, result.stderr):
+            self.assertNotIn('literal-psexec-secret', output)
+        self.assertIn('[ocultos: contienen credenciales]', result.stdout)
         f = self.fixture()
         f.set_session('remote.example.test')
         session = f.framework / '00_Config/.session'
