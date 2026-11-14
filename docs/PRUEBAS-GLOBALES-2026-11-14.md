@@ -1,5 +1,12 @@
 # Corrección de pruebas globales y SSTI — 2026-11-14
 
+**Integración posterior autorizada:** el código de este informe se consolidó en
+`87d7ce8` y se integró por fast-forward en develop desde `8435c05`. Estado y
+verificación posmerge en `INTEGRACION-PRUEBAS-GLOBALES-2026-11-14.md`.
+Posmerge desde develop: global520/0, runtime7/7, SSTI e informes rc0, guardas
+intactas. Integración local cerrada, sin push; configuración local fuera de commits.
+Los apartados siguientes conservan el cierre de implementación previo al merge.
+
 ## Alcance y ubicación
 
 Trabajo local sin commit, merge ni push, sobre HEAD desacoplado `8435c05`, en el worktree
