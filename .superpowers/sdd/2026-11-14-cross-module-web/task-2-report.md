@@ -94,3 +94,30 @@ es conservadora exacta; capturas equivalentes pero no idénticas se rechazan ant
 de tráfico, sin adivinar. No se detectó conflicto que requiera ampliar capacidades.
 Conservar worktree, fuentes, fixtures, logs y todos los recibos previos; sin merge,
 push, reset, instalaciones, limpieza ni operaciones sobre configuración real.
+
+## Refinamiento M1 — STATIC NOT RUN sobre bcc6b29
+
+Se leyó íntegramente `task-2-static-review.md`: spec APPROVED STATIC, quality con
+un único menor M1. La tabla existente de cero transporte ahora declara rc exacto
+por fila y lo comprueba junto con cero recibos RAW. Diez filas de entrada inválida
+exigen rc1 (esquema ausente/inválido/vacío, incluso puerto443, ambigüedad/colisión,
+campo usuario ausente y límite1001); la fila con esquema válido pero sin
+consentimiento exige rc0. Esquema ausente más EOF sigue siendo error rc1 previo
+al gate de consentimiento, no se rebaja a cancelación. No cambian las once filas,
+el producto, los dobles, los IDs, grants ni contratos de esquemas/topes/campos.
+
+Verificación fresca permitida:
+
+```text
+python3 -I -B -c 'import ast,pathlib; p="CyberSecurity-Framework/tests/test_cross_web.py"; ast.parse(pathlib.Path(p).read_text(),filename=p); print("AST OK: "+p)'
+rc0; stdout: AST OK: CyberSecurity-Framework/tests/test_cross_web.py; stderr vacío.
+git diff --check
+rc0; stdout/stderr vacíos.
+```
+
+Autorrevisión del diff acotado: expectativas explícitas, ninguna aserción RAW
+retirada ni validación de producto relajada. No imports del repo, pruebas,
+helpers, probes, launcher, producto, doble ni runtime ejecutados. Re-review
+independiente y autorización exacta del controlador siguen siendo gates antes
+de runtime; GREEN nuevo sigue PENDIENTE. Los hashes de la tabla anterior describen
+la entrega bcc6b29, no esta revisión del test. Rate/Task3 y docs siguen pendientes.
