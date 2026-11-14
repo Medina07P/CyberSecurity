@@ -150,9 +150,18 @@ class CrossModuleFixture:
         self.env['CROSS_CURL_PROGRAM'] = str(path)
         self.env['CROSS_CURL_RECORDS'] = str(self.output / 'curl-records.jsonl')
 
-    def curl_records(self):
+    def curl_invocations(self):
+        """Raw first-write receipts: an undecodable/failed call is still a call."""
         path = self.output / 'curl-records.jsonl'
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def curl_records(self):
+        records = []
+        for invocation in self.curl_invocations():
+            result = self.output / ('curl-result-' + invocation['invocation_id'] + '.json')
+            detail = json.loads(result.read_text()) if result.exists() else {}
+            records.append({**invocation, **detail})  # never filter incomplete/failed calls
+        return records
 
     def configure_ss(self, responses):
         """Transport data only; repeat the last response, never open a socket."""
