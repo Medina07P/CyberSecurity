@@ -81,7 +81,7 @@ def _guarda(pareado: Path, repo_root: Path) -> tuple[int, str, str] | None:
     Devuelve ``(línea, extracto, archivo_relativo)`` o ``None`` cuando no hay
     pareja o la primera línea no es una respuesta exitosa.
     """
-    if not pareado.is_file():
+    if any(p.is_symlink() for p in (pareado, *pareado.parents)) or not pareado.is_file():
         return None
     try:
         lineas = _lineas(pareado)

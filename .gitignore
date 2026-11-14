@@ -68,6 +68,7 @@ CyberSecurity-Framework/09_Automation/python/report.html
 CyberSecurity-Framework/09_Automation/python/report.json
 
 # 10_Evidence: pruebas, hallazgos y volcados
+# Las reservas incompletas/.metadata.tmp quedan dentro de estas categorías.
 CyberSecurity-Framework/10_Evidence/proofs/
 CyberSecurity-Framework/10_Evidence/findings/
 CyberSecurity-Framework/10_Evidence/logs/
@@ -87,6 +88,7 @@ CyberSecurity-Framework/11_Reports/final_report/*
 CyberSecurity-Framework/11_Reports/executive/*.md
 CyberSecurity-Framework/11_Reports/technical/*.md
 CyberSecurity-Framework/11_Reports/evidence/*.tar.gz
+CyberSecurity-Framework/11_Reports/evidence/.export-*/
 CyberSecurity-Framework/11_Reports/report_*.json
 
 # Payloads generados (la muestra php_shell.php se conserva)

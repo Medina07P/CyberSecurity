@@ -58,6 +58,7 @@ scanners_menu() {
         clear_screen
         target=$(session_target)
         echo '━━━ 03 · ESCÁNERES — MENÚ GUIADO ━━━'
+        if declare -F module_intro >/dev/null; then module_intro '03_Scanners'; fi
         printf 'Objetivo de sesión: %s\n\n' "${target:-sin definir}"
         echo '  1. Comprobar herramientas (local, sin escanear)'
         echo '  2. Puertos y servicios básicos (100 puertos TCP, sin NSE)'

@@ -80,7 +80,7 @@ def _cve(numero: int, linea: str, cve: str, activo: str, archivo: str) -> Findin
         activo=activo,
         evidencia=_evidencia(archivo, numero, linea),
         severidad="media",
-        confianza="confirmado",
+        confianza="candidato",
         cve=cve,
         cvss=None,
     )

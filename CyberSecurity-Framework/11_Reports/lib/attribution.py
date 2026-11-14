@@ -84,6 +84,9 @@ def _split_authority(raw: str) -> tuple[str, str | None]:
     if userinfo != -1:
         text = text[userinfo + 1:]
 
+    bracket = re.fullmatch(r'\[([^\]]+)\](?::([0-9]+))?', text)
+    if bracket:
+        return bracket.group(1), bracket.group(2)
     if text.count(":") > 1:
         return text, None
 
