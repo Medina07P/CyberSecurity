@@ -351,6 +351,7 @@ os._exit(0)
         scans.mkdir()
         root = scans / 'automation'
         root.mkdir(mode=0o755)
+        root.chmod(0o755)  # mkdir's mode is masked by the sandbox umask077.
         with self.assertRaises(OSError):
             RunStore.create(self.fixture.repo)
         self.assertEqual(root.stat().st_mode & 0o777, 0o755)
