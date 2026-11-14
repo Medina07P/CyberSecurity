@@ -68,7 +68,7 @@ def case_disposable_allowed(case_id: str) -> bool:
     selector = getattr(controller, 'validated_selection', lambda: None)()
     if selector in ('--suite', '--races'):
         return case_id in preservation_inventory()['authorization']['case_ids']
-    if selector == '--cross-consent':
+    if selector in ('--cross-consent', '--cross-web'):
         from cross_module_selection import group_grants
         return case_id in group_grants(selector)
     return False
@@ -160,7 +160,7 @@ def run_selection(selector, write_receipt):
     if (getattr(controller, '__file__', None) != str(HERE / 'automation_sandbox_inside.py') or
             not getattr(controller, 'validated_diagnostic_context', lambda: False)()):
         raise ValueError('BLOCKED: only validated fixed inside controller may discover')
-    if selector not in ('--suite', '--races', '--cross-consent'):
+    if selector not in ('--suite', '--races', '--cross-consent', '--cross-web'):
         raise ValueError('Unknown closed selection')
     if getattr(controller, 'validated_selection', lambda: None)() != selector:
         raise ValueError('Selection differs from validated controller memory')
@@ -171,26 +171,30 @@ def run_selection(selector, write_receipt):
     # Load Task3 units first; no legacy fixture imported until after their run.
     units = unittest.defaultTestLoader.loadTestsFromNames(UNIT_MODULES)
     unit_result = _run_inline(list(flatten(units)))
-    prefix = 'cross-consent-' if selector == '--cross-consent' else ''
+    prefix = selector[2:] + '-' if selector in ('--cross-consent', '--cross-web') else ''
     write_receipt('/evidence/' + prefix + 'sandbox-units.json', unit_result)
     if not unit_result['successful']:
         return 'FAIL', 1, 'Sandbox unit contracts failed; legacy selection not started'
     from automation_test_guard import install
     install('/source')  # redundant controller diagnostics, never OS authority
-    if selector == '--cross-consent':
+    if selector in ('--cross-consent', '--cross-web'):
         from cross_module_selection import group_cases, group_grants, validate_cases
         names = group_cases(selector)
         cases = list(flatten(unittest.defaultTestLoader.loadTestsFromNames(names)))
         validate_cases(selector, cases)  # includes loader _FailedTest IDs
-        if any(not case_disposable_allowed(case.id()) for case in cases):
-            raise ValueError('Cross grant unavailable before fork')
-        write_receipt('/evidence/cross-consent-selection.json', {
+        if any(case_disposable_allowed(case.id()) != (case.id() in group_grants(selector))
+               for case in cases):
+            raise ValueError('Cross per-case permission differs before fork')
+        label = selector[2:]
+        write_receipt('/evidence/' + label + '-selection.json', {
             'version': 1, 'selector': selector, 'eligible': list(names),
             'grants': sorted(group_grants(selector)), 'state': 'WORKER-GATE-REQUIRED'})
         result = _run(cases)
-        write_receipt('/evidence/cross-consent.json', result)
-        return selection_outcome(result, 'cross-consent') or (
-            'PASS', 0, 'All selected cross-consent tests passed')
+        write_receipt('/evidence/' + label + '.json', result)
+        outcome = (selection_outcome(result, 'cross-web') if selector == '--cross-web'
+                   else selection_outcome(result, 'cross-consent'))
+        return outcome or (
+            'PASS', 0, 'All selected ' + label + ' tests passed')
     legacy = [name for name in modules if name not in UNIT_MODULES]
     cases = list(flatten(unittest.defaultTestLoader.loadTestsFromNames(legacy)))
     allowed, blocked = classify(cases)

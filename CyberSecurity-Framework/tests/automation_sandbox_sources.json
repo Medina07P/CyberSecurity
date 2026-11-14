@@ -238,6 +238,8 @@
     "CyberSecurity-Framework/tests/cross_module_selection.py",
     "CyberSecurity-Framework/tests/cross_module_fixture.py",
     "CyberSecurity-Framework/tests/test_cross_consent.py",
+    "CyberSecurity-Framework/tests/test_cross_web.py",
+    "CyberSecurity-Framework/tests/cross_web_curl_double.py",
     "CyberSecurity-Framework/tests/automation_case_scope.py",
     "CyberSecurity-Framework/tests/automation_case_worker.py",
     "CyberSecurity-Framework/tests/automation_menu_inventory.py",

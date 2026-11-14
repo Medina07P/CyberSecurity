@@ -20,9 +20,10 @@ def configure_worker(root, pinned, case_id, permitted, abi):
     if permitted != case_disposable_allowed(case_id):
         raise ValueError('Case grant differs from validated selection inventory')
     import __main__ as controller
-    if getattr(controller, 'validated_selection', lambda: None)() == '--cross-consent':
+    selector = getattr(controller, 'validated_selection', lambda: None)()
+    if selector in ('--cross-consent', '--cross-web'):
         from cross_module_selection import group_cases
-        if case_id not in group_cases('--cross-consent') or not permitted:
+        if case_id not in group_cases(selector):
             raise ValueError('Case identity outside validated cross selection')
     info = root.stat(follow_symlinks=False)
     if (info.st_dev, info.st_ino, info.st_uid, info.st_mode) != pinned:
