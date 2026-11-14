@@ -66,6 +66,31 @@ _evidence_has_records() {
     return 1
 }
 
+_reports_has_published() {
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 -B - "$PHASE_LIB_DIR/../../11_Reports" "$PHASE_FW_DIR/11_Reports/generated" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+try:
+    from lib.history import has_published
+    from lib.coverage import regular
+    root = Path(sys.argv[2])
+    result = has_published(root)
+    if not result:
+        for path in root.glob('*/findings.json'):
+            try:
+                regular(path)
+            except OSError:
+                continue
+            result = True
+            break
+except (ImportError, OSError, ValueError):
+    result = False
+sys.exit(0 if result else 1)
+PY
+}
+
 # phase_state <fase> → done | pending | na
 phase_state() {
     case "$1" in
@@ -109,7 +134,7 @@ phase_state() {
             fi
             ;;
         11_Reports)
-            if compgen -G "$PHASE_FW_DIR/11_Reports/generated/*/findings.json" >/dev/null 2>&1; then
+            if _reports_has_published; then
                 printf 'done\n'
             elif _has_files "$PHASE_FW_DIR/11_Reports/final_report" ||
                  _has_files "$PHASE_FW_DIR/11_Reports/technical"; then

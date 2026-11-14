@@ -14,6 +14,7 @@ from pathlib import Path
 from .attribution import belongs_to, guess_host, normalize_host
 from .model import Finding, ParseResult, merge_findings, sort_findings, relpath
 from .sources import discover
+from .coverage import entry
 
 __all__ = ["Collected", "collect", "filter_findings"]
 
@@ -31,6 +32,7 @@ class Collected:
     objetivos: list[str]
     evaluado: bool
     incidencias: list[dict] = field(default_factory=list)
+    cobertura: list[dict] = field(default_factory=list)
 
 
 def filter_findings(
@@ -123,6 +125,7 @@ def collect(
     objetivo: str | None,
     incluir_sin_objetivo: bool = False,
     todos: bool = False,
+    framework_root: Path | None = None,
 ) -> Collected:
     """Descubre fuentes, atribuye cada una y agrega solo lo incluido.
 
@@ -138,6 +141,7 @@ def collect(
     descartados: list[dict] = []
     evaluados: list[bool] = []
     incidencias: list[dict] = []
+    cobertura: list[dict] = []
 
     for source in sources:
         source_host = source.host or guess_host(source.path.name)
@@ -162,7 +166,14 @@ def collect(
             continue
 
         if source.parser is None:
-            # Sin parser registrado: no se evalúa, no se reclama.
+            if source.kind != 'ignored' and _selected_source(source_host, set(), objetivo, incluir_sin_objetivo, todos):
+                state = 'no_evaluable' if source.kind == 'blocked' else 'no_soportada'
+                cobertura.append(entry('03', source.path, repo_root, source_host, state,
+                                       'Enlace/archivo no regular rechazado' if state == 'no_evaluable' else 'Fuente sin parser compatible'))
+            elif source.kind == 'blocked' and not source_host:
+                cobertura.append(entry('03', source.path, repo_root, '', 'no_evaluable', 'Enlace/archivo no regular rechazado; sin objetivo atribuible'))
+            elif source.kind == 'unsupported' and not source_host:
+                cobertura.append(entry('03/09', source.path, repo_root, '', 'no_soportada', 'Fuente sin parser ni objetivo atribuible'))
             continue
 
         try:
@@ -180,6 +191,7 @@ def collect(
                 "motivo": f"fallo del parser: {exc}",
             })
             evaluados.append(False)
+            cobertura.append(entry('03', source.path, repo_root, source_host, 'no_evaluable', 'Fallo del parser'))
             continue
 
         content_hosts = _content_hosts(result)
@@ -191,6 +203,20 @@ def collect(
                 _add_unattributed(no_evaluable, source, repo_root)
             continue
 
+        evaluated = result.evaluado
+        if source.kind in ('masscan', 'rustscan'):
+            evaluated = bool(filter_findings(result.findings, objetivo, incluir_sin_objetivo, todos))
+            if not evaluated and result.evaluado:
+                no_evaluable.append({'fuente': relpath(source.path, repo_root),
+                                     'motivo': 'Sin puertos abiertos verificables para la selección; finalización y actualidad no acreditadas'})
+        module = {'exploitation': '05', 'postexploitation': '06'}.get(source.kind, '03/04/05')
+        selected_hosts = sorted(h for h in content_hosts if todos or (objetivo and belongs_to(h, objetivo)))
+        coverage_host = selected_hosts[0] if len(selected_hosts) == 1 else (source_host if not selected_hosts else '')
+        cobertura.append(entry(module, source.path, repo_root, coverage_host,
+                               'evaluada' if evaluated else 'no_evaluable',
+                               'Lectura estructurada; no implica ausencia de vulnerabilidades' if evaluated else 'Fuente sin evaluación concluyente'))
+        if source.kind in ('masscan', 'rustscan'):
+            cobertura[-1]['motivo'] += '; finalización y actualidad no acreditadas'
         all_findings.extend(filter_findings(
             result.findings, objetivo, incluir_sin_objetivo, todos
         ))
@@ -208,6 +234,11 @@ def collect(
                     if key not in existing_ports:
                         existing.setdefault("puertos", []).append(puerto)
                         existing_ports.add(key)
+                    else:
+                        previous = next(p for p in existing['puertos'] if (p.get('protocolo', 'tcp'), p.get('puerto')) == key)
+                        for field in ('servicio', 'producto'):
+                            if not previous.get(field) and puerto.get(field):
+                                previous[field] = puerto[field]
                 # Fusionar tecnologías
                 existing_tech = set(existing.get("tecnologias", []))
                 for tech in activo.get("tecnologias", []):
@@ -222,7 +253,13 @@ def collect(
                 activos[host] = activo
         no_evaluable.extend(result.no_evaluable)
         descartados.extend(result.descartados)
-        evaluados.append(result.evaluado)
+        evaluados.append(evaluated)
+
+    if framework_root is not None:
+        from .parsers.prior_modules import collect_prior
+        prior, evaluated = collect_prior(framework_root, repo_root, objetivo, incluir_sin_objetivo, todos)
+        cobertura.extend(prior)
+        evaluados.append(evaluated)
 
     # Objetivos: solo hosts de activos y hallazgos efectivamente incluidos.
     objetivo_set: set[str] = {
@@ -243,4 +280,5 @@ def collect(
         objetivos=sorted(objetivo_set),
         evaluado=any(evaluados),
         incidencias=incidencias,
+        cobertura=cobertura,
     )

@@ -3,7 +3,7 @@
 Uso: `parse(path, repo_root) -> ParseResult`. Cada host con
 `<status state="up"/>` aporta un activo y cada puerto abierto una observación
 `nmap.open_port` (nunca una vulnerabilidad). Cada CVE citado en un `<script>`,
-esté en el puerto o en el host, aporta un `nmap.cve` confirmado; la severidad
+    esté en el puerto o en el host, aporta un `nmap.cve` candidato; la severidad
 sale de la puntuación que el propio script publica junto al CVE y, si no la
 publica, se queda en `media` y el texto lo dice.
 
@@ -190,7 +190,7 @@ def _cves_de_script(
                 activo=activo,
                 evidencia=_evidencia(archivo, extracto),
                 severidad=_severidad(score),
-                confianza="confirmado",
+                confianza="candidato",
                 cve=cve,
                 cvss=score,
             )
