@@ -2,11 +2,25 @@
 
 ## Combinación develop/09: estado actual acotado
 
-Task3 Phase A,2026-11-14 sobre fdf578f: reconciliación de contratos/docs10 y
+Task3 Phase B,2026-11-14: el puente específico09 muestra ahora la ficha antes
+de abrir opciones, también standalone, cargando solo el helper informativo si
+no está definido. Helper ausente/enlace/inválido o error de carga bloquea la
+entrada; no se oculta stderr ni se recurre al dispatcher genérico. No consulta
+sesión/config ni ejecuta backends para presentar la ficha. GREEN **NOT RUN**:
+pendientes revisión independiente y autorización exacta del controlador.
+
+El controlador observó RED real sobre37c558b:60units PASS;179integration,
+6fallos0errores1SKIP. Único ID fallido: el caso del puente09, en sus seis
+subcasos gestor/standalone×EOF/0/lista original, por ficha ausente (0!=1).
+Contratos10 e informes sin fallos. Evidencia conservada en
+`/tmp/opencode/automation-isolated-31cf271903d14a3c9e9bd7f3a618d224/evidence/`.
+No es una ejecución de esta entrega ni prueba GREEN del cambio productivo.
+
+**Historia Phase A**,2026-11-14 sobre fdf578f: reconciliación de contratos/docs10 y
 prueba de ficha09 antes de cambiar el puente/texto productivo. La ficha antes
-de las opciones, tanto desde el gestor como desde el puente aislado, es todavía
+de las opciones, tanto desde el gestor como desde el puente aislado, era todavía
 **contrato pendiente de RED observado e implementación Phase B**, no función
-entregada aquí. Cero/EOF/lista original deben seguir sin consultar sesión,
+entregada entonces. Cero/EOF/lista original deben seguir sin consultar sesión,
 escribir configuración/bytecode ni ejecutar backends.
 
 El controlador observó60units PASS;179integration con10fallos,0errores,1SKIP:
