@@ -7,6 +7,47 @@ from unittest import mock
 
 
 class IntegrationTests(unittest.TestCase):
+    def test_user_exception_is_recorded_without_claiming_inherited_observation(self):
+        data = json.loads(Path(__file__).with_name('automation_preservation_cases.json').read_text())
+        self.assertEqual(data['version'], 2)
+        permission = data['authorization']
+        self.assertEqual(permission['grant'], 'explicit-user-new-synthetic-disposables-only')
+        self.assertEqual(permission['scope'], 'registered-current-case-fixture-only')
+        self.assertEqual(set(permission['case_ids']), set(data['blocked']))
+        self.assertEqual(len(permission['case_ids']), 25)
+        self.assertEqual(permission['required_observer'], 'inherited-before-images-and-own-fixture-boundary')
+        self.assertTrue(all(reason.startswith('BLOCKED-preservation:')
+                            for reason in data['blocked'].values()))  # History retained.
+
+    def test_user_permission_is_not_an_arbitrary_path_or_environment_bypass(self):
+        from automation_test_guard import preservation_event
+        # Inert path strings only. No registry/inherited observer is currently
+        # available: permission alone must not make any path destructive.
+        for path in ('/source/CyberSecurity-Framework/00_Config/scope.yaml',
+                     '/evidence/stdout.log', '/work/identity-canary',
+                     '/tmp/opencode/previous-run/log',
+                     '/work/fixtures/automation-unregistered/scans/automation/run.json'):
+            with self.subTest(path=path), mock.patch.dict('os.environ', {
+                    'AUTOMATION_ALLOW_DELETE': '1', 'CURRENT_FIXTURE': str(Path(path).parent)}):
+                for event in ('os.remove', 'os.rmdir', 'os.truncate'):
+                    with self.assertRaises(PermissionError):
+                        preservation_event(event, (path, -1))
+
+    def test_exception_inventory_rejects_expanded_ids_scope_or_claimed_coverage(self):
+        import automation_suite_selection as selection
+        data = json.loads(Path(__file__).with_name('automation_preservation_cases.json').read_text())
+        mutations = (
+            dict(data['authorization'], case_ids=data['authorization']['case_ids'] + ['arbitrary.case']),
+            dict(data['authorization'], scope='/tmp'),
+            dict(data['authorization'], required_observer='local-audithook-is-enough'),
+            dict(data['authorization'], enabled=True),
+        )
+        for changed in mutations:
+            with self.subTest(changed=changed), mock.patch.object(
+                    selection.json, 'loads', return_value=dict(data, authorization=changed)):
+                with self.assertRaises(ValueError):
+                    selection.preservation_inventory()
+
     def test_fd_attachment_checks_metadata_only_and_preserves_invalid_errors(self):
         import errno
         import os
@@ -212,6 +253,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertTrue(blocked)
         self.assertEqual({t.id() for t in cases}, {t.id() for t in allowed} | set(blocked))
         self.assertTrue(all(reason.startswith('BLOCKED-preservation:') for reason in blocked.values()))
+        self.assertTrue(all('NEEDS_CONTEXT-descendant-boundary' in reason for reason in blocked.values()))
 
     def test_no_new_selector_or_nested_launcher_in_suite_dispatch(self):
         import automation_suite_selection as selection
