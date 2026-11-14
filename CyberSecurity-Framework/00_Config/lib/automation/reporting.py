@@ -53,10 +53,15 @@ def report_command(step: Step, run_dir: Path, ctx: RuntimeContext) -> Command:
     from .adapters import _directory, _path, _private_root, _private_write, child_env
     report_preflight(step, ctx)
     env = dict(child_env(ctx, run_dir))
-    profile = _private_write(run_dir, 'report-profile', b'')
+    # The validated step ID is a basename and unique within the plan. Never
+    # adopt an existing namespace, even when recompiling the same step.
+    private = run_dir / ('report-' + step.id)
     with _directory(run_dir) as fd:
         _private_root(fd)
-        # Do not reuse reports, even if a previous invocation wrote them.
+        os.mkdir(private.name, 0o700, dir_fd=fd)
+    profile = _private_write(private, 'report-profile', b'')
+    with _directory(private) as fd:
+        _private_root(fd)
         os.mkdir('reports', 0o700, dir_fd=fd)
     env['REPORT_PROFILE'] = profile
     print('Aviso: report_input puede contener históricos; el informe no acredita '
@@ -64,7 +69,7 @@ def report_command(step: Step, run_dir: Path, ctx: RuntimeContext) -> Command:
     return Command((str(ctx.python), '-I', '-B', str(ctx.framework / '11_Reports/report_engine.py'),
                     '--objetivo', step.inputs['target'],
                     '--scans', str(_path(ctx, step.inputs['report_input'])),
-                    '--salida', str(run_dir / 'reports'), '--tipo', 'ambos',
+                    '--salida', str(private / 'reports'), '--tipo', 'ambos',
                     '--cliente', 'No indicado', '--auditor', 'No indicado'),
                    ctx.framework, env, 300)
 

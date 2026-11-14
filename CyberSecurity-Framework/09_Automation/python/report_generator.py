@@ -53,7 +53,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if result.steps and result.steps[0].state in ('completado', 'fallido') and raw_rc in (0, 3):
             if raw_rc == 0 and result.rc != 0:
                 return result.rc
-            publish_reports(result.run_dir / 'reports', destination, parent_identity)
+            publish_reports(result.run_dir / 'report-report/reports', destination, parent_identity)
         return raw_rc if raw_rc is not None and result.rc in (0, 1) else result.rc
     except PlanError as exc:
         print(f'Error: {exc}', file=sys.stderr)

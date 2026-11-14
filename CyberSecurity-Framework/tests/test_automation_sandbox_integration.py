@@ -240,7 +240,8 @@ class IntegrationTests(unittest.TestCase):
         bwrap.assert_not_called()
 
     def test_operational_entrypoints_unchanged(self):
-        # Fixed source-only digest baseline from BASE367b9db, no data/config hashes.
+        # Source-only BASE367b9db; two report sources revised for final I1.
+        # No data/config hashes; final-fix-report records the exact old/new digests.
         import hashlib
         root = Path(__file__).resolve().parents[2]
         baseline = json.loads(Path(__file__).with_name('automation_operational_baseline.json').read_text())
