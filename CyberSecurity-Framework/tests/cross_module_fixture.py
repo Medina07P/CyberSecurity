@@ -10,6 +10,7 @@ import subprocess
 from tempfile import mkdtemp
 
 SOURCE_FILES = (
+    'cyber_framework.sh',  # Existing RO allowlist entry; extract only ask_confirm.
     '00_Config/lib/consent/__init__.py',
     '00_Config/lib/consent/burp.py',
     '00_Config/lib/consent/burp_cli.py',
@@ -195,7 +196,8 @@ class CrossModuleFixture:
             (root / 'stderr').read_text(encoding='utf-8', errors='replace'))
 
     def run_leaf(self, relative, args=(), stdin=''):
-        if relative not in SOURCE_FILES or not relative.endswith('.sh'):
+        if (relative == 'cyber_framework.sh' or relative not in SOURCE_FILES or
+                not relative.endswith('.sh')):
             raise ValueError('Not a fixed consent leaf/coordinator')
         return self._run(['/bin/bash', '--noprofile', '--norc',
                           str(self.framework / relative), *args], stdin)
@@ -203,6 +205,13 @@ class CrossModuleFixture:
     def run_menu(self, name, stdin):
         if name not in ('scanners_menu', 'postexploitation_menu'):
             raise ValueError('Unknown fixed consent menu')
+        # Consume the real manager consent classifier as source, without sourcing
+        # its initialization/main. Only display/pause/dispatch are transports.
+        source = (self.framework / 'cyber_framework.sh').read_text()
+        header = '\nask_confirm() {\n'
+        if source.count(header) != 1:
+            raise ValueError('Manager confirmation source shape changed')
+        confirmation = 'ask_confirm() {\n' + source.split(header, 1)[1].split('\n}', 1)[0] + '\n}\n'
         driver = self.output / ('menu-' + str(self._invocations) + '.sh')
         with driver.open('x') as stream:
             stream.write('source "$1/00_Config/lib/params.bash"\n'
@@ -210,8 +219,7 @@ class CrossModuleFixture:
                          'source "$1/00_Config/lib/session.bash"\n'
                          'source "$1/00_Config/lib/' + name + '.bash"\n'
                          'clear_screen() { :; }; pause() { :; }\n'
-                         'ask_confirm() { printf "CONSENT_PROMPT: %s\\n" "$1"; local answer; IFS= read -r answer || return 1; '
-                         '[[ "$answer" == s || "$answer" == si ]]; }\n'
+                         + confirmation +
                          'execute_script() { record-dispatch "$@"; }\n'
                          'run_module_scripts() { record-dispatch "$@"; }\n' + name + '\n')
         return self._run(['/bin/bash', '--noprofile', '--norc', str(driver), str(self.framework)], stdin)
