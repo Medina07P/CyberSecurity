@@ -188,3 +188,180 @@ implementer self-review, **not independent static review**.
   are **NOT RUN and NOT authorized by this report**. Keep pwsh SKIP explicit if
   its reviewed runtime remains absent. No block/global closure, branch-green,
   compatibility/Windows/Docker/legal-custody certificate, merge or push implied.
+
+## Final fix wave — I1 manager URL display, basee239855
+
+Implementation commit: `039d7fb`. **STATIC DONE_WITH_CONCERNS; runtime NOT RUN.**
+This appendix supersedes the earlier acceptance of generic-manager query output
+as a mere warning/limitation and the earlier unchanged-manager-baseline statement.
+The original delivery/history is preserved above. The full finding list in
+`final-static-review.md` is exactly one Important I1, no Critical/Minor findings;
+the complete review and I1 were read verbatim before editing, along with the
+original Task4 brief and binding design §§5/6/12–14. No next-plan work was added.
+
+### I1 source fix and exact scope
+
+The review correctly traces raw `${argv[*]}` in the actual manager consumer,
+before the redacting leaf. A warning about secrets did not satisfy the output
+requirement. `cyber_framework.sh` now calls its own `script_arguments_summary`
+display policy with the original array. For Burp it never echoes raw arguments:
+verification shows GET, validated local proxy port and destination **origin**
+only (scheme/host/optional port), not path/query/userinfo. Invalid/ambiguous
+display input produces a constant NO_DETERMINADO summary without echoing input.
+The policy's Python uses existing Python/stdlib only; no new runtime is staged.
+This display calculation neither authorizes nor sends a request.
+
+The helper consumes only its own positional arguments. The actual leaf invocation
+continues to use the original `"${argv[@]}"`, unchanged. Existing PSExec credential
+concealment is moved intact into the same display policy; ordinary non-Burp
+display/direct-call behavior remains. Menu consent flags, public leaf CLIs,
+coordinators, full inventory and all original capabilities are unchanged.
+
+Exactly six implementation paths changed:
+
+| Framework-relative path | I1-specific provenance |
+|---|---|
+| `cyber_framework.sh` | Actual output-consumer policy extraction and Burp origin-only summary; untouched backend argv |
+| `tests/cross_module_fixture.py` | Extract both actual `ask_confirm` and actual display policy; source-shape/closing guards, no manager initialization. Execution recorder calls real display policy before recording the unchanged dispatch |
+| `tests/test_cross_consent.py` | Only ninth existing granted method amended with literal path/query-secret and PSExec concealment oracles plus real dispatcher wiring/source assertions |
+| `tests/automation_operational_baseline.json` | Exactly one existing manager SHA value changed; no other hashes/keys/version changed |
+| `00_Config/lib/scanners_menu.bash` | Replace inaccurate UI warning with route/query omission plus truthful residual process-argv visibility |
+| `03_Scanners/README.md` | Same narrow output-policy correction; process inspection remains a distinct limitation |
+
+Before/after SHA-256 provenance (basee239855 →039d7fb), printed by actual static
+inspection; these are source identities, not runtime evidence:
+
+| Path | Before | After |
+|---|---|---|
+| `cyber_framework.sh` | `874f7a3ac11c3ade3519ad827f7832fb2cdfe5492b78bd1a62509fbfc98df223` | `67f004780ea6a9356e3e7db0370f9c90874acf5c8579b90f5c29795fec2c691f` |
+| `tests/automation_operational_baseline.json` | `ea35a1e6f05db5a92d806fb912a3f3dfd6efa6479c381a2c71523544297bb30e` | `4f7ec871987f73a13af1620fea61c75673c9befa40c481c25102441c14f6e44a` |
+| `tests/cross_module_fixture.py` | `c3d7ad8d2560ead559ff60940c317797346d7755a0ecdc27133335878f629ad5` | `dca5cead28c31363caee98a51ed4d29eb08acb99d917731ae65d6a3f8dffbb9c` |
+| `tests/test_cross_consent.py` | `783ccc61e93a7ec45a577c86e4cbbd13988297b04709b75020fea44151009438` | `7cc413402ce2a9a960fa90ca267f39e341b2d512ac0fbb4dbd7c337644225999` |
+| `00_Config/lib/scanners_menu.bash` | `ca1fdab09180d5c37ba0cf83634d4476ffa0ee010bda7c85d489b9a9040c2081` | `5eb0a7283b427669703faa099134c2ad3036a26d946fc605bd0a4a778df455cc` |
+| `03_Scanners/README.md` | `997f7d9e378a723b312067167bac353f3401004c72277d4769dfcfc894fa30e2` | `ab117f4c850c101463858a9d5f8d02f273d2749e97e218637717e331c43187e4` |
+
+The old manager pin was checked against `git show e239855:...` **before** its
+single JSON-field update; the new pin was checked against actual manager bytes.
+This is explicit reconciliation of the intentionally edited manager, not a
+baseline refresh or removal of preservation assertions. No source/runtime
+manifest, fixture SOURCE_FILES, nine IDs, historical25 grants, selector, worker/
+scope policy, inventory extractor or full inventory contract was changed.
+
+### Written regression oracles — NOT RUN
+
+Within existing `test_menu_cancel_and_coordinator_exclusions`:
+
+- Accept verification of the literal URL
+  `https://example.test:9443/private-path-secret?token=literal-query-secret`.
+  Use actual menus, confirmation classifier and manager display function; only
+  display clearing/pausing and execution/list transport are doubled, not the
+  output-redaction policy. Assert both stdout and stderr omit the path secret,
+  query secret and `token=`; assert GET, proxy127.0.0.1:8080 and destination
+  https://example.test:9443 remain visible. Assert recorder receives the exact
+  unmodified URL plus original flags/positions.
+- Assert actual manager `execute_script` calls the extracted display helper with
+  the original array, no longer contains raw `${argv[*]}`, and still dispatches
+  the original array to the shell leaf. No manager initialization is executed.
+- Exercise existing PSExec menu dispatch through the same display policy and
+  recorder; assert its literal password is absent on both channels, concealment
+  message remains, and all five original positions/password/command are intact.
+  No PSExec source/backend is executed or newly copied; this protects the
+  existing credential-concealment branch affected by the display extraction.
+
+These are amended, unexecuted oracles, not observed runtime assertions. Prior
+RED/source review was not replayed. All eight other cross-case method ASTs and
+the complete inventory tests remain unchanged.
+
+### Actual static commands and outputs
+
+Initial `git status --short`: empty at e239855. Read the complete scoped six-file
+`git diff -- ...` for self-review. Two standalone `python3 -I -B - <<'PY'`
+commands imported stdlib only. The first printed the old pin and newly computed
+manager hash (the manager pair in the table), asserting the old pin matched
+base source. The final command below was actually run before implementation
+commit; no repository imports/helpers were used:
+
+```python
+import ast, hashlib, json, re, subprocess
+from pathlib import Path
+base='e239855'
+paths=subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
+for name in paths:
+    data=Path(name).read_bytes()
+    before=subprocess.check_output(['git','show',base+':'+name])
+    assert b'\r' not in data
+    print('SHA256',name,hashlib.sha256(before).hexdigest(),'->',hashlib.sha256(data).hexdigest())
+    if name.endswith('.py'):
+        ast.parse(data,filename=name)
+        print('AST/LF OK',name)
+    if name.endswith(('.sh','.bash')):
+        p=subprocess.run(['bash','-n',name],capture_output=True,text=True)
+        print('BASH-N',name,p.returncode,repr(p.stdout),repr(p.stderr))
+        assert (p.returncode,p.stdout,p.stderr)==(0,'','')
+manager=Path('CyberSecurity-Framework/cyber_framework.sh').read_text()
+embedded=manager.split("<<'PY'\n",1)[1].split('\nPY',1)[0]
+ast.parse(embedded,filename='manager:display-heredoc')
+print('AST OK embedded display Python; not executed')
+policies=''
+for function in ('ask_confirm','script_arguments_summary'):
+    header='\n'+function+'() {\n'
+    assert manager.count(header)==1
+    body,closing,_=manager.split(header,1)[1].partition('\n}')
+    assert closing
+    policies+=function+'() {\n'+body+'\n}\n'
+p=subprocess.run(['bash','-n'],input=policies,capture_output=True,text=True)
+print('BASH-N extracted policy SOURCE',p.returncode,repr(p.stdout),repr(p.stderr))
+assert (p.returncode,p.stdout,p.stderr)==(0,'','')
+name='CyberSecurity-Framework/tests/test_cross_consent.py'
+def methods(data):
+    return {n.name:ast.dump(n) for n in ast.walk(ast.parse(data)) if isinstance(n,ast.FunctionDef) and n.name.startswith('test_')}
+b=methods(subprocess.check_output(['git','show',base+':'+name])); a=methods(Path(name).read_bytes())
+assert len(a)==9 and a.keys()==b.keys() and {n for n in a if a[n]!=b[n]}=={'test_menu_cancel_and_coordinator_exclusions'}
+print('TEST AST: nine unchanged IDs; only existing ninth body amended')
+name='CyberSecurity-Framework/tests/automation_operational_baseline.json'
+b=json.loads(subprocess.check_output(['git','show',base+':'+name])); a=json.loads(Path(name).read_bytes())
+key='CyberSecurity-Framework/cyber_framework.sh'
+assert a.keys()==b.keys() and a['version']==b['version'] and a['sha256'].keys()==b['sha256'].keys()
+assert {n for n in a['sha256'] if a['sha256'][n]!=b['sha256'][n]}=={key}
+assert a['sha256'][key]==hashlib.sha256(Path(key).read_bytes()).hexdigest()
+assert b['sha256'][key]==hashlib.sha256(subprocess.check_output(['git','show',base+':'+key])).hexdigest()
+print('BASELINE: manager hash only; keys/other hashes/version unchanged; before/after match source')
+for filename in ('automation_sandbox_sources.json','automation_sandbox_manifest.json','automation_preservation_cases.json','cross_module_cases.json','cross_module_selection.py','automation_suite_selection.py','automation_case_worker.py','automation_case_scope.py','automation_menu_inventory.py','test_automation_contract.py'):
+    name='CyberSecurity-Framework/tests/'+filename
+    data=Path(name).read_bytes()
+    if name.endswith('.json'): json.loads(data)
+    assert data==subprocess.check_output(['git','show',base+':'+name])
+print('UNCHANGED: source/runtime manifests, grants, cases, selectors, worker/scope, full inventory/contracts')
+name='CyberSecurity-Framework/tests/cross_module_fixture.py'
+def source_files(data):
+    return next(ast.literal_eval(n.value) for n in ast.parse(data).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='SOURCE_FILES' for t in n.targets))
+assert source_files(Path(name).read_bytes())==source_files(subprocess.check_output(['git','show',base+':'+name]))
+print('FIXTURE SOURCE_FILES unchanged')
+p=subprocess.run(['git','diff','--check'],capture_output=True,text=True)
+print('DIFF-CHECK',p.returncode,repr(p.stdout),repr(p.stderr))
+assert (p.returncode,p.stdout,p.stderr)==(0,'','')
+print('STATIC ONLY: no repo imports/helpers/tests/product/backends executed')
+```
+
+Final script exited0. Hash output is reproduced in the six-path table. Remaining
+output: two `AST/LF OK` files (fixture/cross test); `AST OK embedded display
+Python; not executed`; Bash-n for manager, scanner menu, extracted policy source
+each `0 '' ''`; `TEST AST: nine unchanged IDs; only existing ninth body amended`;
+`BASELINE: manager hash only; keys/other hashes/version unchanged; before/after
+match source`; unchanged-policy/manifests/inventory and fixture SOURCE_FILES lines
+as printed above; `DIFF-CHECK 0 '' ''`; final `STATIC ONLY` line. All Bash stderr
+was explicitly captured/checked. The extracted source was **syntax parsed only**,
+not run. `git diff --cached --check` also returned0/empty before scoped commit.
+Commit used hooksPath=/dev/null and commit.gpgsign=false for this invocation,
+as in the original delivery, without persistent configuration changes.
+
+### Final-wave handoff
+
+I1 is addressed in source and written integrated oracles, not certified at
+runtime. Focused independent re-review of039d7fb and this appendix is still
+required, followed by exact separate controller authorizations for cross-consent
+and suite. No helper/import/test/probe/launcher/product/backend, even sandboxed
+or stubbed, was run. No operator config/keys/evidence, subagents, sudo/network,
+GUI, installation/download, cleanup, merge/push/reset or artifact deletion.
+Original reports and all artifacts are preserved. No green branch, block/Task4/
+Task9/global closure, operational certificate or new authority is asserted.
