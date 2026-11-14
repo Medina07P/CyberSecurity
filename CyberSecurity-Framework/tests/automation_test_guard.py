@@ -21,12 +21,17 @@ def preservation_event(event, args):
     """
     if event in ('os.remove', 'os.rmdir', 'os.truncate'):
         raise PermissionError('BLOCKED-preservation: deletion/truncation is not authorized')
+    if event == 'open' and isinstance(args[0], int):
+        # io.open/os.fdopen attach to an ALREADY open fd. Their mode-derived
+        # audit flags can include O_TRUNC, but attachment performs no truncation.
+        # Inspect live metadata only; keep EBADF/invalid-fd errors, never open a
+        # /proc alias, read contents, duplicate or close the caller's handle.
+        os.fstat(args[0])
+        return
     if event == 'os.rename':
         destination, directory = args[1], args[3]
     elif event == 'open' and isinstance(args[2], int) and args[2] & os.O_TRUNC:
         destination, directory = _OPEN_PATH.get() or args[0], None
-        if isinstance(destination, int):
-            raise PermissionError('BLOCKED-preservation: truncation of descriptor')
     else:
         return
     try:

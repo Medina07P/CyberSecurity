@@ -7,6 +7,78 @@ from unittest import mock
 
 
 class IntegrationTests(unittest.TestCase):
+    def test_fd_attachment_checks_metadata_only_and_preserves_invalid_errors(self):
+        import errno
+        import os
+        from automation_test_guard import preservation_event
+        with mock.patch('automation_test_guard.os.fstat', return_value=mock.sentinel.metadata) as metadata, \
+                mock.patch('automation_test_guard.os.stat') as named, \
+                mock.patch('automation_test_guard.os.read') as read:
+            for mode in ('w', 'wb', 'w+'):
+                preservation_event('open', (42, mode, os.O_WRONLY | os.O_TRUNC))
+            self.assertEqual(metadata.call_args_list, [mock.call(42)] * 3)
+            named.assert_not_called()
+            read.assert_not_called()
+        for descriptor in (-1, 42):
+            with self.subTest(descriptor=descriptor), mock.patch(
+                    'automation_test_guard.os.fstat', side_effect=OSError(errno.EBADF, 'synthetic closed fd')):
+                with self.assertRaises(OSError) as failure:
+                    preservation_event('open', (descriptor, 'wb', os.O_TRUNC))
+                self.assertEqual(failure.exception.errno, errno.EBADF)
+        with mock.patch('automation_test_guard.os.fstat', side_effect=OverflowError('synthetic invalid fd')):
+            with self.assertRaises(OverflowError):
+                preservation_event('open', (2 ** 100, 'wb', os.O_TRUNC))
+
+    def test_fdopen_and_pipe_attachments_keep_synthetic_bytes_and_borrowed_handles(self):
+        import io
+        import os
+        from automation_fixture import AutomationFixture
+        fixture = AutomationFixture()
+        path = fixture.repo / 'attachment-only'
+        original = b'SYNTHETIC existing bytes; wrapping wb must not truncate\x00'
+        with path.open('xb') as stream:
+            stream.write(original)
+        fd = os.open(path, os.O_WRONLY)
+        try:
+            with os.fdopen(fd, 'wb', closefd=False):
+                pass  # Attach only: no write/truncate or replacement of content.
+            os.fstat(fd)  # Borrowed descriptor must still be live.
+        finally:
+            os.close(fd)
+        self.assertEqual(path.read_bytes(), original)
+        reader, writer = os.pipe()
+        try:
+            with io.open(writer, 'wb', closefd=False):
+                pass
+            os.fstat(reader)
+            os.fstat(writer)
+        finally:
+            os.close(reader)
+            os.close(writer)
+
+    def test_real_truncation_events_and_existing_path_alias_stay_blocked(self):
+        import os
+        from automation_test_guard import preservation_event
+        for target in (42, 'synthetic-path'):
+            with self.subTest(target=target), self.assertRaises(PermissionError):
+                preservation_event('os.truncate', (target, 0))  # ftruncate uses same audit event.
+        with mock.patch('automation_test_guard.os.stat', return_value=mock.sentinel.existing), \
+                mock.patch('automation_test_guard.os.fstat') as attach:
+            for path in ('synthetic-path', '/proc/self/fd/42'):
+                with self.subTest(path=path), self.assertRaises(PermissionError):
+                    preservation_event('open', (path, 'wb', os.O_TRUNC))
+            attach.assert_not_called()
+
+    def test_storage_mode_rejection_sets_755_explicitly_before_assertion(self):
+        tree = ast.parse(Path(__file__).with_name('test_automation_runner.py').read_text())
+        case = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
+                    and n.name == 'test_storage_files_lock_and_modes')
+        chmod = next(n for n in ast.walk(case) if isinstance(n, ast.Call)
+                     and ast.unparse(n.func) == 'root.chmod' and
+                     isinstance(n.args[0], ast.Constant) and n.args[0].value == 0o755)
+        rejection = next(n for n in ast.walk(case) if isinstance(n, ast.With))
+        self.assertLess(chmod.lineno, rejection.lineno)
+
     def test_all_case_roots_use_persistent_work_fixtures(self):
         # Source regression only; no launcher/prepare call or nested bwrap.
         here = Path(__file__).parent
