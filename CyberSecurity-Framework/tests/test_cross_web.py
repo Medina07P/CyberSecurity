@@ -381,6 +381,62 @@ hr_request_pair form password literal
                     self.assertIn('Content-Type: text/plain', row['headers'])
                     self.assertIn('X-Synthetic: keep', row['headers'])
 
+        # I1: shell quoting does not disable curl URL globbing. Inspect the
+        # literal URL AND defensive argv, without emulating network expansion.
+        for mode in ('captured', 'manual'):
+            with self.subTest(url_globbing=mode):
+                f = self.fixture()
+                words = self.dictionary(f)
+                if mode == 'captured':
+                    request = self.capture(f, target='/login/{one,two}/[1-3]?view={a,b}&range=[4-6]')
+                    result = self.login(f, request, words)
+                    expected_url = 'https://example.test:8443/login/{one,two}/[1-3]?view={a,b}&range=[4-6]'
+                else:
+                    f.env.update(BRUTE_URL='http://example.test:8080/login/{one,two}/[1-3]?view={a,b}&range=[4-6]',
+                                 BRUTE_CUERPO='password={password}', BRUTE_SI='1', BRUTE_MAX='2')
+                    result = f.run_leaf(LOGIN, ('manual', str(words)))
+                    expected_url = 'http://example.test:8080/login/{one,two}/[1-3]?view={a,b}&range=[4-6]'
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                calls = f.curl_records()
+                self.assertEqual(len(f.curl_invocations()), 2)
+                self.assertEqual(len(calls), 2)
+                for row, candidate in zip(calls, ('a&b=+%', 'quote" /ñ')):
+                    self.assertEqual(row['state'], 'DONE')
+                    self.assertEqual(row['urls'], [expected_url])
+                    if mode == 'captured':
+                        self.assertEqual(self.logical(row, 'form', 'password'), candidate)
+                    else:
+                        self.assertEqual(row['body'], 'password=' + candidate)
+                    self.assertIn('--globoff', row['argv'])
+
+        # I2: a leading @ is RAW manual text, not permission to read a file.
+        # The existing double deliberately retains curl's @file semantics so
+        # current production exposes contents rather than hiding this failure.
+        with self.subTest(manual_leading_at=True):
+            import base64
+            f = self.fixture()
+            referenced = self.new_text(f.repo / 'readable-synthetic-body.txt',
+                                       'SYNTHETIC FILE CONTENTS, NOT THE REQUEST BODY\n')
+            before = referenced.read_bytes()
+            words = self.new_text(f.repo / 'manual-at-words.txt', str(referenced) + '\n')
+            f.env.update(BRUTE_URL='http://example.test:8080/login', BRUTE_METODO='PATCH',
+                         BRUTE_HEADERS='Content-Type: text/plain;X-Synthetic: keep',
+                         BRUTE_CUERPO='@{password}', BRUTE_SI='1', BRUTE_MAX='1')
+            result = f.run_leaf(LOGIN, ('manual', str(words)))
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertEqual(len(f.curl_invocations()), 1)
+            row, = f.curl_records()
+            self.assertEqual(row['state'], 'DONE')
+            self.assertEqual(row['urls'], ['http://example.test:8080/login'])
+            self.assertEqual(row['method'], 'PATCH')
+            self.assertIn('Content-Type: text/plain', row['headers'])
+            self.assertIn('X-Synthetic: keep', row['headers'])
+            self.assertEqual(referenced.read_bytes(), before)
+            self.assertEqual(row['body'], '@' + str(referenced))
+            self.assertEqual(base64.b64decode(row['body_base64'], validate=True),
+                             ('@' + str(referenced)).encode('utf-8'))
+            self.assertNotEqual(base64.b64decode(row['body_base64'], validate=True), before)
+
     def test_login_has_no_preconsent_transport(self):
         # Verify the zero-call oracle itself without touching product business:
         # all failures must leave a raw receipt before any fallible input access.
@@ -511,6 +567,23 @@ hr_request_pair form password literal
                          ['password=a&b=+%', 'password=quote" /ñ'])
 
     def test_rate_has_no_scheme_probe(self):
+        # I1 rate branch: preserve path/query glob syntax as literal URL bytes,
+        # with explicit curl defence rather than a fake expansion in the double.
+        with self.subTest(rate_url_globbing=True):
+            f = self.fixture()
+            request = self.capture(f, target='/login/{one,two}/[1-3]?view={a,b}&range=[4-6]')
+            result = self.rate(f, request)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(len(f.curl_invocations()), 2)
+            calls = f.curl_records()
+            self.assertEqual(len(calls), 2)
+            for n, row in enumerate(calls, 1):
+                self.assertEqual(row['state'], 'DONE')
+                self.assertEqual(row['urls'],
+                                 ['https://example.test:8443/login/{one,two}/[1-3]?view={a,b}&range=[4-6]'])
+                self.assertEqual(self.logical(row, 'form', 'password'), 'wrong-' + str(n))
+                self.assertEqual(self.logical(row, 'form', 'username'), 'alice@example.test')
+                self.assertIn('--globoff', row['argv'])
         # Literal URLs, not generated by hr_url/rl_url/the tested port policy.
         # HTTP on443/8443 and HTTPS on8080 explicitly contradict port inference.
         for scheme, host, expected_url in (
