@@ -410,8 +410,8 @@ hr_request_pair form password literal
                     self.assertIn('--globoff', row['argv'])
 
         # I2: a leading @ is RAW manual text, not permission to read a file.
-        # The existing double deliberately retains curl's @file semantics so
-        # current production exposes contents rather than hiding this failure.
+        # The double retains curl's @file semantics: pre-fix production exposed
+        # contents here rather than hiding the failure. @- now reads real stdin.
         with self.subTest(manual_leading_at=True):
             import base64
             f = self.fixture()
@@ -436,6 +436,44 @@ hr_request_pair form password literal
             self.assertEqual(base64.b64decode(row['body_base64'], validate=True),
                              ('@' + str(referenced)).encode('utf-8'))
             self.assertNotEqual(base64.b64decode(row['body_base64'], validate=True), before)
+
+        # Same @file boundary with an untouched opaque captured body: only
+        # query fields change, so the body must remain literal, not file input.
+        with self.subTest(captured_leading_at=True):
+            f = self.fixture()
+            referenced = self.new_text(f.repo / 'captured-synthetic-body.txt', 'NOT CAPTURED BODY\n')
+            body = '@' + str(referenced)
+            request = self.capture(f, target='/login?username=alice&password=captured',
+                                   body=body, content_type='text/plain')
+            words = self.dictionary(f)
+            result = self.login(f, request, words)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertEqual(len(f.curl_invocations()), 2)
+            calls = f.curl_records()
+            self.assertEqual(len(calls), 2)
+            for row, expected_url in zip(calls, (
+                    'https://example.test:8443/login?username=alice&password=a%26b%3D%2B%25',
+                    'https://example.test:8443/login?username=alice&password=quote%22%20%2F%C3%B1')):
+                self.assertEqual(row['urls'], [expected_url])
+                self.assertEqual(row['body'], body)
+                self.assertEqual(base64.b64decode(row['body_base64'], validate=True), body.encode('utf-8'))
+            self.assertEqual(referenced.read_text(), 'NOT CAPTURED BODY\n')
+
+        # stdin must not add/remove newlines, encode form data, or revisit
+        # placeholder-looking inserted values. Compare actual received bytes.
+        with self.subTest(manual_raw_stdin_bytes=True):
+            f = self.fixture()
+            words = self.new_text(f.repo / 'manual-raw-words.txt', 'a&b=+%\n')
+            f.env.update(BRUTE_URL='http://example.test:8080/login', BRUTE_METODO='PATCH',
+                         BRUTE_CUERPO='@{password}\r\nraw=+%\\雪:{usuario}\n\n',
+                         BRUTE_USUARIO='{password}', BRUTE_SI='1', BRUTE_MAX='1')
+            result = f.run_leaf(LOGIN, ('manual', str(words)))
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertEqual(len(f.curl_invocations()), 1)
+            row, = f.curl_records()
+            self.assertEqual(row['body'], '@a&b=+%\r\nraw=+%\\雪:{password}\n\n')
+            self.assertEqual(base64.b64decode(row['body_base64'], validate=True),
+                             '@a&b=+%\r\nraw=+%\\雪:{password}\n\n'.encode('utf-8'))
 
     def test_login_has_no_preconsent_transport(self):
         # Verify the zero-call oracle itself without touching product business:
@@ -496,6 +534,21 @@ hr_request_pair form password literal
                 self.assertEqual(base64.b64decode(record['body_base64'], validate=True), payload)
                 self.assertEqual(record['body'], text)
                 self.assertEqual(body.read_bytes(), payload)
+        # @- is stdin, never a path named '-'. Its leading @ and CRLF/trailing
+        # newlines must survive in the same literal/base64 receipt protocol.
+        for text in ('', '@literal\r\nsecond&+%\\雪\n\n'):
+            with self.subTest(double_stdin=text):
+                f = self.fixture()
+                argv = [str(f.bin / 'curl'), '--globoff', '--data-binary', '@-',
+                        'https://example.test/synthetic-transport-only']
+                result = f._run(argv, text)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                raw, = f.curl_invocations()
+                self.assertEqual(raw['argv'], argv[1:])
+                record, = f.curl_records()
+                self.assertEqual(record['state'], 'DONE')
+                self.assertEqual(record['body'], text)
+                self.assertEqual(base64.b64decode(record['body_base64'], validate=True), text.encode('utf-8'))
         scenarios = (
             ({'BRUTE_SI': '1'}, 'example.test', 'username=a&password=b', 'local', 1),
             ({'BRUTE_SI': '1'}, 'example.test:443', 'username=a&password=b', 'local', 1),
@@ -567,6 +620,27 @@ hr_request_pair form password literal
                          ['password=a&b=+%', 'password=quote" /ñ'])
 
     def test_rate_has_no_scheme_probe(self):
+        # Query-only mutation must not turn an opaque @-leading body into a
+        # file read in the rate transport branch either.
+        with self.subTest(rate_leading_at=True):
+            import base64
+            f = self.fixture()
+            referenced = self.new_text(f.repo / 'rate-synthetic-body.txt', 'NOT RATE BODY\n')
+            body = '@' + str(referenced)
+            request = self.capture(f, target='/login?username=alice&password=captured',
+                                   body=body, content_type='text/plain')
+            result = self.rate(f, request)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(len(f.curl_invocations()), 2)
+            calls = f.curl_records()
+            self.assertEqual(len(calls), 2)
+            for row, expected_url in zip(calls, (
+                    'https://example.test:8443/login?username=alice&password=wrong-1',
+                    'https://example.test:8443/login?username=alice&password=wrong-2')):
+                self.assertEqual(row['urls'], [expected_url])
+                self.assertEqual(row['body'], body)
+                self.assertEqual(base64.b64decode(row['body_base64'], validate=True), body.encode('utf-8'))
+            self.assertEqual(referenced.read_text(), 'NOT RATE BODY\n')
         # I1 rate branch: preserve path/query glob syntax as literal URL bytes,
         # with explicit curl defence rather than a fake expansion in the double.
         with self.subTest(rate_url_globbing=True):

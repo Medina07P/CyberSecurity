@@ -65,7 +65,12 @@ def main():
                       method=values.get('-X', values.get('--request', 'GET')))
         stage = 'body'
         body = values.get('--data-binary', '')
-        body_bytes = Path(body[1:]).read_bytes() if body.startswith('@') else os.fsencode(body)
+        if body == '@-':
+            body_bytes = sys.stdin.buffer.read()
+        elif body.startswith('@'):
+            body_bytes = Path(body[1:]).read_bytes()
+        else:
+            body_bytes = os.fsencode(body)
         detail['body_base64'] = base64.b64encode(body_bytes).decode('ascii')
         try:
             detail['body'] = body_bytes.decode('utf-8')  # no newline translation
