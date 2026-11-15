@@ -59,6 +59,87 @@ def elf_bytes(needed=(), interpreter=None, rpath=None):
 
 
 class Preparation(unittest.TestCase):
+    def test_python_alias_manifest_mutations_rejected(self):
+        import copy
+        import json
+        import automation_sandbox_prepare as prepare
+        manifest = json.loads((Path(prepare.__file__).parent / 'automation_sandbox_manifest.json').read_text())
+
+        class ReachedIdentity(Exception):
+            pass
+
+        for mutation in ('valid', 'missing', 'duplicate', 'source', 'destination', 'category', 'extra', 'version'):
+            root = persistent_case()
+            data = copy.deepcopy(manifest)
+            if mutation == 'missing': data['python_aliases'] = []
+            if mutation == 'duplicate': data['python_aliases'] *= 2
+            if mutation in ('source', 'destination'): data['python_aliases'][0][mutation] = '/outside/not-allowed.py'
+            if mutation == 'category': data['python_aliases'][0]['category'] = 'elf'
+            if mutation == 'extra': data['unexpected'] = True
+            if mutation == 'version': data['version'] = 99
+            (root / 'automation_sandbox_manifest.json').write_text(json.dumps(data))
+            with self.subTest(mutation=mutation), patch.object(prepare, 'HERE', root), \
+                    patch.object(prepare, '_python_alias_identity', side_effect=ReachedIdentity), \
+                    patch.object(prepare, 'copy_regular', side_effect=AssertionError('must not copy')):
+                with self.assertRaises(ReachedIdentity if mutation == 'valid' else IsolationBlocked):
+                    prepare._runtime_entries()
+
+    def alias_copy_case(self, change):
+        import json
+        import automation_sandbox_prepare as prepare
+        root = persistent_case()
+        repo = root / 'synthetic-repo'
+        repo.mkdir(mode=0o700)
+        runs = root / 'new-runs'
+        runs.mkdir(mode=0o700)
+        source = repo / 'canonical.py'
+        source.write_bytes(b'# synthetic alias source\n')
+        before = source.read_bytes(), source.stat().st_mode
+        canonical = (1, 2, 3, 4, 5, 6, 7)
+        identity = ((9, 8, 7), canonical)
+        changed = ((9, 8, 6), canonical)
+        observations = [identity, changed] if change == 'before' else [identity, identity, changed if change == 'after-observation' else identity]
+        entry = RuntimeFile(source, str(prepare.STDLIB / prepare.PYTHON_ALIAS), 'python')
+        original = copy_regular
+        copies = []
+
+        def copy_synthetic(origin, destination, mode):
+            self.assertEqual(origin, source)
+            copies.append(destination)
+            record = original(origin, destination, mode)
+            record['source_identity'] = list((0,) if change == 'after-record' else canonical)
+            return record
+
+        with patch.object(prepare, 'REPO', repo), patch.object(prepare, 'RUN_PARENT', runs), \
+                patch.object(prepare, 'source_names', return_value=()), \
+                patch.object(prepare, '_runtime_entries', return_value=(entry,)), \
+                patch('automation_sandbox_elf.resolve_runtime', return_value=(entry,)), \
+                patch.object(prepare, '_python_alias_identity', side_effect=observations), \
+                patch.object(prepare, 'copy_regular', side_effect=copy_synthetic):
+            if change == 'valid':
+                result = prepare.prepare(repo)
+                self.assertTrue((result.root / 'prepared.json').is_file())
+            else:
+                with self.assertRaises(IsolationBlocked):
+                    prepare.prepare(repo)
+                blocked = list(runs.glob('*/blocked.json'))
+                self.assertEqual(len(blocked), 1)
+                receipt = json.loads(blocked[0].read_text())
+                self.assertEqual(receipt['state'], 'BLOCKED')
+                self.assertIn('alias changed', receipt['reason'])
+                self.assertFalse((blocked[0].parent / 'prepared.json').exists())
+        self.assertEqual(len(copies), 0 if change == 'before' else 1)
+        self.assertEqual((source.read_bytes(), source.stat().st_mode), before)
+
+    def test_python_alias_identity_before_copy_rejected(self):
+        self.alias_copy_case('valid')
+        self.alias_copy_case('before')
+
+    def test_python_alias_identity_after_copy_rejected(self):
+        for change in ('after-record', 'after-observation'):
+            with self.subTest(change=change):
+                self.alias_copy_case(change)
+
     def test_consent_runtime_is_exact_ordinary_files_without_backend_aliases(self):
         import automation_sandbox_prepare as prepare
         self.assertEqual(prepare.CROSS_RUNTIME, (

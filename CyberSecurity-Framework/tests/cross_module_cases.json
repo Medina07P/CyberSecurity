@@ -5,6 +5,28 @@
   "required_observer": "landlock-abi3-current-case-worker",
   "disposable_states": "new-synthetic-intermediate-states",
   "groups": {
+  "--cross-closure": {
+    "case_ids": [
+      "test_cross_closure.SummaryTests.test_cli_summary_is_safe",
+      "test_cross_closure.SummaryTests.test_interactive_summary_and_pre_store_failure",
+      "test_cross_closure.TerminalTests.test_cancel_before_and_after_ready",
+      "test_cross_closure.TerminalTests.test_existing_result_is_preserved",
+      "test_cross_closure.TerminalTests.test_receipt_io_failure_preserves_cancellation",
+      "test_cross_closure.TerminalTests.test_reap_failure_is_not_success",
+      "test_cross_documentation.DocumentationTests.test_dns_resolution_and_dictionary_gate",
+      "test_cross_documentation.DocumentationTests.test_ftp_login_vs_listing",
+      "test_cross_documentation.DocumentationTests.test_actual_exploitation_children",
+      "test_cross_documentation.DocumentationTests.test_templates_and_ssh_have_real_effects",
+      "test_cross_documentation.DocumentationTests.test_forensic_metadata_vs_private_hash_reads",
+      "test_cross_documentation.DocumentationTests.test_scope_backup_vs_targets_append",
+      "test_cross_documentation.DocumentationTests.test_forensic_menu_vs_cli_filters",
+      "test_cross_documentation.DocumentationTests.test_99_warning_matches_omissions",
+      "test_cross_documentation.DocumentationTests.test_wizard_defaults_and_resolved_components",
+      "test_cross_documentation.DocumentationTests.test_key_cli_signatures",
+      "test_cross_documentation.DocumentationTests.test_sqlmap_gates_by_channel"
+    ],
+    "grant_ids": []
+  },
   "--cross-consent": {
   "case_ids": [
     "test_cross_consent.ConsentTests.test_cleanup_nonexecution_is_inert",

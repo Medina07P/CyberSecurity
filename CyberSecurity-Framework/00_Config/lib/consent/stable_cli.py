@@ -60,8 +60,7 @@ def main(argv: list[str]) -> int:
                     i += 1
                     continue
                 if token in ('--preview', '--help'):
-                    i += 1
-                    continue
+                    raise ValueError('Linpeas: --preview y --help requieren un modo exclusivo.')
                 raise ValueError('Opción Linpeas desconocida o fuera de posición.')
             if binary is not None and download:
                 raise ValueError('Linpeas: --binary y --download son incompatibles.')

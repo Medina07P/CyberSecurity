@@ -8,6 +8,38 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../00_Config/lib/module_intro.bash"
 
+# Raíces por categoría, solo durante este proceso. No migrar notas ni guardar
+# configuración. Crear/listar/editar usan siempre la misma selección explícita.
+LAB_HTB="$SCRIPT_DIR/hackthebox/machines"
+LAB_THM="$SCRIPT_DIR/tryhackme/rooms"
+LAB_AD="$SCRIPT_DIR/active_directory/machines"
+LAB_WEB="$SCRIPT_DIR/web_apps/machines"
+LAB_CLOUD="$SCRIPT_DIR/cloud/machines"
+
+select_lab_root() {
+    local variable="$1" candidate component current="/"
+    printf 'Raíz absoluta existente (Enter cancela): '
+    IFS= read -r candidate || return
+    [[ -n "$candidate" ]] || return
+    if [[ "$candidate" != /* || "$candidate" == *[[:cntrl:]]* ||
+          "/$candidate/" == *'/../'* || "/$candidate/" == *'/./'* ]]; then
+        printf '❌ Raíz no válida\n' >&2
+        return 1
+    fi
+    local -a components
+    IFS=/ read -r -a components <<< "$candidate"
+    for component in "${components[@]}"; do
+        [[ -n "$component" ]] || continue
+        current="${current%/}/$component"
+        if [[ -L "$current" || ! -d "$current" ]]; then
+            printf '❌ La raíz debe existir y no contener enlaces\n' >&2
+            return 1
+        fi
+    done
+    printf -v "$variable" '%s' "$candidate"
+    printf 'Raíz seleccionada para esta sesión: %s\n' "$candidate"
+}
+
 # Colores para mejor visualización
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -124,16 +156,17 @@ htb_menu() {
     echo -e "${GREEN}3.${NC} Abrir notas de una máquina"
     echo -e "${GREEN}4.${NC} Ver notas generales HTB"
     echo -e "${GREEN}5.${NC} Volver al menú principal"
+    echo -e "${GREEN}6.${NC} Seleccionar raíz HTB (solo esta sesión): $LAB_HTB"
     echo ""
-    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-5]: ${NC}"
-    read -r option
+    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-6]: ${NC}"
+    read -r option || return
     
     case $option in
         1)
             echo -ne "${YELLOW}Nombre de la máquina: ${NC}"
             read -r machine
             if [[ -n "$machine" ]]; then
-                "$SCRIPT_DIR/hackthebox/htb_setup.sh" "$machine"
+                "$SCRIPT_DIR/hackthebox/htb_setup.sh" "$machine" --root "$LAB_HTB"
                 rc=$?
                 if (( rc == 0 )); then
                     echo -e "\n${GREEN}✅ Máquina configurada correctamente${NC}"
@@ -147,7 +180,7 @@ htb_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Máquinas configuradas:${NC}"
-            dir="$SCRIPT_DIR/hackthebox/machines/"
+            dir="$LAB_HTB/"
             for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
             compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
@@ -157,8 +190,8 @@ htb_menu() {
         3)
             echo -ne "${YELLOW}Nombre de la máquina: ${NC}"
             read -r machine
-            if [[ -f "$SCRIPT_DIR/hackthebox/machines/$machine/notes/README.md" ]]; then
-                ${EDITOR:-nano} "$SCRIPT_DIR/hackthebox/machines/$machine/notes/README.md"
+            if [[ "$machine" != */* && "$machine" != . && "$machine" != .. && -f "$LAB_HTB/$machine/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$LAB_HTB/$machine/notes/README.md"
             else
                 echo -e "${RED}❌ Máquina no encontrada${NC}"
                 sleep 2
@@ -174,6 +207,7 @@ htb_menu() {
             fi
             htb_menu
             ;;
+        6) select_lab_root LAB_HTB; htb_menu ;;
         5)
             main_menu
             ;;
@@ -195,16 +229,17 @@ thm_menu() {
     echo -e "${GREEN}3.${NC} Abrir notas de una sala"
     echo -e "${GREEN}4.${NC} Ver notas generales THM"
     echo -e "${GREEN}5.${NC} Volver al menú principal"
+    echo -e "${GREEN}6.${NC} Seleccionar raíz THM (solo esta sesión): $LAB_THM"
     echo ""
-    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-5]: ${NC}"
-    read -r option
+    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-6]: ${NC}"
+    read -r option || return
     
     case $option in
         1)
             echo -ne "${YELLOW}Nombre de la sala: ${NC}"
             read -r room
             if [[ -n "$room" ]]; then
-                "$SCRIPT_DIR/tryhackme/thm_setup.sh" "$room"
+                "$SCRIPT_DIR/tryhackme/thm_setup.sh" "$room" --root "$LAB_THM"
                 rc=$?
                 if (( rc == 0 )); then
                     echo -e "\n${GREEN}✅ Sala configurada correctamente${NC}"
@@ -218,7 +253,7 @@ thm_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Salas configuradas:${NC}"
-            dir="$SCRIPT_DIR/tryhackme/rooms/"
+            dir="$LAB_THM/"
             for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
             compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
@@ -228,8 +263,8 @@ thm_menu() {
         3)
             echo -ne "${YELLOW}Nombre de la sala: ${NC}"
             read -r room
-            if [[ -f "$SCRIPT_DIR/tryhackme/rooms/$room/notes/README.md" ]]; then
-                ${EDITOR:-nano} "$SCRIPT_DIR/tryhackme/rooms/$room/notes/README.md"
+            if [[ "$room" != */* && "$room" != . && "$room" != .. && -f "$LAB_THM/$room/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$LAB_THM/$room/notes/README.md"
             else
                 echo -e "${RED}❌ Sala no encontrada${NC}"
                 sleep 2
@@ -245,6 +280,7 @@ thm_menu() {
             fi
             thm_menu
             ;;
+        6) select_lab_root LAB_THM; thm_menu ;;
         5)
             main_menu
             ;;
@@ -266,16 +302,17 @@ ad_menu() {
     echo -e "${GREEN}3.${NC} Abrir notas de un dominio"
     echo -e "${GREEN}4.${NC} Ver notas de ataques AD"
     echo -e "${GREEN}5.${NC} Volver al menú principal"
+    echo -e "${GREEN}6.${NC} Seleccionar raíz AD (solo esta sesión): $LAB_AD"
     echo ""
-    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-5]: ${NC}"
-    read -r option
+    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-6]: ${NC}"
+    read -r option || return
     
     case $option in
         1)
             echo -ne "${YELLOW}Nombre del dominio (ej: domain.local): ${NC}"
             read -r domain
             if [[ -n "$domain" ]]; then
-                "$SCRIPT_DIR/active_directory/ad_setup.sh" "$domain"
+                "$SCRIPT_DIR/active_directory/ad_setup.sh" "$domain" --root "$LAB_AD"
                 rc=$?
                 if (( rc == 0 )); then
                     echo -e "\n${GREEN}✅ Dominio configurado correctamente${NC}"
@@ -289,7 +326,7 @@ ad_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Dominios configurados:${NC}"
-            dir="$SCRIPT_DIR/active_directory/machines/"
+            dir="$LAB_AD/"
             for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
             compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
@@ -299,8 +336,8 @@ ad_menu() {
         3)
             echo -ne "${YELLOW}Nombre del dominio: ${NC}"
             read -r domain
-            if [[ -f "$SCRIPT_DIR/active_directory/machines/$domain/notes/README.md" ]]; then
-                ${EDITOR:-nano} "$SCRIPT_DIR/active_directory/machines/$domain/notes/README.md"
+            if [[ "$domain" != */* && "$domain" != . && "$domain" != .. && -f "$LAB_AD/$domain/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$LAB_AD/$domain/notes/README.md"
             else
                 echo -e "${RED}❌ Dominio no encontrado${NC}"
                 sleep 2
@@ -316,6 +353,7 @@ ad_menu() {
             fi
             ad_menu
             ;;
+        6) select_lab_root LAB_AD; ad_menu ;;
         5)
             main_menu
             ;;
@@ -337,16 +375,17 @@ web_menu() {
     echo -e "${GREEN}3.${NC} Abrir notas de una aplicación"
     echo -e "${GREEN}4.${NC} Ver notas generales Web"
     echo -e "${GREEN}5.${NC} Volver al menú principal"
+    echo -e "${GREEN}6.${NC} Seleccionar raíz Web (solo esta sesión): $LAB_WEB"
     echo ""
-    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-5]: ${NC}"
-    read -r option
+    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-6]: ${NC}"
+    read -r option || return
     
     case $option in
         1)
             echo -ne "${YELLOW}Nombre de la aplicación: ${NC}"
             read -r app
             if [[ -n "$app" ]]; then
-                "$SCRIPT_DIR/web_apps/web_setup.sh" "$app"
+                "$SCRIPT_DIR/web_apps/web_setup.sh" "$app" --root "$LAB_WEB"
                 rc=$?
                 if (( rc == 0 )); then
                     echo -e "\n${GREEN}✅ Aplicación configurada correctamente${NC}"
@@ -360,7 +399,7 @@ web_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Aplicaciones configuradas:${NC}"
-            dir="$SCRIPT_DIR/web_apps/machines/"
+            dir="$LAB_WEB/"
             for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
             compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
@@ -370,8 +409,8 @@ web_menu() {
         3)
             echo -ne "${YELLOW}Nombre de la aplicación: ${NC}"
             read -r app
-            if [[ -f "$SCRIPT_DIR/web_apps/machines/$app/notes/README.md" ]]; then
-                ${EDITOR:-nano} "$SCRIPT_DIR/web_apps/machines/$app/notes/README.md"
+            if [[ "$app" != */* && "$app" != . && "$app" != .. && -f "$LAB_WEB/$app/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$LAB_WEB/$app/notes/README.md"
             else
                 echo -e "${RED}❌ Aplicación no encontrada${NC}"
                 sleep 2
@@ -387,6 +426,7 @@ web_menu() {
             fi
             web_menu
             ;;
+        6) select_lab_root LAB_WEB; web_menu ;;
         5)
             main_menu
             ;;
@@ -408,16 +448,17 @@ cloud_menu() {
     echo -e "${GREEN}3.${NC} Abrir notas de un laboratorio"
     echo -e "${GREEN}4.${NC} Ver notas generales Cloud"
     echo -e "${GREEN}5.${NC} Volver al menú principal"
+    echo -e "${GREEN}6.${NC} Seleccionar raíz Cloud (solo esta sesión): $LAB_CLOUD"
     echo ""
-    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-5]: ${NC}"
-    read -r option
+    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-6]: ${NC}"
+    read -r option || return
     
     case $option in
         1)
             echo -ne "${YELLOW}Nombre del laboratorio: ${NC}"
             read -r lab
             if [[ -n "$lab" ]]; then
-                "$SCRIPT_DIR/cloud/cloud_setup.sh" "$lab"
+                "$SCRIPT_DIR/cloud/cloud_setup.sh" "$lab" --root "$LAB_CLOUD"
                 rc=$?
                 if (( rc == 0 )); then
                     echo -e "\n${GREEN}✅ Laboratorio configurado correctamente${NC}"
@@ -431,7 +472,7 @@ cloud_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Laboratorios configurados:${NC}"
-            dir="$SCRIPT_DIR/cloud/machines/"
+            dir="$LAB_CLOUD/"
             for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
             compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
@@ -441,8 +482,8 @@ cloud_menu() {
         3)
             echo -ne "${YELLOW}Nombre del laboratorio: ${NC}"
             read -r lab
-            if [[ -f "$SCRIPT_DIR/cloud/machines/$lab/notes/README.md" ]]; then
-                ${EDITOR:-nano} "$SCRIPT_DIR/cloud/machines/$lab/notes/README.md"
+            if [[ "$lab" != */* && "$lab" != . && "$lab" != .. && -f "$LAB_CLOUD/$lab/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$LAB_CLOUD/$lab/notes/README.md"
             else
                 echo -e "${RED}❌ Laboratorio no encontrado${NC}"
                 sleep 2
@@ -458,6 +499,7 @@ cloud_menu() {
             fi
             cloud_menu
             ;;
+        6) select_lab_root LAB_CLOUD; cloud_menu ;;
         5)
             main_menu
             ;;

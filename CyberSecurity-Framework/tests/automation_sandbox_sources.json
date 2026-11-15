@@ -1,6 +1,8 @@
 {
   "version": 1,
   "files": [
+    "CyberSecurity-Framework/tests/test_cross_closure.py",
+    "CyberSecurity-Framework/tests/test_cross_documentation.py",
     "CyberSecurity-Framework/00_Config/lib/automation/__init__.py",
     "CyberSecurity-Framework/00_Config/lib/automation/adapters.py",
     "CyberSecurity-Framework/00_Config/lib/automation/catalog.py",
@@ -10,6 +12,7 @@
     "CyberSecurity-Framework/00_Config/lib/automation/reporting.py",
     "CyberSecurity-Framework/00_Config/lib/automation/runner.py",
     "CyberSecurity-Framework/00_Config/lib/automation/storage.py",
+    "CyberSecurity-Framework/00_Config/lib/automation/summary.py",
     "CyberSecurity-Framework/00_Config/lib/automation/validation.py",
     "CyberSecurity-Framework/00_Config/lib/automation/workflows.py",
     "CyberSecurity-Framework/00_Config/lib/automation_menu.bash",

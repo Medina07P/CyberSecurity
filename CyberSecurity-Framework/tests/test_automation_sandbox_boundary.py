@@ -55,6 +55,16 @@ class SandboxBoundaryTests(unittest.TestCase):
         for selector in ('--cross-web', '--cross-consent'):
             with self.assertRaises(ValueError):
                 validate_cases(selector, [mock.Mock(id=lambda n=n: n) for n in local])
+        from cross_module_selection import CLOSURE_CASES
+        closure = group_cases('--cross-closure')
+        self.assertEqual(closure, CLOSURE_CASES)
+        self.assertEqual(len(closure), 17)
+        self.assertEqual(len(set(closure)), 17)
+        self.assertEqual(group_grants('--cross-closure'), frozenset())
+        validate_cases('--cross-closure', [mock.Mock(id=lambda n=n: n) for n in closure])
+        for changed in ((), closure[:-1], closure + closure[:1], closure[:-1] + local[:1]):
+            with self.assertRaises(ValueError):
+                validate_cases('--cross-closure', [mock.Mock(id=lambda n=n: n) for n in changed])
         # Mutating data cannot broaden either fixed Python map or add a group.
         import copy
         import cross_module_selection as cross_selection
@@ -62,7 +72,7 @@ class SandboxBoundaryTests(unittest.TestCase):
         data = load_json(Path(cross_selection.__file__).with_name('cross_module_cases.json'),
                          {'version', 'grant', 'scope', 'required_observer', 'disposable_states', 'groups'}, version=2)
         for mutation in ('pure-grant', 'consent-grant', 'unknown-group', 'unknown-id',
-                         'local-pure-grant', 'local-prefix-grant', 'local-web-grant'):
+                         'local-pure-grant', 'local-prefix-grant', 'local-web-grant', 'closure-grant'):
             changed = copy.deepcopy(data)
             if mutation == 'pure-grant':
                 changed['groups']['--cross-web']['grant_ids'].append(web[0])
@@ -76,10 +86,12 @@ class SandboxBoundaryTests(unittest.TestCase):
                 changed['groups']['--cross-local']['grant_ids'].append('test_cross_local.*')
             elif mutation == 'local-web-grant':
                 changed['groups']['--cross-local']['grant_ids'].append(web[2])
+            elif mutation == 'closure-grant':
+                changed['groups']['--cross-closure']['grant_ids'].append(closure[0])
             else:
                 changed['groups']['--cross-web']['case_ids'].append('arbitrary.case')
             with mock.patch.object(cross_selection, 'load_json', return_value=changed):
-                for selector in ('--cross-web', '--cross-consent', '--cross-local'):
+                for selector in ('--cross-web', '--cross-consent', '--cross-local', '--cross-closure'):
                     with self.assertRaises(ValueError):
                         group_cases(selector)
 
@@ -102,7 +114,7 @@ class SandboxBoundaryTests(unittest.TestCase):
         self.assertTrue(set(local).isdisjoint(set(old) | set(web) | set(group_cases('--cross-consent'))))
         controller = mock.Mock(__file__=inside.SELF)
         controller.validated_diagnostic_context.return_value = True
-        for selector in ('--suite', '--races', '--cross-consent', '--cross-web', '--cross-local', None):
+        for selector in ('--suite', '--races', '--cross-consent', '--cross-web', '--cross-local', '--cross-closure', None):
             controller.validated_selection.return_value = selector
             with mock.patch.dict('sys.modules', {'__main__': controller}):
                 self.assertEqual(selection.case_disposable_allowed(cross), selector == '--cross-consent')
@@ -117,6 +129,8 @@ class SandboxBoundaryTests(unittest.TestCase):
                     self.assertEqual(selection.case_disposable_allowed(name),
                                      selector == '--cross-local' and name != LOCAL_PURE)
                 self.assertFalse(selection.case_disposable_allowed(local[0] + '_changed'))
+                for name in group_cases('--cross-closure'):
+                    self.assertFalse(selection.case_disposable_allowed(name))
         with mock.patch.dict('sys.modules', {'__main__': None}):
             self.assertFalse(selection.case_disposable_allowed(cross))
             self.assertFalse(selection.case_disposable_allowed(old[0]))

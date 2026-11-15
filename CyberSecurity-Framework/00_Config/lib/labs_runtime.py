@@ -6,6 +6,7 @@ import errno
 import os
 import stat
 import sys
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,22 +57,43 @@ def validate_name(name):
     return name
 
 
-def _mkdir_nofollow(path, mode):
-    try:
-        st = os.lstat(path)
-    except FileNotFoundError:
+def _open_directory_at(parent_fd, name, create=False):
+    """Pin a directory without following links or changing existing modes."""
+    if create:
         try:
-            os.mkdir(path, mode)
-            os.chmod(path, mode)
-            return True
+            os.mkdir(name, 0o700, dir_fd=parent_fd)
         except FileExistsError:
-            st = os.lstat(path)
-            if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
-                raise OSError(errno.EEXIST, "not a directory", str(path))
-            return False
-    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
-        raise OSError(errno.EEXIST, "not a directory", str(path))
-    return False
+            pass
+    return os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                   dir_fd=parent_fd)
+
+
+def _open_root(root):
+    """Check every ancestor; only the explicitly selected root may be created."""
+    fd = os.open(root.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        for index, component in enumerate(root.parts[1:], start=1):
+            child = _open_directory_at(fd, component, create=index == len(root.parts) - 1)
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _reuse_notes(notes_fd):
+    # Linux O_PATH pins metadata without reading a prior note (or requiring its
+    # read permission). O_NOFOLLOW pins a link itself, whose type is then refused.
+    fd = os.open('README.md', os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=notes_fd)
+    try:
+        opened = os.fstat(fd)
+        current = os.stat('README.md', dir_fd=notes_fd, follow_symlinks=False)
+        if (not stat.S_ISREG(opened.st_mode) or not stat.S_ISREG(current.st_mode) or
+                (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino)):
+            raise OSError(errno.EEXIST, 'not the same regular notes file')
+    finally:
+        os.close(fd)
 
 
 def _content(kind, name):
@@ -100,7 +122,7 @@ def initialize_lab(kind, name, output_root=None):
     validate_name(name)
 
     if output_root is None:
-        framework = Path(__file__).resolve().parents[2]
+        framework = Path(__file__).absolute().parents[2]
         category, folder = KIND_ROOTS[kind]
         root = framework / "13_Labs" / category / folder
     else:
@@ -109,45 +131,41 @@ def initialize_lab(kind, name, output_root=None):
 
     target = root / name
 
-    try:
-        _mkdir_nofollow(root, 0o700)
-        _mkdir_nofollow(target, 0o700)
-        for sd in SUBDIRS:
-            _mkdir_nofollow(target / sd, 0o700)
-    except Exception:
-        raise
+    with ExitStack() as descriptors:
+        root_fd = _open_root(root)
+        descriptors.callback(os.close, root_fd)
+        target_fd = _open_directory_at(root_fd, name, create=True)
+        descriptors.callback(os.close, target_fd)
+        for subdirectory in SUBDIRS:
+            child_fd = _open_directory_at(target_fd, subdirectory, create=True)
+            descriptors.callback(os.close, child_fd)
+            if subdirectory == 'notes':
+                notes_fd = child_fd
 
-    notes_dir = target / "notes"
-    readme = notes_dir / "README.md"
-
-    try:
-        st = os.lstat(readme)
-        if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
-            raise OSError(errno.EEXIST, "not a regular file", str(readme))
-    except FileNotFoundError:
-        pass
-
-    content = _content(kind, name)
-
-    created_notes = False
-    try:
-        fd = os.open(str(readme), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-        created_readme = True
-        os.fchmod(fd, 0o600)
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                stream.write(content)
-            created_notes = True
-        except BaseException:
-            try:
-                os.unlink(str(readme))
-            except OSError:
-                pass
-            raise
-    except FileExistsError:
-        created_notes = False
+            fd = os.open('README.md', os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                         os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=notes_fd)
+        except FileExistsError:
+            _reuse_notes(notes_fd)
+            return LabResult(path=target, created_notes=False)
 
-    return LabResult(path=target, created_notes=created_notes)
+        # The exclusive descriptor is ours. Errors preserve the partial file;
+        # no pathname cleanup may delete a concurrently replaced object.
+        try:
+            os.fchmod(fd, 0o600)
+            created = os.fstat(fd)
+            stream = os.fdopen(fd, 'w', encoding='utf-8')
+        except BaseException:
+            os.close(fd)
+            raise
+        with stream:
+            stream.write(_content(kind, name))
+        current = os.stat('README.md', dir_fd=notes_fd, follow_symlinks=False)
+        if (not stat.S_ISREG(current.st_mode) or
+                (created.st_dev, created.st_ino) != (current.st_dev, current.st_ino)):
+            raise OSError(errno.EEXIST, 'notes file changed during initialization')
+
+    return LabResult(path=target, created_notes=True)
 
 
 def _usage():

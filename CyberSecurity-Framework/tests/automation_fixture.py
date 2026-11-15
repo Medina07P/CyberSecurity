@@ -32,7 +32,7 @@ def preserve(path):
 SOURCE_FILES = tuple(
     '00_Config/lib/automation/' + name + '.py'
     for name in ('__init__', 'model', 'validation', 'catalog', 'planner', 'workflows',
-                 'storage', 'runner', 'adapters', 'reporting')
+                  'storage', 'runner', 'adapters', 'reporting', 'summary')
 ) + ('09_Automation/workflows/quick_scan.yaml',
      '09_Automation/workflows/full_audit.yaml',
      '00_Config/lib/dangerous.txt',

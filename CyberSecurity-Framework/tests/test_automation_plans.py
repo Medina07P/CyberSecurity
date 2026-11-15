@@ -95,8 +95,9 @@ steps:
 ''')
         self.assertEqual(tuple(s.id for s in plan.steps), ('b', 'a', 'c'))
         self.assertEqual(plan.steps[0].inputs['target'], 'example.test')
-        with self.assertRaises(PlanError):
-            self.workflow('name: t\nversion: 1\nsteps: [{id: a, action: ping, inputs: {target: null}}]')
+        with self.assertRaisesRegex(PlanError, 'Texto vacío o con controles'):
+            self.workflow('name: t\nversion: 1\ntimeout: 600\nsteps: [{id: a, action: ping, inputs: {target: null}}]',
+                          {'target': 'example.test'})
 
     def test_paths_relative_to_yaml(self):
         req = self.fixture.repo / 'dir con espacios/a.req'

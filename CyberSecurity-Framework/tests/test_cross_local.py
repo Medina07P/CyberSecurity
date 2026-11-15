@@ -396,6 +396,25 @@ class StableToolTests(LocalCase):
                      ('--binary', str(f.repo / 'missing'), '--execute', '--allow-sudo')):
             self.leaf(f, LINPEAS, args)
             self.assertEqual(f.records(), [])
+        # I1: an informational mode mixed with execution must be rejected,
+        # never ignored. Exercise the real parser/leaf; only the external
+        # transports are doubles. Keep the existing case ID and scratch grant.
+        binary_image = fingerprint(binary)
+        for source in (('--binary', str(binary)), ('--download',)):
+            execution = (*source, '--execute', '--allow-sudo')
+            for mode in ('--preview', '--help'):
+                for position in (0, len(source), len(execution)):
+                    args = (*execution[:position], mode, *execution[position:])
+                    with self.subTest(conflicting_linpeas_modes=args):
+                        offset = len(f.records())
+                        before = f.snapshot()
+                        result = self.leaf(f, LINPEAS, args)
+                        self.assertEqual(
+                            (result.returncode, f.records()[offset:]), (2, []),
+                            'Conflicting modes must reject before download or sudo: '
+                            + result.stdout + result.stderr)
+                        self.assertEqual(f.snapshot(), before)
+                        self.assertEqual(fingerprint(binary), binary_image)
         for _ in range(2):
             result = self.leaf(f, LINPEAS, ('--binary', str(binary), '--execute', '--allow-sudo'))
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -435,6 +454,76 @@ class StableToolTests(LocalCase):
         self.assertEqual(self.leaf(f, LINPEAS, ('--binary', str(failing), '--execute', '--allow-sudo')).returncode, 7)
         self.assertTrue(any(p.is_file() and b'partial-selected' in p.read_bytes() for p in runs.rglob('*')))
         self.unchanged_sources(f)
+
+        # I4: do not chmod an existing output parent or follow its ancestors.
+        with self.subTest(linpeas_boundary='existing-parent-mode'):
+            parent = self.fixture()
+            selected = new_text(parent.repo / 'selected.sh', '#!/bin/bash\nexit 0\n', 0o700)
+            output_parent = parent.repo / 'scans/linpeas'
+            output_parent.mkdir(mode=0o750, parents=True)
+            os.chmod(output_parent, 0o750)
+            result = self.leaf(parent, LINPEAS, ('--binary', str(selected), '--execute', '--allow-sudo'))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(stat.S_IMODE(output_parent.stat().st_mode), 0o750)
+        for link_at in ('scans', 'linpeas'):
+            with self.subTest(linpeas_boundary='linked-parent', link_at=link_at):
+                linked = self.fixture()
+                selected = new_text(linked.repo / 'selected.sh', '#!/bin/bash\nexit 0\n', 0o700)
+                referent = linked.repo / 'untouched-output'
+                referent.mkdir(mode=0o750)
+                destination = linked.repo / 'scans'
+                if link_at == 'linpeas':
+                    destination.mkdir(mode=0o700)
+                    destination = destination / 'linpeas'
+                destination.symlink_to(referent, target_is_directory=True)
+                before = linked.snapshot()
+                result = self.leaf(linked, LINPEAS, ('--binary', str(selected), '--execute', '--allow-sudo'))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(linked.records(), [])
+                self.assertEqual(linked.snapshot(), before)
+
+        # Keep business logic real; inject only downloader discovery/transport.
+        # No real waits/downloads: a parent deadline must be supplied, and the
+        # final file must be checked independently of backend success/options.
+        from unittest import mock
+        import subprocess
+        for backend in ('curl', 'wget'):
+            for failure in ('deadline', 'oversize'):
+                with self.subTest(linpeas_boundary=failure, backend=backend):
+                    bounded = self.fixture()
+                    runtime = load_helper(bounded.framework / '00_Config/lib/consent/stable_tools.py',
+                                          'cross_local_bounded_linpeas')
+                    calls = []
+
+                    def which(name):
+                        return str(bounded.bin / backend) if name == backend else None
+
+                    def transport(command, **kwargs):
+                        calls.append(command)
+                        self.assertEqual(Path(command[0]).name, backend, 'must not dispatch sudo')
+                        if failure == 'deadline':
+                            self.assertGreater(kwargs.get('timeout', 0), 0)
+                            self.assertLessEqual(kwargs['timeout'], 60)
+                            raise subprocess.TimeoutExpired(command, kwargs['timeout'])
+                        option = '-o' if backend == 'curl' else '-O'
+                        path = Path(command[command.index(option) + 1])
+                        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                        try:
+                            os.ftruncate(fd, 16 * 1024 * 1024 + 1)
+                        finally:
+                            os.close(fd)
+                        return subprocess.CompletedProcess(command, 0)
+
+                    with mock.patch.object(runtime.shutil, 'which', side_effect=which), \
+                            mock.patch.object(runtime.subprocess, 'run', side_effect=transport):
+                        result = runtime.run_linpeas(download=True, allow_sudo=True, root=bounded.repo)
+                    self.assertNotEqual(result, 0)
+                    self.assertEqual(len(calls), 1)
+                    if backend == 'wget':
+                        self.assertFalse(any(a.startswith('--max-filesize') for a in calls[0]),
+                                         'GNU wget does not support curl max-filesize')
+                    if failure == 'oversize':
+                        self.assertEqual(len(list((bounded.repo / 'scans/linpeas').glob('*/downloaded-linpeas.sh'))), 1)
 
 
 class LabTests(LocalCase):
@@ -490,6 +579,40 @@ class LabTests(LocalCase):
         result = self.leaf(f, '13_Labs/main.sh', stdin='', cwd=alien)
         self.assertEqual(result.returncode, 0, 'EOF must return, not recurse/spin')
 
+        # I6: root selection survives returning to the main menu, per category,
+        # but must not persist across separate menu processes.
+        for index, (kind, (category, script, folder)) in enumerate(LABS.items(), start=1):
+            with self.subTest(menu_root=kind):
+                alternative = f.repo / ('menu-root-' + kind)
+                alternative.mkdir(mode=0o700)
+                name = 'Alternative ' + kind
+                default = f.framework / '13_Labs' / category / folder
+                default_name = 'Default ' + kind
+                new_text(default / default_name / 'notes/README.md', 'default-root sentinel\n')
+                choice = str(index) + '\n'
+                preview = self.leaf(f, '13_Labs/main.sh', stdin=choice + '5\n11\n', cwd=alien)
+                self.assertEqual(preview.returncode, 0, preview.stderr)
+                self.assertIn('raíz', preview.stdout.lower(), 'root selection must be discoverable before use')
+                text = (choice + '6\n' + str(alternative) + '\n1\n' + name + '\n\n5\n' +
+                        choice + '2\n\n3\n' + name + '\n5\n11\n')
+                offset = len(f.records())
+                result = self.leaf(f, '13_Labs/main.sh', stdin=text, cwd=alien)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue((alternative / name / 'notes/README.md').is_file())
+                # Only actual list rows carry the folder marker. Creation/editor
+                # output containing the name cannot satisfy this observation.
+                listed = re.findall(r'  📁 ([^\r\n]+)', result.stdout)
+                self.assertEqual(listed, [name])
+                self.assertTrue(any(row[0] == 'editor' and row[-1] == str(alternative / name / 'notes/README.md')
+                                    for row in f.records()[offset:]))
+                self.assertFalse((default / name).exists())
+                result = self.leaf(f, '13_Labs/main.sh', stdin=choice + '2\n\n5\n11\n', cwd=alien)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                listed = re.findall(r'  📁 ([^\r\n]+)', result.stdout)
+                self.assertIn(default_name, listed)
+                self.assertNotIn(name, listed)
+                self.assertNotIn(name, result.stdout)
+
     def test_lab_links_and_partial_failure(self):
         f = self.fixture()
         relative = '13_Labs/hackthebox/htb_setup.sh'
@@ -518,13 +641,96 @@ class LabTests(LocalCase):
         self.assertNotEqual(self.leaf(f, relative, ('child', '--root', str(denied))).returncode, 0)
         # Direct helper under the SAME Landlock worker: no threaded subprocess
         # receipt counter race. Both real initializers compete on O_EXCL.
-        initialize_lab = load_helper(f.framework / '00_Config/lib/labs_runtime.py',
-                                     'cross_local_labs_runtime').initialize_lab
+        runtime = load_helper(f.framework / '00_Config/lib/labs_runtime.py',
+                              'cross_local_labs_runtime')
+        initialize_lab = runtime.initialize_lab
         with ThreadPoolExecutor(max_workers=2) as pool:
             outcomes = list(pool.map(lambda _: initialize_lab('htb', 'race', root), range(2)))
         self.assertEqual(sum(result.created_notes for result in outcomes), 1)
         self.assertEqual(outcomes[0].path, outcomes[1].path)
         self.assertTrue((root / 'race/notes/README.md').is_file())
+
+        # I2: a link BEFORE the selected root must not be traversed, even if
+        # the selected root itself is an ordinary directory. All data is new.
+        real_parent = f.repo / 'real-parent'
+        selected_root = real_parent / 'selected-root'
+        selected_root.mkdir(mode=0o700, parents=True)
+        linked_parent = f.repo / 'linked-parent'
+        linked_parent.symlink_to(real_parent, target_is_directory=True)
+        before = f.snapshot()
+        with self.subTest(labs_failure='linked-ancestor'):
+            result = self.leaf(f, relative, ('must-not-create', '--root',
+                                           str(linked_parent / 'selected-root')))
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertEqual(f.snapshot(), before)
+
+        # Inject only the OS race boundary, not the initializer's validation or
+        # reuse logic. Materialize a real nonregular collision immediately before
+        # its exclusive open; retain every object and let the real open fail.
+        from unittest import mock
+        original_open = os.open
+        for shape in ('directory', 'fifo', 'link'):
+            collision = root / ('collision-' + shape) / 'notes/README.md'
+            appeared = []
+
+            def collide(path, flags, mode=0o777, *, dir_fd=None):
+                if Path(path).name == 'README.md' and flags & os.O_EXCL and not appeared:
+                    if shape == 'directory': os.mkdir(path, 0o700, dir_fd=dir_fd)
+                    if shape == 'fifo': os.mkfifo(path, 0o600, dir_fd=dir_fd)
+                    if shape == 'link': os.symlink(sentinel, path, dir_fd=dir_fd)
+                    appeared.append(shape)
+                return original_open(path, flags, mode, dir_fd=dir_fd)
+
+            with self.subTest(labs_failure='nonregular-collision', shape=shape):
+                with mock.patch.object(runtime.os, 'open', side_effect=collide):
+                    with self.assertRaises(OSError):
+                        initialize_lab('htb', 'collision-' + shape, root)
+                self.assertEqual(appeared, [shape])
+                info = collision.lstat()
+                predicate = {'directory': stat.S_ISDIR, 'fifo': stat.S_ISFIFO,
+                             'link': stat.S_ISLNK}[shape]
+                self.assertTrue(predicate(info.st_mode))
+                self.assertEqual(fingerprint(sentinel), image)
+
+        # I3: fail after a real partial write/flush. The real initializer must
+        # propagate the error without unlinking or replacing that partial inode.
+        original_fdopen = os.fdopen
+        partial_identity = []
+
+        class FailingWriter:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __enter__(self):
+                self.stream.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.stream.__exit__(*args)
+
+            def write(self, content):
+                self.stream.write(content[:8])
+                self.stream.flush()
+                info = os.fstat(self.stream.fileno())
+                partial_identity.append((info.st_dev, info.st_ino, info.st_mode, info.st_size))
+                raise OSError('synthetic write failure after partial bytes')
+
+        def failing_fdopen(*args, **kwargs):
+            return FailingWriter(original_fdopen(*args, **kwargs))
+
+        with self.subTest(labs_failure='partial-write-preserved'):
+            with mock.patch.object(runtime.os, 'fdopen', side_effect=failing_fdopen):
+                with self.assertRaises(OSError):
+                    initialize_lab('htb', 'partial-write', root)
+            partial = root / 'partial-write/notes/README.md'
+            self.assertTrue(partial.is_file(), 'failed initialization must retain its partial')
+            self.assertFalse(partial.is_symlink())
+            self.assertEqual(partial.read_bytes(), b'# HTB - ')
+            info = partial.lstat()
+            self.assertEqual(partial_identity, [(info.st_dev, info.st_ino, info.st_mode, info.st_size)])
+            self.assertEqual(stat.S_IMODE(info.st_mode), 0o600)
+        self.assertEqual(fingerprint(sentinel), image)
+        self.unchanged_sources(f)
 
 
 class ReconTests(LocalCase):
@@ -578,6 +784,42 @@ class ReconTests(LocalCase):
         self.assertNotEqual(self.leaf(f, PING, ('192.0.2.7',)).returncode, 0)
         (f.bin / 'ping').rename(f.bin / 'ping.retained')
         self.assertNotEqual(self.leaf(f, PING, ('192.0.2.7',)).returncode, 0)
+
+        for rc in (3, 126, 127, 143):
+            with self.subTest(ping_backend_rc=rc):
+                failed = self.fixture()
+                self.responses(failed, ping={'rc': rc})
+                result = self.leaf(failed, PING, ('192.0.2.7',))
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertNotIn('Inactivo', result.stdout)
+        with self.subTest(ping_failure='mkdir'):
+            failed = self.fixture()
+            new_text(failed.framework / '02_Recon/host_discovery', 'not a directory', 0o600)
+            result = self.leaf(failed, PING, ('192.0.2.7',))
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(failed.records(), [], 'no probe without writable output directory')
+        with self.subTest(ping_failure='append'):
+            failed = self.fixture()
+            self.assertEqual(self.leaf(failed, PING, ('192.0.2.7',)).returncode, 0)
+            output = next((failed.framework / '02_Recon/host_discovery').glob('ping_sweep_*.txt'))
+            os.chmod(output, 0o400)
+            image = fingerprint(output)
+            result = self.leaf(failed, PING, ('192.0.2.7',))
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(fingerprint(output), image)
+            self.assertNotIn('hosts activos encontrados', result.stdout)
+        with self.subTest(ping_presentation='normalized-and-accumulated'):
+            normalized = self.fixture()
+            first = self.leaf(normalized, PING, ('192.0.2.9/24', '1-2'))
+            self.assertEqual(first.returncode, 0)
+            self.assertIn('192.0.2.0/24', first.stdout)
+            second = self.leaf(normalized, PING, ('192.0.2.9/24', '1-2'))
+            self.assertEqual(second.returncode, 0)
+            self.assertIn('ejecución', second.stdout.lower())
+            self.assertIn('acumulado', second.stdout.lower())
+            output = next((normalized.framework / '02_Recon/host_discovery').glob('ping_sweep_*.txt'))
+            self.assertEqual([row.split('|')[0] for row in output.read_text().splitlines()],
+                             ['192.0.2.1', '192.0.2.2', '192.0.2.1', '192.0.2.2'])
 
 
 class LocalMenuTests(LocalCase):

@@ -90,6 +90,7 @@ class RunResult:
     rc: int
     run_dir: Path | None
     steps: tuple[StepResult, ...]
+    reason_code: str = ''
 
     def __post_init__(self):
         object.__setattr__(self, 'steps', tuple(self.steps))

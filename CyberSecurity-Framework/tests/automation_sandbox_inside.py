@@ -182,7 +182,7 @@ def _entry_nproc_gate(argv):
     if list(argv) in (['--probe-child'], ['--probe-grandchild'],
                      ['--probe-bash'], ['--probe-cancel']):
         return _inherited_nproc_gate()
-    if list(argv) in (['--probes'], ['--suite'], ['--races'], ['--cross-consent'], ['--cross-web'], ['--cross-local']):
+    if list(argv) in (['--probes'], ['--suite'], ['--races'], ['--cross-consent'], ['--cross-web'], ['--cross-local'], ['--cross-closure']):
         return _workload_nproc_gate()
     raise NprocBlocked('Unknown entry selector')
 
@@ -471,7 +471,7 @@ def inside_main(argv: Sequence[str]) -> int:
     global _VALIDATED, _SELECTION
     _VALIDATED = False
     _SELECTION = None
-    if list(argv) not in (['--probes'], ['--suite'], ['--races'], ['--cross-consent'], ['--cross-web'], ['--cross-local']):
+    if list(argv) not in (['--probes'], ['--suite'], ['--races'], ['--cross-consent'], ['--cross-web'], ['--cross-local'], ['--cross-closure']):
         return 2
     state, code, reason = 'BLOCKED', 2, 'Probe prerequisites unavailable'
     previous = None
