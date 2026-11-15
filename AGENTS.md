@@ -1,5 +1,15 @@
 # AGENTS.md
 
+**Cierre bloque local transversal, 2026-11-15:** Task1–6 completados sobre
+`d2d7edf` (último commit local; HEAD detached). Gates aislados verdes:
+`--cross-local` 12/0/0, `--cross-web` 7/0/0, `--cross-consent` 9/0/0,
+`--suite` 179/0/0 (1 SKIP pwsh), 65 unidades. 11 permisos descartables locales
++ 1 puro; 25 históricos + 9 consentimiento + 5 web intactos. Revisión estática
+independiente por tarea aprobada; sin push/merge/global09. Documento:
+`docs/LOCAL-ESTABILIDAD-TRANSVERSAL-2026-11-14.md`. Límites residuales
+conservados (ABI3, sin certificado kernel/hostil, sin compatibilidad
+operacional/custodia legal). Bloques anteriores son historia.
+
 **Reanudación e integración hacia09, 2026-11-14:** usuario autorizó corregir
 también fallos funcionales de otros módulos y el merge local de develop
 `1e6d0fe` hacia el worktree09 basado en `c80da1a`; NO integración inversa ni push.
