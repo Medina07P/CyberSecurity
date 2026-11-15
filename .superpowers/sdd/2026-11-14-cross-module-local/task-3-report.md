@@ -79,3 +79,19 @@ was created.
 No runtime, tests, coordinator, sandbox, backend, sudo or download execution was performed.
 Independent review and controller authorization are still required.
 """
+## Fixwave1 (static) — 2026-11-15
+
+Base e25d276. Applied only Critical 1–3 plus narrow Important items; runtime NOT RUN.
+
+Changes:
+- stable_tools.py: added `import os` (Critical 1). `_valid_local_binary` now rejects non-absolute paths (no cwd adoption) (Important).
+- postexploitation_menu.bash: local branch now `--prepared --binary "$linpeas_binary" --execute --allow-sudo` (Critical 2).
+- tests/test_post_run_all_pending.py: removed linpeas from LEAVES (8→7); `Ejecutadas: 7 | Fallidas: 7`; screenshot case `Ejecutadas: 6 | Fallidas: 0 | Omitidas: 2`; calls 7→6 (Critical 3).
+- wget fallback: product already uses `shutil.which('curl')` at runtime and only wget when curl absent; documented, double unchanged (Important).
+- download ops paths: recorded as minor provenance loss; final stdout/stderr paths computed before run (Important).
+
+Static commands/results:
+- bash -n postexploitation_menu.bash linpeas.sh run_all_post.sh: rc0, stderr empty.
+- python3 -m py_compile stable_tools.py stable_cli.py: rc0.
+- git diff --check: rc0, empty.
+No tests/helpers/probes/backends/executables/runtime run; no push/merge.
