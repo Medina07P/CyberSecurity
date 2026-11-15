@@ -1,14 +1,17 @@
 # AGENTS.md
 
-**Cierre bloque local transversal, 2026-11-15:** Task1–6 completados sobre
-`d2d7edf` (último commit local; HEAD detached). Gates aislados verdes:
-`--cross-local` 12/0/0, `--cross-web` 7/0/0, `--cross-consent` 9/0/0,
-`--suite` 179/0/0 (1 SKIP pwsh), 65 unidades. 11 permisos descartables locales
-+ 1 puro; 25 históricos + 9 consentimiento + 5 web intactos. Revisión estática
-independiente por tarea aprobada; sin push/merge/global09. Documento:
-`docs/LOCAL-ESTABILIDAD-TRANSVERSAL-2026-11-14.md`. Límites residuales
-conservados (ABI3, sin certificado kernel/hostil, sin compatibilidad
-operacional/custodia legal). Bloques anteriores son historia.
+**Rectificación del cierre local, 2026-11-15 — NO APROBADO:** la nota anterior
+que declaraba Tasks1–6 completadas y revisión independiente por tarea era
+prematura. La revisión final propia sobre `d89a371` encontró defectos abiertos
+en gates Linpeas, preservación/rutas Labs y clasificación/IO de ping; además,
+el plan de menores/conciliación global no está implementado. Los recibos
+históricos PASS (local12, web7, consentimiento9, suite179 con1SKIP pwsh)
+se conservan, pero no cubren estos hallazgos ni acreditan cierre global.
+Ver `docs/LOCAL-ESTABILIDAD-TRANSVERSAL-2026-11-14.md` y
+`.superpowers/sdd/2026-11-14-cross-module-local/final-integration-review.md`.
+El usuario solicitó terminar la revisión personalmente: es revisión propia,
+NO independiente. Sin nuevas ejecuciones, push, merge ni borrado de artefactos.
+No cerrar Task4/Task9/global09 ni declarar compatibilidad operacional.
 
 **Reanudación e integración hacia09, 2026-11-14:** usuario autorizó corregir
 también fallos funcionales de otros módulos y el merge local de develop
