@@ -326,3 +326,129 @@ Falta revisión estática independiente del nuevo SHA y comando exacto autorizad
 del controlador para observar RED I1/I2. Solo después se reanudará el arreglo
 mínimo de producción y M1, seguido de nueva revisión/gate y GREEN completo.
 No se anticipan conteos de fallos ni se reutiliza un GREEN previo para esta ola.
+
+## WHOLE WEB final fix wave — producción tras RED, baseb76757e
+
+**Implementación estática entregada; revisión/nuevo GREEN pendientes. Runtime
+de esta combinación NOT RUN.** Actualiza la sección tests-first anterior sin
+reescribir sus resultados históricos. No es cierre Task4/WEB/Task9/global09.
+
+### RED real y procedencia (lectura como datos, sin ejecución)
+
+Raíz retenida del controlador:
+`/tmp/opencode/automation-isolated-d95a3225a5e64a66803f63d260c12dce/`.
+`evidence/host-wait.json`: EXIT/rc1. `cross-web-sandbox-units.json`:65units PASS.
+`cross-web.json`:7casos/4fallos de aserción/0errores/0skips/0BLOCKED.
+Se leyeron completos los stderr de casos3/5:
+
+- Caso3 login: falta `--globoff` en capturada y manual (dos aserciones);
+  cuerpo manual `@{password}` produjo `SYNTHETIC FILE CONTENTS, NOT THE REQUEST BODY\n`
+  en vez del `@`+ruta esperado (tercer fallo).
+- Caso5 rate: falta `--globoff` (cuarto fallo).
+- Son los fallos esperados del transporte/oráculo fortalecido, no errores de
+  infraestructura ni un RED supuesto. Los otros casos no registran fallos.
+
+SHA256 de recibos:
+
+| Archivo bajo evidence | SHA256 |
+|---|---|
+| `cross-web.json` | `551674523b4b73a9503fb8cbb4561714fea2e0325ad78cb738cd7d6b23d4ab26` |
+| `case-00003.stderr.log` | `d6dcc6ce6c7794073b8c1a6d35dc8c4fe7ddc4e42848e0f8a9af0d8cc50fe2b6` |
+| `case-00005.stderr.log` | `147b037d9c51651878270df417b3681656e67039fa994d18e03e7f74ca176dcd` |
+
+Manifiesto del run, bytes staged y `git show b76757e:<ruta>` coinciden para las
+cuatro fuentes relevantes (rutas relativas a `CyberSecurity-Framework/`):
+
+| Fuente | SHA256 RED/base |
+|---|---|
+| `05_Exploitation/web/web_login_bruteforce.sh` | `4a5411b0290a3f88672b36c01f6650883e4efafbe111a323ac9aa3dd18d9098c` |
+| `05_Exploitation/web/rate_limit_probe.sh` | `51e154a725aaccf32cb1db6272e6e45e23510ddf2627b0d5e24d20049a079b37` |
+| `tests/test_cross_web.py` | `d187b7167870bdc76b99a1cb58ef64578f5b2b8a88ae49dab433eaa73b0db606` |
+| `tests/cross_web_curl_double.py` | `939fda21ef199bf378b7068091823abc78c2193898a0c3309838740d450650aa` |
+
+Ningún recibo/fixture anterior se modifica, borra o representa como GREEN nuevo.
+
+### I1/I2/M1: cambio mínimo de producción y doble
+
+- **I1:** las tres ramas de envíos de login/rate añaden `--globoff` a sus arrays
+  curl. Path/query con llaves/corchetes dejan de ser instrucciones de expansión
+  para curl, sin rechazarlas ni alterar target. No cambia método, URL, esquema,
+  cap, conteo ni el flag-oracle independiente. Las descargas opcionales de
+  diccionario no se refactorizan; esta corrección abarca las tres ramas de
+  intentos identificadas en el review.
+- **I2:** los tres cuerpos no vacíos usan `--data-binary @-`; un builtin
+  `printf '%s' "$cuerpo"` alimenta stdin por pipe. No añade newline, no hace
+  escape form/JSON, no cambia el cuerpo ni reinterpreta un `@` inicial.
+  Cuerpo vacío conserva ausencia de opción data, sin convertirlo en POST nuevo.
+  No fichero temporal, adopción de fichero del operador, datos en código,
+  nuevo intérprete/helper o utilidad runtime. El rc del pipeline sigue siendo
+  el del curl final; el chequeo de rc en `.req` se conserva. No se aprovecha
+  esta ola para refactorizar clasificación o manejo legacy de errores manual/rate.
+- Se comprobó la misma frontera de cuerpo `@` en capturada/rate: una petición
+  con password en query puede llevar cuerpo `text/plain` opaco que no cambia al
+  componer. Por eso ambos transportes reciben la misma defensa stdin, no solo
+  manual. La composición, extracción, filtros de cabeceras, consentimiento y
+  mecanismo original de una pasada WM1 permanecen intactos.
+- **Doble obligatorio:** solo añade reconocimiento de valor exacto `@-` para
+  leer `sys.stdin.buffer.read()`; otros `@ruta` siguen leyendo ese fichero,
+  argumento literal sigue `os.fsencode`. Se conserva orden del recibo raw antes
+  de programa/opciones/body, semántica de fallo/file, respuesta y base64 real.
+  No se fuerza cuerpo esperado ni se sustituye negocio del producto.
+- **M1:** cabecera fuente de login ahora dice rc0 candidato heurístico o
+  cancelación sin intentos; rc1 sin candidato o error, no prueba de autenticación.
+  Clasificador y gates no cambian. README05 documenta únicamente este transporte
+  literal implementado, RED previo y revisión/GREEN pendientes.
+
+SHA256 nuevos de producción/doble:
+
+| Fuente | SHA256 nuevo |
+|---|---|
+| login | `0088b958fb84bfaa7e95b68683f04632e557dbe5dbe2bb329a5c44091f4634e5` |
+| rate | `86cd5547c80791c090e527002f98b1c18abd09a332ef7324bc4d1dc78b98d90d` |
+| doble | `fc0e972082e9618f413a70abe2c999d66db4f11c7ee56cf31375394de664eef2` |
+
+### Pruebas escritas adicionales y cobertura preservada
+
+Todos los oráculos del RED permanecen; ningún ID/grant nuevo o skip.
+Dentro de `test_login_req_transmits_each_candidate`, añade cuerpo opaco
+capturado `@`+ruta sintética legible con password query, y un cuerpo manual
+`@` inicial con CRLF, Unicode, barra inversa, `&+%`, marcador insertado y dos
+newlines finales. Expectativas literales de URL/body/base64, sin usar composición
+de producto para calcularlas. Fichero sintético sigue intacto.
+En `test_rate_has_no_scheme_probe`, cubre cuerpo opaco `@`+ruta con query
+`wrong-1`/`wrong-2` y las dos URLs literales independientes, cuerpo/base64/fichero.
+Estas ampliaciones están **escritas NOT RUN**, no son RED observado adicional.
+En `test_login_has_no_preconsent_transport`, dos comprobaciones directas del
+doble para stdin vacío y texto con `@`/CRLF/Unicode/newlines: recibos raw y bytes
+base64 frente al literal. No socket, backend o sustitución de lógica de negocio.
+El mecanismo de entrada de la fixture actual se reutiliza sin ampliarlo.
+
+### Verificación estática y self-review
+
+- `git status --short` inicial vacío; `git rev-parse --short HEAD` → `b76757e`.
+- `bash -n CyberSecurity-Framework/05_Exploitation/web/web_login_bruteforce.sh CyberSecurity-Framework/05_Exploitation/web/rate_limit_probe.sh 2>&1`
+  → rc0, sin salida/stderr. Ningún cuerpo Bash ejecutado.
+- `git diff --check` → rc0 vacío; `git diff --stat` y lectura de diffs de hojas,
+  doble y tests para comprobar cambios acotados y expectativas independientes.
+- `python3 -I -B -c` stdlib `ast,hashlib,json,pathlib,subprocess` únicamente:
+  AST de tests/doble sin ejecución; siete IDs/orden iguales; cada statement AST
+  original de cada método de test retenido en orden; JSON7IDs/5grants; validación
+  de conteos RED y SHA256 manifiesto/staged/base de cuatro fuentes; hashes nuevos
+  anteriores y hashes de recibos; allowlist exacta de cinco archivos antes de
+  anexar informe. rc0. subprocess solo para lecturas Git, no producto/helpers.
+- Check final adicional `python3 -I -B -c` (`ast,pathlib,subprocess` estándar):
+  reconstrucción textual independiente del diff permitido sobre `git show
+  b76757e` y comparación exacta de ambas hojas: únicamente3flags globoff,
+  3opciones data stdin/3pipes printf, cabecera M1 y comentario de transporte.
+  AST final de tests/doble válido y statements previos íntegros. rc0.
+- No se altera fixture, runtime, manifiestos, selectores, grants, SQLmap,
+  empaquetado11, API del compositor, caps, diccionarios de producto o técnica.
+  No refresh de baselines ni supresión de casos/errores para obtener verde.
+
+No ejecución nueva de repoimports/helpers/tests/probes/launcher/producto/doble/
+curl/rm/backend, ni dentro de sandbox. Sin subagentes/red/GUI/sudo/install/
+download/cleanup/eliminación/push/merge/reset/configuración del operador.
+Se entrega para revisión estática independiente y nuevo comando exacto autorizado
+del controlador; GREEN fresco completo, regresiones separadas y revisión final
+siguen pendientes. No afirmar cierre global, credenciales válidas ni operación
+real verificada a partir de este código/checks estáticos.
