@@ -10,7 +10,7 @@ import struct
 import unittest
 from unittest import mock
 
-from automation_sandbox_prepare import IsolationBlocked, PreparedRun, RuntimeFile
+from automation_sandbox_prepare import IsolationBlocked, PreparedRun, RuntimeFile, REPO, RUN_PARENT
 import automation_sandbox_policy as policy
 import automation_sandbox_launch as launcher
 import automation_sandbox_inside as inside
@@ -38,7 +38,7 @@ def evaluate_bpf(program, number, arch):
 
 
 def prepared():
-    root = Path('/tmp/opencode/automation-isolated-' + 'a' * 32)
+    root = RUN_PARENT / ('automation-isolated-' + 'a' * 32)
     entries = tuple(RuntimeFile(root / 'runtime' / name.lstrip('/'), name, 'elf')
                     for name in ('/usr/bin/python3', '/bin/bash',
                                  '/lib64/ld-linux-x86-64.so.2'))
@@ -150,6 +150,7 @@ class SandboxPolicyTests(unittest.TestCase):
 
     def test_no_host_mounts(self):
         run = prepared()
+        self.assertEqual(RUN_PARENT, REPO / '.superpowers' / 'sdd' / 'isolated-runtime-runs')
         argv = policy.bubblewrap_argv(run, 9)
         for flag in ('--unshare-all', '--new-session', '--die-with-parent', '--clearenv'):
             self.assertIn(flag, argv)
@@ -164,6 +165,9 @@ class SandboxPolicyTests(unittest.TestCase):
             (str(run.source_root), '/source'),
             (str(run.work), '/work'), (str(run.evidence), '/evidence')})
         self.assertEqual(argv[-4:], ('/usr/bin/python3', '-I', '-B', policy.INSIDE))
+        self.assertFalse(any(source in (str(REPO), str(RUN_PARENT)) for source, _ in mounts))
+        from automation_sandbox_prepare import source_names
+        self.assertFalse(any('.superpowers' in Path(name).parts for name in source_names()))
 
     def test_bpf_blocks_network_and_x32(self):
         program = policy.seccomp_program()
@@ -309,6 +313,12 @@ class SandboxPolicyTests(unittest.TestCase):
             policy.bubblewrap_argv(bad, 9)
         with self.assertRaises(IsolationBlocked):
             policy.bubblewrap_argv(run, 1)
+        for parent in (Path('/tmp/opencode'), RUN_PARENT.parent, REPO / 'isolated-runtime-runs'):
+            wrong = parent / run.root.name
+            bad = PreparedRun(wrong, wrong / 'source', wrong / 'runtime', wrong / 'work',
+                              wrong / 'evidence', run.manifest)
+            with self.assertRaises(IsolationBlocked):
+                policy.bubblewrap_argv(bad, 9)
 
     def test_selectors_are_closed_and_inside_cannot_launch(self):
         for selector in ('--probes', '--suite', '--races', '--cross-consent', '--cross-web', '--cross-local'):
@@ -322,6 +332,29 @@ class SandboxPolicyTests(unittest.TestCase):
         with mock.patch.object(inside, '_context', side_effect=ValueError('not inside')), \
                 mock.patch.object(inside, 'write_json'):
             self.assertEqual(inside_main(['--suite']), 2)
+        run = prepared()
+        data = {'version': 1, 'run_id': run.root.name,
+                'outside_canary': str(run.root / 'outside-canary'),
+                'external_stub': str(run.root / 'external-double'),
+                'external_marker': str(run.root / 'external-marker'),
+                'host_namespaces': {name: 'host-' + name for name in inside.NAMESPACES},
+                'host_uid': 1000, 'identity_canary': {}}
+        with mock.patch.object(inside, 'read_json', return_value=data), \
+                mock.patch.object(inside, 'namespaces', return_value={
+                    name: 'inside-' + name for name in inside.NAMESPACES}):
+            self.assertEqual(inside._context(), data)
+            for outside in ('/tmp/opencode/' + run.root.name + '/outside-canary',
+                            str(RUN_PARENT.parent / run.root.name / 'outside-canary'),
+                            str(run.root / '..' / run.root.name / 'outside-canary'),
+                            str(RUN_PARENT / 'automation-isolated-other' / 'outside-canary'),
+                            'relative/outside-canary'):
+                with mock.patch.object(inside, 'read_json', return_value=dict(data, outside_canary=outside)), \
+                        self.assertRaises(ValueError):
+                    inside._context()
+            for key in ('external_stub', 'external_marker'):
+                with mock.patch.object(inside, 'read_json', return_value=dict(data, **{key: '/elsewhere'})), \
+                        self.assertRaises(ValueError):
+                    inside._context()
 
     def test_memfd_seals_and_limits_are_mandatory_in_source(self):
         text = Path(launcher.__file__).read_text()

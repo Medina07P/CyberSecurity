@@ -4,7 +4,7 @@ from pathlib import Path, PurePosixPath
 import re
 import struct
 
-from automation_sandbox_prepare import IsolationBlocked, PreparedRun
+from automation_sandbox_prepare import IsolationBlocked, PreparedRun, RUN_PARENT
 
 
 INSIDE = '/source/CyberSecurity-Framework/tests/automation_sandbox_inside.py'
@@ -39,7 +39,7 @@ def bubblewrap_argv(run: PreparedRun, seccomp_fd: int) -> tuple[str, ...]:
     """
     if (not isinstance(run, PreparedRun) or type(seccomp_fd) is not int or
             not 3 <= seccomp_fd < 256 or
-            run.root.parent != Path('/tmp/opencode') or
+            run.root.parent != RUN_PARENT or
             re.fullmatch(r'automation-isolated-[0-9a-f]{32}', run.root.name) is None):
         raise IsolationBlocked('Invalid prepared run or seccomp descriptor')
     for name, value in (('source', run.source_root), ('runtime', run.runtime_root),

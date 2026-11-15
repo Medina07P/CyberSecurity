@@ -242,6 +242,33 @@ class Preparation(unittest.TestCase):
             resolve_runtime((entry, entry))
 
     def test_no_cleanup_or_reuse(self):
+        import automation_sandbox_prepare as prepare_module
+        from unittest import mock
+        self.assertEqual(prepare_module.RUN_PARENT,
+                         prepare_module.REPO / '.superpowers' / 'sdd' / 'isolated-runtime-runs')
+        private = mock.Mock(st_dev=1, st_ino=2, st_mode=0o40700, st_size=1,
+                            st_mtime_ns=3, st_ctime_ns=4, st_uid=1000)
+        with patch.object(prepare_module, '_open_directory', return_value=42) as opening, \
+                patch.object(prepare_module.os, 'fstat', return_value=private), \
+                patch.object(prepare_module.os, 'stat', return_value=private), \
+                patch.object(prepare_module.os, 'getuid', return_value=1000), \
+                patch.object(prepare_module.os, 'close') as close:
+            self.assertEqual(prepare_module._open_run_parent(), 42)
+            opening.assert_called_once_with(prepare_module.RUN_PARENT)
+            close.assert_not_called()
+            for uid, mode in ((1001, 0o40700), (1000, 0o40755), (1000, 0o40770),
+                              (1000, 0o120700), (1000, 0o100700)):
+                private.st_uid, private.st_mode = uid, mode
+                with self.assertRaises(IsolationBlocked):
+                    prepare_module._open_run_parent()
+            private.st_uid, private.st_mode = 1000, 0o40700
+            changed = mock.Mock(st_dev=1, st_ino=999, st_mode=0o40700, st_size=1,
+                                st_mtime_ns=3, st_ctime_ns=4, st_uid=1000)
+            with patch.object(prepare_module.os, 'stat', return_value=changed), self.assertRaises(IsolationBlocked):
+                prepare_module._open_run_parent()
+        with patch.object(prepare_module, '_open_directory', side_effect=OSError('nofollow/missing')), \
+                self.assertRaises(OSError):
+            prepare_module._open_run_parent()
         root = persistent_case()
         source, target = root / 'source', root / 'target'
         source.write_bytes(b'preserve')

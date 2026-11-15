@@ -248,7 +248,17 @@ def _context():
                      'external_marker', 'host_namespaces', 'host_uid', 'identity_canary'} or data['version'] != 1 or
             re.fullmatch(r'automation-isolated-[0-9a-f]{32}', data['run_id']) is None):
         raise ValueError('Invalid fresh probe context')
-    base = '/tmp/opencode/' + data['run_id'] + '/'
+    # Host checkout paths cannot be reconstructed from __file__ (here /source).
+    # The fixed launcher writes only new sibling-canary metadata, not a mount or
+    # root selector. Host policy pins the exact REPO-derived parent. Corroborate
+    # its fixed suffix/run UUID here without projecting the host checkout.
+    outside = Path(data['outside_canary'])
+    run = outside.parent
+    if (not outside.is_absolute() or str(outside) != data['outside_canary'] or
+            '..' in outside.parts or run.name != data['run_id'] or
+            run.parent.parts[-3:] != ('.superpowers', 'sdd', 'isolated-runtime-runs')):
+        raise ValueError('Invalid fixed-storage sibling canary path')
+    base = str(run) + '/'
     for key, leaf in (('outside_canary', 'outside-canary'),
                       ('external_stub', 'external-double'),
                       ('external_marker', 'external-marker')):

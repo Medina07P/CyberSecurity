@@ -37,7 +37,7 @@ class PreparedRun:
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
-RUN_PARENT = Path('/tmp/opencode')
+RUN_PARENT = REPO / '.superpowers' / 'sdd' / 'isolated-runtime-runs'
 MAX_JSON = 1024 * 1024
 MAX_FILE = 32 * 1024 * 1024
 LIBDIR = Path('/usr/lib/x86_64-linux-gnu')
@@ -430,6 +430,21 @@ def _new_json(path, value):
         os.close(parent)
 
 
+def _open_run_parent():
+    """Fixed pre-existing private storage only; never create/adopt a parent."""
+    parent = _open_directory(RUN_PARENT)  # Every ancestor/final component no-follow.
+    try:
+        info = os.fstat(parent)
+        named = os.stat(RUN_PARENT, follow_symlinks=False)
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or
+                stat.S_IMODE(info.st_mode) != 0o700 or _identity(info) != _identity(named)):
+            raise IsolationBlocked('Fixed run parent must be owned private0700 directory')
+        return parent
+    except BaseException:
+        os.close(parent)
+        raise
+
+
 def prepare(repo: Path) -> PreparedRun:
     """Stage exact sources and closed runtime; never execute staged content."""
     from automation_sandbox_elf import _read_staged_elf, resolve_runtime
@@ -441,7 +456,7 @@ def prepare(repo: Path) -> PreparedRun:
         entries = resolve_runtime(_runtime_entries())
         alias_identity = _python_alias_identity()
         # Do not mkdir the approved parent: it must already exist, no-follow.
-        parent = _open_directory(RUN_PARENT)
+        parent = _open_run_parent()
         try:
             name = 'automation-isolated-' + uuid.uuid4().hex
             os.mkdir(name, 0o700, dir_fd=parent)  # EEXIST blocks; no retry/reuse.
