@@ -104,6 +104,23 @@ de respaldo. No afirmar que toda la sesión fue exclusivamente sintética ni
 operacionalmente autorizada/validada. Sin instalaciones, Docker build/up,99,
 merge ni push; conservar todos los logs/workspace. Nota de próxima sesión bajo
 este bloque es histórica:09 sí fue solicitado posteriormente.
+**Integración local de correcciones globales cerrada, 2026-11-14:** por petición
+expresa del usuario se creó `87d7ce8` y develop avanzó por fast-forward desde
+`8435c05`. Premerge sintético: global520/0, runtime7/7, SSTI e informes rc0.
+Posmerge desde develop en copia sintética: global520/0 en129.343s, runtime7/7,
+SSTI5 métodos/7casos e informes29shell/78Python rc0. Guardas hash/modo intactas;
+detalle en `docs/INTEGRACION-PRUEBAS-GLOBALES-2026-11-14.md`. scope.yaml/targets.txt y
+notas locales preservados fuera del commit. La pausa siguiente es histórica,
+superada por reanudación y petición expresa de merge. Conservar worktree/logs;
+sin push ni iniciar otro módulo. Nunca ejecutar run_tests sobre datos reales.
+
+**Pausa solicitada, 2026-11-14:** usuario quiere corregir fallos de la suite
+global, pero primero parar y limpiar contexto. No iniciar fixes ni otro módulo
+hasta reanudación expresa. Leer `docs/RETOMAR-PRUEBAS-GLOBALES-2026-11-14.md`.
+Develop en8435c05,11 ya integrado; scope.yaml/targets.txt locales preservados.
+Desajustes identificados de recuentos/rutas SQLi/cleanup; timeout180s sin causa
+confirmada. No ejecutar run_tests en checkout con datos; copia/config/HOME
+sintéticos, sin red externa. Nota/AGENTS sin commit, sin push.
 
 **Integración local 11, 2026-11-14:** por petición expresa del usuario, los dos
 bloques de informes se consolidaron en `1682fa1` y se integraron por fast-forward

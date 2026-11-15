@@ -20,9 +20,15 @@ targets:
   ips:
     - "192.168.1.0/24"
     - "10.10.10.0/24"
+    - "192.168.101.15"
   domains:
     - "example.com"
     - "*.example.com"
+    # Objetivo autorizado el 2026-11-06 por el propietario del sitio
+    # (autorización verbal del dueño; falta adjuntar el documento en
+    # authorization.document).
+    - "myconnectfibraoptica.com"
+    - "*.myconnectfibraoptica.com"
   excluded:
     - "192.168.1.1"
     - "192.168.1.254"
