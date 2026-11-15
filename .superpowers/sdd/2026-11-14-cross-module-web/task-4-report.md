@@ -452,3 +452,103 @@ Se entrega para revisión estática independiente y nuevo comando exacto autoriz
 del controlador; GREEN fresco completo, regresiones separadas y revisión final
 siguen pendientes. No afirmar cierre global, credenciales válidas ni operación
 real verificada a partir de este código/checks estáticos.
+
+## Load-bearing residual I3 — continuation base602e707
+
+**Source/test delivery only; new runtime NOT RUN.** Se leyó completo
+`final-static-rereview.md`. Su finding literal es:
+
+> Important I3 — new stdin producer failure is masked by pipeline status
+
+El review considera I1/I2/M1 estáticamente atendidos, pero encuentra que
+`printf | curl` devolvía solo rc del consumidor y que manual/rate tampoco
+comprobaban ese rc. Un productor puede escribir un prefijo, fallar y dejar al
+consumidor devolver una respuesta aparentemente válida. No equivale a cero
+transporte. **I3 sigue siendo hallazgo estático, no RED observado**; los recibos
+RED I1/I2 anteriores no acreditan I3 ni esta combinación nueva.
+
+### Reparación acotada de fuente
+
+- Login manual, login capturado y rate ejecutan el pipeline dentro del command
+  substitution con `set -o pipefail` local: fallo del productor **o** curl hace
+  fallar el transporte completo, sin cambiar opciones del shell llamador.
+- Todos conservan incremento `N_ENVIOS` inmediatamente después de intentar el
+  pipeline; después comprueban status antes de parsear código/tamaño/tiempo.
+  El status llamado `rc_curl` en capturada ahora recoge el pipeline completo;
+  el chequeo existente se conserva. Manual/rate añaden chequeo equivalente.
+- Manual añade `return 0` explícito tras éxito: el test aritmético de «primer
+  envío» al final de la función ya no puede confundirse con rc de transporte
+  al comprobarlo desde el caller en envíos posteriores.
+- Los callers manual/rate ahora cortan con rc1 antes de evaluar respuesta,
+  candidato, freno, retardo o veredicto. Capturada conserva su corte y recibe
+  el mismo recibo parcial. No se crea una fila TSV como respuesta evaluada,
+  no se sigue con siguiente candidato/intento y no se cambia el clasificador.
+- En el run nuevo, el corte conserva `transporte_fallido.txt` con
+  `Intentos de transporte: N`/`Estado: ERROR`, copia la respuesta disponible a
+  `transporte_fallido.resp` y guarda `rc=1` antes de salir. Errores de copia van
+  al log existente y no convierten el corte en éxito. Recibos del doble, logs,
+  runs previos y tabla parcial se conservan. Si falló construcción antes de
+  invocar transporte en capturada, N puede ser0; si se invocó el consumidor,
+  debe figurar el intento, no una falsa garantía de ausencia de red.
+
+No se cambia composición/request, plantilla original WM1, flags globoff/stdin,
+cabeceras, consentimiento, caps, gates, candidatos, retries o técnica. Ningún
+entorno/flag/bypass de prueba se introduce en producción. Runtime, guard,
+fixtures, manifiestos, selección, grants, doble, SQLmap y11 intactos.
+
+### Oráculos enfocados dentro de los IDs/grants existentes
+
+`test_login_has_no_preconsent_transport` añade manual/capturada × dos fallos;
+`test_rate_has_no_scheme_probe` añade los dos fallos rate. Se usan las hojas
+reales completas, el curl doble obligatorio existente y dos candidatos/intentos
+ya habituales para comprobar que se corta después del primero:
+
+1. **Productor parcial rc73 + consumidor rc0 aparentemente exitoso:** login
+   programa HTTP200/body`SUCCESS` y `BRUTE_EXITO_PATRON=SUCCESS`; rate programa
+   HTTP429/Retry-After7. Exige rc1, una invocación real registrada, bytes de
+   prefijo independientes (`pas` manual, `use` capturada/rate), sin candidato
+   ni veredicto, tabla solo cabecera, recibo N=1/rc1 y respuesta parcial guardada.
+2. **Productor real + consumidor rc7 con la misma respuesta aparente:** invoca
+   la fuente original sin driver, compara cuerpo real completo, mantiene una
+   invocación y exige idéntico corte/preservación. Así ni un patrón de éxito ni
+   una señal de freno permite puntuar un transporte fallido.
+
+Helper test-only `producer_failure_driver` crea un driver nuevo exclusivo en
+el mismo directorio sintético de la hoja para conservar su autolocalización.
+Parte del texto real staged completo. Sustituye **únicamente** el token productor
+exacto `printf '%s' "$cuerpo" | LC_ALL=C curl` por `i3_producer` (comprobando2
+ocurrencias login/1rate); antepone una función fija que valida sus dos argumentos,
+escribe los3primeros caracteres mediante `builtin printf` y retorna73.
+No redefine `printf` globalmente, no interfiere con fixture/compositor/URL ni
+reemplaza función de negocio, caller, curl o clasificador. No usa valores del
+operador/candidato como código, eval, nuevos módulos o herramientas. Tanto
+driver como fuente original permanecen retenidos, sin editar el original.
+Este es el driver estrecho de fuente/transport producer permitido por el
+controlador para inyectar fallo sin bypass de producción.
+
+Helper de aserción comprueba recibo real/base64 del doble y artifacts de fallo,
+incluido cuerpo parcial de respuesta, sin no-op de negocio. Todos los statements
+previos de métodos y sus oráculos de wire/JSON/caps/consentimiento/preservación
+se conservan en orden. Siete IDs/cinco grants, sin skips nuevos.
+
+### Comandos estáticos/resultados y gate pendiente
+
+- `git status --short` inicialmente vacío; `git rev-parse --short HEAD` →602e707.
+- `bash -n CyberSecurity-Framework/05_Exploitation/web/web_login_bruteforce.sh CyberSecurity-Framework/05_Exploitation/web/rate_limit_probe.sh 2>&1`
+  → rc0, stdout/stderr vacíos, sin ejecutar funciones.
+- `git diff --check` → rc0 vacío; lectura del diff completo y `git diff --stat`.
+- `python3 -I -B -c` stdlib `ast,json,pathlib,subprocess`: parsea test nuevo y
+  texto base de `git show 602e707`; mismos7IDs/orden y todos los statements
+  anteriores retenidos en orden. Lee inventario JSON7IDs/5grants. Del AST solo
+  extrae la constante de función productor, reconstruye textualmente ambos
+  drivers e invoca exclusivamente `/bin/bash -n` con ese texto en stdin: ambos
+  rc0/sin salida ni warnings. **No ejecuta driver ni función del repo**.
+  Comprueba2/1 productores y2/1 pipefail locales y allowlist exacta de dos hojas
+  y test antes de anexar informe; rc0. subprocess restante solo lee Git.
+
+Sin import/ejecución de repo/tests/helpers/probes/launcher/producto/doble/rm/
+backend, incluso sandbox; sin subagentes/red/GUI/sudo/install/download/cleanup/
+push/merge/reset/configuración del operador/eliminación de artefactos.
+Faltan revisión estática independiente del SHA y autorización exacta nueva del
+controlador. No afirmar RED I3 observado, GREEN nuevo, credencial acreditada,
+compatibilidad operacional, cierre WEB/Task9/global o ampliación de permisos.

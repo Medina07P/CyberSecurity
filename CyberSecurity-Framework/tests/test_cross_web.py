@@ -67,6 +67,43 @@ class WebTests(unittest.TestCase):
         self.assertEqual(len(matches), 1, row)
         return matches[0]
 
+    def producer_failure_driver(self, f, leaf):
+        # New scratch driver from the real staged leaf. Replace ONLY the stdin
+        # producer, not printf globally or any transport/caller/classifier.
+        # The original source stays untouched and the full derived source stays
+        # retained for review. No production environment/flag test bypass.
+        source = (f.framework / leaf).read_text()
+        producer = 'printf \'%s\' "$cuerpo" | LC_ALL=C curl'
+        self.assertEqual(source.count(producer), 2 if leaf == LOGIN else 1)
+        source = source.replace(producer, 'i3_producer \'%s\' "$cuerpo" | LC_ALL=C curl')
+        first, rest = source.split('\n', 1)
+        driver = first + '\n' + '''i3_producer() {
+    [[ "$#" == 2 && "$1" == '%s' ]] || return 74
+    builtin printf '%s' "${2:0:3}"
+    return 73
+}
+''' + rest
+        return self.new_text((f.framework / leaf).parent / 'i3-producer-driver.sh', driver)
+
+    def assert_failed_transport(self, f, result, kind, expected_body, response_body):
+        import base64
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(len(f.curl_invocations()), 1)  # attempted, NOT zero transport
+        row, = f.curl_records()
+        self.assertEqual(row['state'], 'DONE')
+        self.assertEqual(row['body'], expected_body)
+        self.assertEqual(base64.b64decode(row['body_base64'], validate=True), expected_body.encode('utf-8'))
+        self.assertNotIn('Credencial encontrada', result.stdout)
+        self.assertNotIn('Veredicto:', result.stdout)
+        table, = (f.repo / 'scans/web').glob(kind + '_*.tsv')
+        self.assertEqual(len(table.read_text().splitlines()), 1)  # no evaluated row
+        run, = (f.repo / ('scans/web/' + kind + '_example.test_8443')).glob('run_*')
+        self.assertEqual((run / 'rc').read_text(), '1\n')
+        self.assertEqual((run / 'transporte_fallido.txt').read_text(), 'Intentos de transporte: 1\nEstado: ERROR\n')
+        self.assertEqual((run / 'transporte_fallido.resp').read_text(), response_body)
+        self.assertFalse((run / 'exito.resp').exists())
+        self.assertEqual(list(run.glob('freno_*.resp')), [])
+
     def test_pair_composes_locations_and_literals(self):
         f = self.fixture()
         core = self.helper(f)
@@ -619,7 +656,55 @@ hr_request_pair form password literal
         self.assertEqual([row['body'] for row in f.curl_records()],
                          ['password=a&b=+%', 'password=quote" /ñ'])
 
+        # I3: real full leaf/caller, with only the pipeline producer doubled
+        # for a partial write+rc73. Separately, real producer + curl rc7 with
+        # success-looking response must also stop before candidate evaluation.
+        for mode in ('captured', 'manual'):
+            for failure in ('producer', 'consumer'):
+                with self.subTest(stdin_failure=failure, mode=mode):
+                    f = self.fixture()
+                    words = self.dictionary(f)
+                    f.env.update(BRUTE_ESQUEMA='https', BRUTE_SI='1', BRUTE_MAX='2',
+                                 BRUTE_DELAY='0', BRUTE_EXITO_PATRON='SUCCESS')
+                    f.configure_curl([{'code': '200', 'time': '0.010', 'headers': {},
+                                       'body': 'SUCCESS', 'rc': 0 if failure == 'producer' else 7}])
+                    if mode == 'manual':
+                        f.env.update(BRUTE_URL='https://example.test:8443/login',
+                                     BRUTE_CUERPO='password={password}')
+                        args = ('manual', str(words))
+                        expected_body = 'pas' if failure == 'producer' else 'password=a&b=+%'
+                    else:
+                        request = self.capture(f)
+                        args = (str(request), str(words))
+                        expected_body = ('use' if failure == 'producer' else
+                                         'username=alice%40example.test&password=a%26b%3D%2B%25&nonce=%2f+')
+                    if failure == 'producer':
+                        driver = self.producer_failure_driver(f, LOGIN)
+                        result = f._run(['/bin/bash', '--noprofile', '--norc', str(driver), *args], '')
+                    else:
+                        result = f.run_leaf(LOGIN, args)
+                    self.assert_failed_transport(f, result, 'bruteforce', expected_body, 'SUCCESS')
+                    row, = f.curl_records()
+                    self.assertEqual(row['returncode'], 0 if failure == 'producer' else 7)
+
     def test_rate_has_no_scheme_probe(self):
+        for failure in ('producer', 'consumer'):
+            with self.subTest(rate_stdin_failure=failure):
+                f = self.fixture()
+                request = self.capture(f)
+                f.env.update(RATE_LIMIT_ESQUEMA='https', RATE_LIMIT_SI='1', RATE_LIMIT_RETARDO='0')
+                f.configure_curl([{'code': '429', 'time': '0.010', 'headers': {'Retry-After': '7'},
+                                   'body': 'synthetic-brake', 'rc': 0 if failure == 'producer' else 7}])
+                if failure == 'producer':
+                    driver = self.producer_failure_driver(f, RATE)
+                    result = f._run(['/bin/bash', '--noprofile', '--norc', str(driver), str(request), '2'], '')
+                else:
+                    result = f.run_leaf(RATE, (str(request), '2'))
+                expected_body = ('use' if failure == 'producer' else
+                                 'username=alice%40example.test&password=wrong-1&nonce=%2f+')
+                self.assert_failed_transport(f, result, 'rate_limit', expected_body, 'synthetic-brake')
+                row, = f.curl_records()
+                self.assertEqual(row['returncode'], 0 if failure == 'producer' else 7)
         # Query-only mutation must not turn an opaque @-leading body into a
         # file read in the rate transport branch either.
         with self.subTest(rate_leading_at=True):
