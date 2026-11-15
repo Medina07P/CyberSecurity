@@ -484,7 +484,32 @@ run_module_scripts() {
                     sleep 1
                 fi
             else
+                # http_inject/rate_limit/sqlmap no deducen el esquema del puerto
+                # (443/8443 no acredita TLS) y aquí no hay slot para pedirlo: la
+                # opción por entorno queda fuera de la línea Uso: a propósito. Sin
+                # este empujón el script corta con "Selecciona X_ESQUEMA=..." y
+                # parece roto. Se pide una vez, solo para esta ejecución, y no
+                # se guarda ni se reutiliza en la siguiente selección.
+                local esquema_var="" esquema_val=""
+                case "${scripts[$idx]}" in
+                    */web/http_inject.sh) esquema_var=HTTP_INJECT_ESQUEMA ;;
+                    */web/rate_limit_probe.sh) esquema_var=RATE_LIMIT_ESQUEMA ;;
+                    */web/sqlmap_request.sh) esquema_var=SQLMAP_ESQUEMA ;;
+                esac
+                if [[ -n "$esquema_var" ]]; then
+                    echo ""
+                    echo -e "${YELLOW}ℹ️  Este script no deduce el esquema del puerto.${NC}"
+                    echo -ne "${BOLD}${WHITE}Esquema real del servicio http|https (Enter = no fijarlo): ${NC}"
+                    IFS= read -r esquema_val
+                    case "$esquema_val" in
+                        http|https|"") ;;
+                        *) echo -e "${RED}❌ Esquema no válido: '${esquema_val}'; se continúa sin fijarlo.${NC}"
+                           esquema_val="" ;;
+                    esac
+                fi
+                [[ -n "$esquema_var" && -n "$esquema_val" ]] && export "$esquema_var=$esquema_val"
                 execute_script "${scripts[$idx]}" "$module_dir"
+                [[ -n "$esquema_var" ]] && unset "$esquema_var"
             fi
         else
             echo -e "${RED}❌ Opción inválida${NC}"
