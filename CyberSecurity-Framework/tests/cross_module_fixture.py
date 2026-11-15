@@ -57,6 +57,7 @@ LOCAL_SOURCE_FILES = (
     '13_Labs/cloud/cloud_setup.sh', '13_Labs/main.sh',
     '13_Labs/setup_lab.sh', '13_Labs/run_all_labs.sh',
     '02_Recon/scripts/ping_sweep.sh',
+    '00_Config/lib/recon_targets.py',
 )
 
 

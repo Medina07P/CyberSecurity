@@ -19,38 +19,27 @@ fi
 
 # Resultados junto al módulo, no en el cwd desde el que se lance
 MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FRAMEWORK_DIR="$(cd "$MODULE_DIR/.." && pwd)"
+LIB="$FRAMEWORK_DIR/00_Config/lib"
 OUTPUT_DIR="$MODULE_DIR/host_discovery"
 OUTPUT="$OUTPUT_DIR/ping_sweep_$(date +%Y%m%d).txt"
 
-IPS=()
-if [[ "$NETWORK" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    # IP suelta: un solo host, sin inventar un /24
-    IPS=("$NETWORK")
-    echo "🔍 Comprobando host: $NETWORK"
-elif [[ "$NETWORK" =~ ^([0-9]{1,3}\.){2}[0-9]{1,3}/24$ ]]; then
-    BASE="${NETWORK%/24}"
-    BASE="${BASE%.*}"
-elif [[ "$NETWORK" =~ ^([0-9]{1,3}\.){2}[0-9]{1,3}$ ]]; then
-    BASE="$NETWORK"
-else
-    echo "❌ Objetivo no válido: '$NETWORK'"
-    echo "   Usa una IP (192.168.1.10), una red /24 (192.168.1.0/24) o un prefijo (192.168.1)"
+# Parseo previo: no crear salida si el objetivo/rango es inválido.
+_RCFILE="$(mktemp)"
+mapfile -t IPS < <(python3 -I -B "$LIB/recon_targets.py" "$NETWORK" "$RANGE"; rc=$?; printf '%s\n' "$rc" > "$_RCFILE"; exit "$rc")
+PARSE_RC="$(cat "$_RCFILE" 2>/dev/null)"
+rm -f "$_RCFILE"
+if [[ "$PARSE_RC" != "0" || ${#IPS[@]} -eq 0 ]]; then
+    echo "❌ Objetivo o rango no válido: '$NETWORK' ${RANGE:+($RANGE)}"
     exit 1
 fi
 
-if [[ ${#IPS[@]} -eq 0 ]]; then
-    START=$(echo "$RANGE" | cut -d'-' -f1)
-    END=$(echo "$RANGE" | cut -d'-' -f2)
-    if [[ ! "$START" =~ ^[0-9]+$ || ! "$END" =~ ^[0-9]+$ ]]; then
-        echo "❌ Rango no válido: '$RANGE' (formato: 1-254)"
-        exit 1
-    fi
-    echo "🔍 Escaneando red: ${BASE}.0/24 ($RANGE)"
-    for i in $(seq "$START" "$END"); do
-        IPS+=("${BASE}.${i}")
-    done
+if ! command -v ping >/dev/null 2>&1; then
+    echo "❌ 'ping' no está disponible en el sistema"
+    exit 1
 fi
 
+echo "🔍 Escaneando: $NETWORK ${RANGE:+($RANGE)}"
 echo "────────────────────────────────────────"
 
 mkdir -p "$OUTPUT_DIR"
