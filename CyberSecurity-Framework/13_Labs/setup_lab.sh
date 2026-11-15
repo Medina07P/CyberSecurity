@@ -2,39 +2,36 @@
 
 # ============================================================
 # SETUP LAB - Configura laboratorio
-# Uso:     ./setup_lab.sh <TIPO> <NOMBRE>
+# Uso:     ./setup_lab.sh <TIPO> <NOMBRE> [--root DIR]
 # Ejemplo: ./setup_lab.sh htb "Blue"
 # ============================================================
 
-TYPE="$1"
-NAME="$2"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
-if [[ -z "$TYPE" || -z "$NAME" ]]; then
+TYPE="${1:-}"
+if [[ -z "$TYPE" ]]; then
     echo "Uso: ./setup_lab.sh <TIPO> <NOMBRE>"
     echo "Tipos: htb, thm, ad, web, cloud"
     echo "Ejemplo: ./setup_lab.sh htb Blue"
     exit 1
 fi
-
-echo "════════════════════════════════════════════════════════"
-echo " CONFIGURANDO LABORATORIO: ${TYPE} - ${NAME}"
-echo "════════════════════════════════════════════════════════"
+shift
 
 case "$TYPE" in
     htb)
-        cd hackthebox && ./htb_setup.sh "$NAME"
+        exec "$SCRIPT_DIR/hackthebox/htb_setup.sh" "$@"
         ;;
     thm)
-        cd tryhackme && ./thm_setup.sh "$NAME"
+        exec "$SCRIPT_DIR/tryhackme/thm_setup.sh" "$@"
         ;;
     ad)
-        cd active_directory && ./ad_setup.sh "$NAME"
+        exec "$SCRIPT_DIR/active_directory/ad_setup.sh" "$@"
         ;;
     web)
-        cd web_apps && ./web_setup.sh "$NAME"
+        exec "$SCRIPT_DIR/web_apps/web_setup.sh" "$@"
         ;;
     cloud)
-        cd cloud && ./cloud_setup.sh "$NAME"
+        exec "$SCRIPT_DIR/cloud/cloud_setup.sh" "$@"
         ;;
     *)
         echo "❌ Tipo no válido: $TYPE"
