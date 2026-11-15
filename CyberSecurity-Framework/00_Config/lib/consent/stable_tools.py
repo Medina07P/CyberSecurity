@@ -1,5 +1,6 @@
 """Stable operations; importing this module never starts a backend."""
 import ipaddress
+import os
 from dataclasses import dataclass
 import uuid
 from pathlib import Path
@@ -132,7 +133,7 @@ def _valid_local_binary(path):
     except (TypeError, ValueError):
         return False
     if not candidate.is_absolute():
-        candidate = Path.cwd() / candidate
+        return False
     try:
         if candidate.is_symlink():
             return False
