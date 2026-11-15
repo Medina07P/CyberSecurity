@@ -343,3 +343,121 @@ after authorized observed business RED can Task1 generation-phase implementation
 resume. Task1/Task9/global are not complete; no real operation, cleanup, merge or
 push authorization is inferred. Historical artifacts and the initial report are
 preserved; this wave creates no runtime tree to clean.
+
+## Separate storage phase — base4e93359, 2026-11-14 (STATIC / NOT RUN)
+
+Authority: after the capacity gate, the controller relayed the user's explicit
+**«Sí, autorizo.»** for ONLY NEW runs on the current worktree disk, independent
+review first, old `/tmp` artifacts intact. Controller selected exactly:
+
+```text
+REPO / '.superpowers' / 'sdd' / 'isolated-runtime-runs'
+/home/kali/.local/share/opencode/worktree/f6569d/automation-integral-20261113/.superpowers/sdd/isolated-runtime-runs
+```
+
+This authorization is not a test/probe/launcher execution gate. Prior I1–I4/M1
+review corrections were left untouched; no generation/business implementation.
+
+### Exact changes and provenance
+
+- `tests/automation_sandbox_prepare.py`: RUN_PARENT is the literal fixed
+  REPO-derived expression above. No env, CLI, fallback, alternate root, alias or
+  old-path symlink. New `_open_run_parent` opens the **pre-existing** directory
+  using the existing no-follow ancestor walker and requires a directory owned
+  by the current UID, exact0700, stable descriptor/named identity. Missing,
+  symlinked, nonprivate, wrong-owner or replaced parents block. It never creates
+  or repairs/adopts a storage parent. Existing exclusive UUID child mkdir0700,
+  EEXIST/no retry/reuse, retained failures and source/runtime/work/evidence layout
+  remain unchanged.
+- `tests/automation_sandbox_policy.py`: host policy compares prepared root parent
+  against the same fixed RUN_PARENT rather than `/tmp/opencode`. All layout,
+  exact staged runtime and mount construction checks remain. No mount expansion.
+- `tests/automation_sandbox_inside.py`: the inside process sees `__file__` under
+  `/source`, so cannot reconstruct the original host checkout absolute prefix.
+  It now derives the canary sibling base from the launcher-written outside-canary
+  **metadata**, requires absolute normalized spelling without `..`, the exact
+  fixed `.superpowers/sdd/isolated-runtime-runs` suffix, the matching validated
+  run UUID and the three exact sibling filenames. No context schema/root selector
+  was added and these strings cannot select mounts or runtime storage. The exact
+  host checkout prefix is enforced by host preparation/policy, not independently
+  authenticated from inside. This distinction is explicit for review; it is not
+  an env/path token granting authority. Namespace and visibility checks still run
+  before case work, including outside-canary ENOENT and no external-double exec.
+- Existing unit methods in `test_automation_sandbox_prepare.py` and
+  `test_automation_sandbox_policy.py` extend contracts for the fixed expression,
+  private/nofollow/owner/type/identity checks, no parent/repo mounts, no ignored
+  artifact source inventory, rejected old/other parents and canary path mismatch/
+  traversal. **No new test methods/IDs or grants. Written only, NOT RUN.**
+- `docs/AUTOMATION-TEST-ISOLATION-2026-11-13.md`: dated current-storage note and
+  current staging-path description. Historical `/tmp/opencode/...` receipt paths
+  and their old verification claims are preserved as history, not rewritten to
+  point to nonexistent new receipts. This report likewise retains prior phases.
+
+### New empty bookkeeping root (only filesystem creation in this phase)
+
+Using standalone `python3 -I -B -` standard-library bookkeeping, NOT a repo
+helper/import, opened every existing ancestor by O_DIRECTORY|O_NOFOLLOW and
+created ONLY `isolated-runtime-runs` with `mkdir(...,0700,dir_fd=...)`. Verified
+descriptor/named identity, owner/mode/type and empty contents via the new root FD.
+No run child/source/runtime/work/evidence/canary was created; no old path opened,
+modified, moved, removed, linked or adopted. Exact observed metadata:
+
+```json
+{"bookkeeping_created":true,"dev":2049,"ino":1889210,"uid":1000,"mode":"0o700","entries":[],"available_bytes":20258410496,"available_inodes":2564756,"runtime_executed":false}
+```
+
+The capacity values are a momentary statvfs observation, not reserved space or a
+guarantee a later run succeeds. Parent remains ignored and empty; no .gitkeep or
+helper output added inside. `git check-ignore -v .superpowers/sdd/isolated-runtime-runs`
+reported `.superpowers/sdd/.gitignore:1:*`; no ignore policy change was needed.
+
+### Containment/source assumptions checked statically
+
+Moving storage beneath REPO does **not** mount REPO or the storage parent. The
+only host mounts remain the new run's individual source RO, sparse runtime RO,
+work/evidence writable, plus proc/dev as previously defined. Original sources are
+still copied by exact closed manifest names, not repo discovery. Every source
+name rejects dot-prefixed path components, and no staged source-manifest entry
+contains `.superpowers`; no ignored run/artifact tree can be recursively copied
+to `/source`. The launcher scans only its new staged source tree for validation,
+never all REPO/ignored artifacts. Canary paths are fresh siblings OUTSIDE those
+mounts, not a new host mount or permission exception.
+
+Source/utility/grant provenance remains unchanged from4e93359: local12 IDs/11
+grants (pure parser ungranted), prior consent/web/historical25 maps, exact source
+allowlist, ls/rmdir-approved sparse runtime manifest, bounded ELF resolver,
+case worker/Landlock and launcher/probe-input creation code are byte-identical.
+No seccomp, namespace, read-only-source, per-case scratch, fd or cancellation
+policy was relaxed. No blind source hash/baseline refresh.
+
+### Actual static verification and next gate
+
+- `git status --short`: clean before edits on base4e93359.
+- Read/grep only the affected root/preparation/policy/canary/unit contracts and
+  guide; no historical `/tmp` run inspected or source/data discovery performed.
+- Standalone `python3 -I -B -` AST/JSON analysis, no repository imports: **rc0**,
+  `STATIC AST/JSON OK: 6 changed files; no repository imports`;
+  `STATIC root expression exact: REPO/.superpowers/sdd/isolated-runtime-runs`;
+  `UNCHANGED local12/11, prior grants, exact sources/runtime/ELF resolver, case worker and launcher`;
+  `STATIC source inventory excludes .superpowers and run parent; no discovery added`;
+  `STATIC current preparation/policy/inside removed old hardcoded runtime root; historical receipts unchanged`.
+- Bookkeeping-only no-follow creation/statvfs command: **rc0**, exact metadata
+  above. This is **not** prepare/launcher/runtime execution or sandbox evidence.
+- `git check-ignore -v` exact new root: **rc0**, existing ignored sdd-parent rule.
+- `git diff --check`: **rc0**, empty output. No Bash file modified/executed.
+
+**NOT RUN:** repository imports/helpers (including `_open_run_parent`), prepare,
+launcher, probes, test discovery, suites/cases, product, doubles, ls/rmdir/rm or
+other backend/runtime. No cleanup/moving/deletion, remount, install, sudo,
+network, GUI, subagents, push or merge. Independent static review of this exact
+storage delta/SHA must precede any controller-issued exact execution gate.
+All twelve local cases stay pending initial observed RED; only after authorized
+observed business RED can Task1 generation-phase implementation start. Task1 is
+not complete, and old receipts do not verify the new root/combination.
+
+Final source/data-only check: **rc0**, `FINAL STATIC AST/SCOPE OK: 7 files, no
+repository imports`; existing unit/local test method identities unchanged;
+source/runtime/grant/launcher/fixture/business-test baselines unchanged; AST
+comparison confirms seccomp and mount/layout/runtime argv unchanged beyond the
+fixed-root guard. Local exact12/11 and pure ungranted confirmed. This is static
+analysis only, not a sandbox/test pass.

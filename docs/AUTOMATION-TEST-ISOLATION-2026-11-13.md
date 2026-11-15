@@ -2,6 +2,19 @@
 
 ## Estado y autorización
 
+**Almacenamiento de runs NUEVOS,2026-11-14 — cambio estático, NOT RUN:**
+por autorización específica posterior a la puerta de capacidad, el padre fijo
+es `<REPO>/.superpowers/sdd/isolated-runtime-runs/`, preexistente privado0700,
+propiedad del usuario y abierto sin seguir enlaces. Sin selectorCLI/env, fallback
+ni adopción de runs: cada hijo `automation-isolated-<uuid>` se crea exclusivamente
+0700; source/runtime/work/evidence mantienen su layout. El checkout completo y
+este padre NO se montan ni se copian a `/source`; solo fuentes del manifiesto
+cerrado y árboles nuevos individuales. Canarios externos siguen siendo hermanos
+sintéticos fuera de los montajes. Revisión independiente y autorización exacta
+del comando/SHA siguen obligatorias antes de ejecutar. Los recibos históricos
+`/tmp/opencode/...` siguientes permanecen en sus rutas originales, sin mover,
+borrar, enlazar o reutilizar; no verifican esta combinación nueva.
+
 **Observación acotada del controlador,2026-11-14, sobre82663d7
 (`82663d746e1b9347a74c7f7836fa6722f04c92a1`):** selector `--suite` rc0;
 60sandbox units,0fallos0errores0SKIP;179integration,0fallos0errores1SKIP.
@@ -148,7 +161,7 @@ seguridad frente a exploits hostiles, compatibilidad Windows/Docker o auditoría
 
 ## Preservación literal y casos bloqueados antes de ejecutar
 
-Cada staging nuevo `/tmp/opencode/automation-isolated-<uuid>/`700 conserva source,
+Cada staging nuevo `<REPO>/.superpowers/sdd/isolated-runtime-runs/automation-isolated-<uuid>/`700 conserva source,
 runtime, work y evidence, aun fallando. El launcher crea `work/fixtures`700;
 fixtures, negativos y casos unitarios crean únicamente bajo `/work/fixtures`,
 dentro del mismo work persistente ya montado. No requieren `/tmp/opencode`
