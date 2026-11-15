@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Callable
 
 from .model import ParseResult
+from .coverage import walk
+from .attribution import guess_host
 
 __all__ = ["Source", "PARSERS", "register", "discover"]
 
@@ -55,6 +57,7 @@ _PARSER_MODULES = (
     "sqlmap", "sqli_findings", "rate_limit", "headers", "host_sources",
     "exploitation",
     "postexploitation",
+    "scanner_ports",
 )
 
 _loaded = False
@@ -64,9 +67,12 @@ def evidence_metadata(path):
     """None si no hay sidecar; diccionario inválido si el presente no es fiable."""
     for suffix in ('.attempt.json', '.meta.json'):
         sidecar = Path(str(path)+suffix)
+        if any(p.is_symlink() for p in (sidecar, *sidecar.parents)):
+            return {'estado': 'NO_DETERMINADO', 'invalid': True}
         if not sidecar.exists(): continue
         try:
-            meta = json.loads(sidecar.read_text())
+            from .exploitation_metadata import read_object
+            meta = read_object(sidecar)
             if (isinstance(meta, dict) and meta.get('version') == 1
                     and isinstance(meta.get('host'), str) and meta['host']
                     and isinstance(meta.get('puerto'), int) and not isinstance(meta['puerto'], bool)
@@ -99,6 +105,8 @@ def _load_parsers() -> None:
 
 # Tabla de clasificación: (directorio, patrón de nombre) → kind.
 _DIR_RULES: list[tuple[str, str, str]] = [
+    ("masscan", "masscan_*.json", "masscan"),
+    ("rustscan", "rustscan_*.txt", "rustscan"),
     ("nmap", "*.xml", "nmap"),
     ("nuclei", "*.jsonl", "nuclei_jsonl"),
     ("nuclei", "*.txt", "nuclei_txt"),
@@ -149,6 +157,8 @@ def _classify(path: Path, scans_dir: Path) -> str:
         if directory == dir_pat and fnmatch.fnmatch(name, file_pat):
             return kind
 
+    if directory in {'masscan', 'rustscan', 'audits'} and path.suffix in {'.txt', '.json', '.xml', '.log'}:
+        return 'unsupported'
     return "ignored"
 
 
@@ -156,19 +166,17 @@ def discover(scans_dir: Path) -> list[Source]:
     """Recorre ``scans_dir`` y devuelve una ``Source`` por fichero encontrado."""
     _load_parsers()
     scans_path = Path(scans_dir)
-    if not scans_path.is_dir():
-        return []
-
     sources: list[Source] = []
-    for path in sorted(scans_path.rglob("*")):
-        if not path.is_file():
+    for path, blocked in walk(scans_path):
+        if blocked:
+            sources.append(Source(path=path, kind='blocked', parser=None, host=guess_host(path.name)))
             continue
         kind = _classify(path, scans_path)
         parser = PARSERS.get(kind)
         host = None
         # Nuevas evidencias de 04: el último intento manda, sin borrar el
         # resultado histórico conservado. Los ficheros heredados no se atribuyen.
-        meta = evidence_metadata(path)
+        meta = evidence_metadata(path) if parser is not None else None
         if meta is not None:
             host = meta.get('host')
             state = meta['estado']
@@ -187,7 +195,8 @@ def discover(scans_dir: Path) -> list[Source]:
         invalid_directories = set()
         for s in postexploitation:
             try:
-                data = json.loads(s.path.read_text(encoding="utf-8"))
+                from .exploitation_metadata import read_object
+                data = read_object(s.path)
                 if not isinstance(data, dict):
                     raise ValueError('manifiesto no es un objeto')
                 host, port = postexploitation_engine().validate_target(
@@ -226,36 +235,41 @@ def discover(scans_dir: Path) -> list[Source]:
                         'motivo': 'manifiesto sin identidad fiable en esta carpeta; revisar último intento'}])
                 s.parser = unattributed
 
-    # Priorizar el último run por host/herramienta en explotación: los runs
-    # anteriores del mismo destino se omiten (no se borra evidencia).
+    # Identidad completa y orden temporal del productor. Un run no atribuible
+    # bloquea conservadoramente los éxitos de esa carpeta, como en 06.
+    from .exploitation_metadata import identity, order, read_object
     exploitation = [s for s in sources if s.kind == "exploitation"]
-    if len(exploitation) > 1:
-        grupos: dict[tuple, list[Source]] = {}
+    if exploitation:
+        grupos = {}
+        invalid_directories = set()
+        orders = {}
         for s in exploitation:
             try:
-                data = json.loads(s.path.read_text(encoding="utf-8"))
-                clave = (data.get("host", ""), data.get("herramienta", ""))
+                data = read_object(s.path)
+                clave = identity(s.path, data)
+                s.host = clave[0]
+                orders[s.path] = order(data)
             except (OSError, ValueError, TypeError):
-                clave = (None, None)
+                invalid_directories.add(s.path.parent.parent)
+                clave = (None, s.path)
             grupos.setdefault(clave, []).append(s)
 
         conservar: set[Path] = set()
         for grp in grupos.values():
-            if len(grp) <= 1:
-                conservar.update(s.path for s in grp)
-                continue
-            def _clave_run(s: Source) -> tuple[str, str]:
-                try:
-                    d = json.loads(s.path.read_text(encoding="utf-8"))
-                    return (d.get("fecha") or d.get("started") or "", d.get("run_id", ""))
-                except (OSError, ValueError, TypeError):
-                    return ("", "")
-            ultimo = max(grp, key=_clave_run)
+            ultimo = max(grp, key=lambda s: orders[s.path]) if len(grp) > 1 else grp[0]
             conservar.add(ultimo.path)
 
         sources = [
             s for s in sources
             if s.kind != "exploitation" or s.path in conservar
         ]
+        for s in sources:
+            if s.kind == 'exploitation' and s.path.parent.parent in invalid_directories:
+                def blocked(source, root):
+                    from .model import relpath
+                    return ParseResult(evaluado=False, no_evaluable=[{
+                        'fuente': relpath(source, root),
+                        'motivo': 'manifiesto sin identidad u orden fiable en esta carpeta; revisar último intento'}])
+                s.parser = blocked
 
     return sources

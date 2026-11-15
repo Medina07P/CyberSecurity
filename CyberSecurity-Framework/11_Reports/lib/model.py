@@ -84,7 +84,10 @@ def merge_findings(items: list[Finding]) -> list[Finding]:
 
     merged: list[Finding] = []
     for group in groups.values():
-        winner = min(group, key=_strength)
+        # La confianza de una prueba directa no se pierde por una referencia
+        # candidata de mayor severidad. El texto procede de la prueba más fiable.
+        winner = min(group, key=lambda f: (CONFIDENCE_ORDER[f.confianza], SEVERITY_ORDER[f.severidad],
+                                          0 if f.rule == 'nmap.open_port' and f.key.startswith('nmap.open_port:') else 1))
 
         evidencia: list[Evidence] = []
         vistos: set[tuple[str, int | None, str]] = set()

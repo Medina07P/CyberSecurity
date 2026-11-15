@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .model import finding_to_dict, finding_from_dict
 from .engine import Collected
+from .publication import preflight, write_private
 
 __all__ = ["write_reports", "to_json", "from_json"]
 
@@ -27,6 +28,7 @@ def to_json(collected: Collected, meta: dict) -> dict:
         "objetivos": collected.objetivos,
         "evaluado": collected.evaluado,
         "incidencias": collected.incidencias,
+        "cobertura": collected.cobertura,
         "meta": meta,
     }
 
@@ -42,6 +44,7 @@ def from_json(data: dict) -> tuple[Collected, dict]:
         objetivos=data["objetivos"],
         evaluado=data["evaluado"],
         incidencias=data.get("incidencias", []),
+        cobertura=data.get("cobertura", []),
     )
     return collected, data["meta"]
 
@@ -59,21 +62,21 @@ def write_reports(
     Devuelve la lista de rutas creadas.
     """
     out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    preflight(out_dir, [f'informe_{tipo}.{extension}' for tipo in tipos for extension in ('md', 'html')])
     written: list[Path] = []
 
     if "tecnico" in tipos:
         md = _render_technical_md(collected, meta)
         html_ = _render_technical_html(collected, meta)
-        (out_dir / "informe_tecnico.md").write_text(md, encoding="utf-8")
-        (out_dir / "informe_tecnico.html").write_text(html_, encoding="utf-8")
+        write_private(out_dir / "informe_tecnico.md", md)
+        write_private(out_dir / "informe_tecnico.html", html_)
         written.extend([out_dir / "informe_tecnico.md", out_dir / "informe_tecnico.html"])
 
     if "cliente" in tipos:
         md = _render_cliente_md(collected, meta)
         html_ = _render_cliente_html(collected, meta)
-        (out_dir / "informe_cliente.md").write_text(md, encoding="utf-8")
-        (out_dir / "informe_cliente.html").write_text(html_, encoding="utf-8")
+        write_private(out_dir / "informe_cliente.md", md)
+        write_private(out_dir / "informe_cliente.html", html_)
         written.extend([out_dir / "informe_cliente.md", out_dir / "informe_cliente.html"])
 
     return written
@@ -90,7 +93,7 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
     # Portada
     lines.append("# Informe técnico")
     lines.append("")
-    objetivo = ", ".join(collected.objetivos) if collected.objetivos else "No especificado"
+    objetivo = ", ".join(collected.objetivos) if collected.objetivos else meta.get('objetivo', 'No especificado')
     fecha = meta.get("fecha", "No especificada")
     lines.append(f"**Objetivo:** {objetivo}")
     lines.append(f"**Fecha:** {fecha}")
@@ -250,8 +253,14 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
         for ne in collected.no_evaluable:
             lines.append(f"- {ne.get('fuente', 'desconocido')}: {ne.get('motivo', 'desconocido')}")
     else:
-        lines.append("Todos los hallazgos pudieron evaluarse.")
+        lines.append("No constan incidencias adicionales en las fuentes leídas; no acredita cobertura total.")
     lines.append("")
+
+    lines.extend(['## Cobertura de evidencias', '',
+                  'Solo las fuentes listadas se leyeron; contexto y presencia no acreditan vulnerabilidades ni integridad.', ''])
+    for item in collected.cobertura:
+        lines.append(f"- Módulo {item['modulo']} — {item['fuente']} — {item['objetivo'] or 'sin objetivo atribuible'} — {item['estado']}: {item['motivo']}")
+    lines.append('')
 
     # Metodología
     lines.append("## Metodología")
@@ -275,7 +284,7 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
 def _render_technical_html(collected: Collected, meta: dict) -> str:
     """Genera el informe técnico en HTML con CSS embebido."""
     # Reutilizamos los datos del Markdown pero generamos HTML directamente.
-    objetivo = html.escape(", ".join(collected.objetivos) if collected.objetivos else "No especificado")
+    objetivo = html.escape(", ".join(collected.objetivos) if collected.objetivos else meta.get('objetivo', 'No especificado'))
     fecha = html.escape(str(meta.get("fecha", "No especificada")))
     alcance = html.escape(str(meta.get("alcance", "No especificado")))
 
@@ -451,7 +460,13 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
             html_parts.append(f"<li>{fuente}: {motivo}</li>")
         html_parts.append("</ul>")
     else:
-        html_parts.append("<p>Todos los hallazgos pudieron evaluarse.</p>")
+        html_parts.append("<p>No constan incidencias adicionales en las fuentes leídas; no acredita cobertura total.</p>")
+
+    html_parts.append('<h2>Cobertura de evidencias</h2><p>Solo las fuentes listadas se leyeron; contexto y presencia no acreditan vulnerabilidades ni integridad.</p><ul>')
+    for item in collected.cobertura:
+        description = f"Módulo {item['modulo']} — {item['fuente']} — {item['objetivo'] or 'sin objetivo atribuible'} — {item['estado']}: {item['motivo']}"
+        html_parts.append('<li>' + html.escape(description) + '</li>')
+    html_parts.append('</ul>')
 
     # Metodología
     html_parts.append("<h2>Metodología</h2>")
@@ -514,8 +529,10 @@ def _client_limitations(collected: Collected) -> list[str]:
     if not collected.evaluado:
         limitations.append("No hubo fuentes evaluables; no se acredita que las pruebas se completaran.")
 
-    if not limitations:
-        limitations.append("Todas las pruebas se completaron y se presentan en este informe.")
+    unsupported = sum(c['estado'] in {'no_soportada', 'no_evaluable'} for c in collected.cobertura)
+    if unsupported:
+        limitations.append(f'La cobertura es parcial: {unsupported} fuentes no soportadas o no evaluables.')
+    limitations.append('Conclusiones limitadas a las evidencias evaluadas; no acreditan que se ejecutaran todas las pruebas ni la integridad de capturas o archivos de contexto.')
     return limitations
 
 

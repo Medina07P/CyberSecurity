@@ -1,0 +1,102 @@
+{
+  "version": 2,
+  "grant": "explicit-user-new-synthetic-disposables-only",
+  "scope": "registered-current-case-fixture-only",
+  "required_observer": "landlock-abi3-current-case-worker",
+  "disposable_states": "new-synthetic-intermediate-states",
+  "groups": {
+  "--cross-closure": {
+    "case_ids": [
+      "test_cross_closure.SummaryTests.test_cli_summary_is_safe",
+      "test_cross_closure.SummaryTests.test_interactive_summary_and_pre_store_failure",
+      "test_cross_closure.TerminalTests.test_cancel_before_and_after_ready",
+      "test_cross_closure.TerminalTests.test_existing_result_is_preserved",
+      "test_cross_closure.TerminalTests.test_receipt_io_failure_preserves_cancellation",
+      "test_cross_closure.TerminalTests.test_reap_failure_is_not_success",
+      "test_cross_documentation.DocumentationTests.test_dns_resolution_and_dictionary_gate",
+      "test_cross_documentation.DocumentationTests.test_ftp_login_vs_listing",
+      "test_cross_documentation.DocumentationTests.test_actual_exploitation_children",
+      "test_cross_documentation.DocumentationTests.test_templates_and_ssh_have_real_effects",
+      "test_cross_documentation.DocumentationTests.test_forensic_metadata_vs_private_hash_reads",
+      "test_cross_documentation.DocumentationTests.test_scope_backup_vs_targets_append",
+      "test_cross_documentation.DocumentationTests.test_forensic_menu_vs_cli_filters",
+      "test_cross_documentation.DocumentationTests.test_99_warning_matches_omissions",
+      "test_cross_documentation.DocumentationTests.test_wizard_defaults_and_resolved_components",
+      "test_cross_documentation.DocumentationTests.test_key_cli_signatures",
+      "test_cross_documentation.DocumentationTests.test_sqlmap_gates_by_channel"
+    ],
+    "grant_ids": []
+  },
+  "--cross-consent": {
+  "case_ids": [
+    "test_cross_consent.ConsentTests.test_cleanup_nonexecution_is_inert",
+    "test_cross_consent.ConsentTests.test_cleanup_requires_both_flags",
+    "test_cross_consent.ConsentTests.test_cleanup_local_plan_and_partial_failure",
+    "test_cross_consent.ConsentTests.test_cleanup_refuses_links",
+    "test_cross_consent.ConsentTests.test_burp_open_is_not_network_consent",
+    "test_cross_consent.ConsentTests.test_burp_status_has_no_side_effects",
+    "test_cross_consent.ConsentTests.test_burp_verify_explicit_url",
+    "test_cross_consent.ConsentTests.test_burp_stop_pins_owned_identity",
+    "test_cross_consent.ConsentTests.test_menu_cancel_and_coordinator_exclusions"
+  ],
+  "grant_ids": [
+    "test_cross_consent.ConsentTests.test_cleanup_nonexecution_is_inert",
+    "test_cross_consent.ConsentTests.test_cleanup_requires_both_flags",
+    "test_cross_consent.ConsentTests.test_cleanup_local_plan_and_partial_failure",
+    "test_cross_consent.ConsentTests.test_cleanup_refuses_links",
+    "test_cross_consent.ConsentTests.test_burp_open_is_not_network_consent",
+    "test_cross_consent.ConsentTests.test_burp_status_has_no_side_effects",
+    "test_cross_consent.ConsentTests.test_burp_verify_explicit_url",
+    "test_cross_consent.ConsentTests.test_burp_stop_pins_owned_identity",
+    "test_cross_consent.ConsentTests.test_menu_cancel_and_coordinator_exclusions"
+  ]
+  },
+  "--cross-local": {
+    "case_ids": [
+      "test_cross_local.GenerationTests.test_generation_is_exclusive_and_inert",
+      "test_cross_local.GenerationTests.test_generated_launcher_requires_root_and_mode",
+      "test_cross_local.StableToolTests.test_smb_keeps_all_methods_without_source_mutation",
+      "test_cross_local.StableToolTests.test_psexec_preserves_argv_and_secret_privacy",
+      "test_cross_local.StableToolTests.test_linpeas_requires_explicit_source_and_sudo",
+      "test_cross_local.StableToolTests.test_linpeas_failures_preserve_artifacts",
+      "test_cross_local.LabTests.test_five_templates_preserve_existing_notes",
+      "test_cross_local.LabTests.test_lab_roots_names_and_menu_cwd",
+      "test_cross_local.LabTests.test_lab_links_and_partial_failure",
+      "test_cross_local.ReconTests.test_ping_target_parser",
+      "test_cross_local.ReconTests.test_ping_cli_records_only_selected_targets",
+      "test_cross_local.LocalMenuTests.test_modes_marks_and_coordinator_omissions"
+    ],
+    "grant_ids": [
+      "test_cross_local.GenerationTests.test_generation_is_exclusive_and_inert",
+      "test_cross_local.GenerationTests.test_generated_launcher_requires_root_and_mode",
+      "test_cross_local.StableToolTests.test_smb_keeps_all_methods_without_source_mutation",
+      "test_cross_local.StableToolTests.test_psexec_preserves_argv_and_secret_privacy",
+      "test_cross_local.StableToolTests.test_linpeas_requires_explicit_source_and_sudo",
+      "test_cross_local.StableToolTests.test_linpeas_failures_preserve_artifacts",
+      "test_cross_local.LabTests.test_five_templates_preserve_existing_notes",
+      "test_cross_local.LabTests.test_lab_roots_names_and_menu_cwd",
+      "test_cross_local.LabTests.test_lab_links_and_partial_failure",
+      "test_cross_local.ReconTests.test_ping_cli_records_only_selected_targets",
+      "test_cross_local.LocalMenuTests.test_modes_marks_and_coordinator_omissions"
+    ]
+  },
+  "--cross-web": {
+    "case_ids": [
+      "test_cross_web.WebTests.test_pair_composes_locations_and_literals",
+      "test_cross_web.WebTests.test_pair_rejects_ambiguity",
+      "test_cross_web.WebTests.test_login_req_transmits_each_candidate",
+      "test_cross_web.WebTests.test_login_has_no_preconsent_transport",
+      "test_cross_web.WebTests.test_rate_has_no_scheme_probe",
+      "test_cross_web.WebTests.test_rate_403_and_existing_verdicts",
+      "test_cross_web.WebTests.test_web_inputs_and_previous_runs_are_preserved"
+    ],
+    "grant_ids": [
+      "test_cross_web.WebTests.test_login_req_transmits_each_candidate",
+      "test_cross_web.WebTests.test_login_has_no_preconsent_transport",
+      "test_cross_web.WebTests.test_rate_has_no_scheme_probe",
+      "test_cross_web.WebTests.test_rate_403_and_existing_verdicts",
+      "test_cross_web.WebTests.test_web_inputs_and_previous_runs_are_preserved"
+    ]
+  }
+  }
+}

@@ -110,7 +110,9 @@ forensics_execute_script() {
 forensics_menu() {
     local choice action path value
     while :; do
-        printf '\nFORENSE 08 — identidad por evidencia, no IP de sesión\n1) Dependencias (solo disponibilidad)\n2) Strings offline\n3) Log offline\n4) PCAP offline\n5) Volatility Windows offline\n6) Disco/recuperación\n7) Timeline offline\n8) Adquisición/local explícitos\n9) Flujo offline por fuentes elegidas\n10) Visor (metadata, sin cuerpos)\n11) Diez entradas originales + visor\n0) Volver\nSelección: ' >&2
+        printf '\nFORENSE 08 — identidad por evidencia, no IP de sesión\n' >&2
+        if declare -F module_intro >/dev/null; then module_intro '08_Forensics' >&2; fi
+        printf '1) Dependencias (solo disponibilidad)\n2) Strings offline\n3) Log offline\n4) PCAP offline\n5) Volatility Windows offline\n6) Disco/recuperación\n7) Timeline offline\n8) Adquisición/local explícitos\n9) Flujo offline por fuentes elegidas\n10) Visor (metadata, sin cuerpos)\n11) Diez entradas originales + visor\n0) Volver\nSelección: ' >&2
         IFS= read -r choice || return 0
         case $choice in
             0|'!') return 0 ;;

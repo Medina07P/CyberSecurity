@@ -27,7 +27,7 @@ mostrar_ayuda() {
     echo ""
     echo "Opciones del motor (se reenvían tal cual):"
     echo "  --scans <dir>       Directorio de resultados de escaneo"
-    echo "  --salida <dir>      Directorio de salida"
+    echo "  --salida <dir>      Raíz de historial; cada generación crea runs/<id>/"
     echo "  --objetivo <host>   Objetivo del informe"
     echo "  --cliente <nombre>  Nombre del cliente"
     echo "  --auditor <nombre>  Nombre del auditor"
@@ -35,51 +35,34 @@ mostrar_ayuda() {
 }
 
 # ─── Resolución del tipo ────────────────────────────────────
-tipo=""
-resto=()
-
-for arg in "$@"; do
-    if [[ -z "$tipo" ]]; then
-        case "$arg" in
+tipo="ambos"
+# Solo el primer argumento es selector de tipo. Los valores de opciones
+# posteriores pueden llamarse «cliente», «tecnico» o «ambos».
+if [[ $# -gt 0 ]]; then
+        case "$1" in
             --help|-h)
                 mostrar_ayuda
                 exit 0
                 ;;
             --executive|--ejecutivo)
                 tipo="cliente"
-                continue
+                shift
                 ;;
             --technical|--tecnico)
                 tipo="tecnico"
-                continue
+                shift
                 ;;
             --full|--all|--ambos)
                 tipo="ambos"
-                continue
-                ;;
-            --*)
-                # Primera bandera → no hay tipo positional; tratar como opción
-                resto+=("$arg")
-                continue
+                shift
                 ;;
             tecnico|cliente|ambos)
-                tipo="$arg"
-                continue
-                ;;
-            *)
-                # Primer argumento no es un tipo conocido: no consumirlo como tipo,
-                # reenviar todo con tipo "ambos" por defecto
-                resto+=("$arg")
-                continue
+                tipo="$1"
+                shift
                 ;;
         esac
-    fi
-    resto+=("$arg")
-done
-
-# Tipo por defecto
-: "${tipo:=ambos}"
+fi
 
 # ─── Llamar al motor ────────────────────────────────────────
-python3 "$SCRIPT_DIR/report_engine.py" --tipo "$tipo" "${resto[@]}"
+python3 "$SCRIPT_DIR/report_engine.py" --tipo "$tipo" "$@"
 exit $?

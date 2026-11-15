@@ -118,7 +118,9 @@ Cada ejecución crea `osint_<objetivo>_<id>/` dentro de:
 Contiene `resultados.json` (versión 1), `resumen.txt` y `errores.log`. Guarda
 objetivo, fecha UTC, fuentes, estados y evidencia; no pisa ejecuciones anteriores.
 Los árboles por defecto están ignorados por git: no publiques resultados reales.
-El motor de informes de vulnerabilidades no consume estos datos OSINT todavía.
+El motor de informes de 11 consume la metadata de `resultados.json` como
+contexto y cobertura (fuentes, estados y conteos), no como vulnerabilidades;
+no publica sus cuerpos ni atribuye registros de otro objetivo.
 
 - `vinculado_desde_sitio`: el sitio de referencia publicó el enlace; no prueba
   propiedad ni que el perfil esté disponible.

@@ -146,7 +146,7 @@ def _hallazgo(
     vistos.add(clave)
 
     return build(
-        "nuclei.template",
+        "nuclei.observation" if severidad == 'info' else "nuclei.template",
         key=clave,
         activo=activo,
         evidencia=[evidencia],

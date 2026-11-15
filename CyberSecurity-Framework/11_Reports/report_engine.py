@@ -11,7 +11,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Resolución de rutas del framework: este script vive en 11_Reports/
@@ -24,6 +24,9 @@ sys.path.insert(0, str(_THIS_DIR))
 from lib.engine import collect
 from lib.render import write_reports, to_json, from_json
 from lib.attribution import slug as target_slug
+from lib import validation
+from lib.publication import preflight, write_private
+from lib import history
 
 __all__ = ["build_parser", "read_profile", "write_profile", "run", "main"]
 
@@ -64,11 +67,11 @@ def _default_scans_dir() -> Path:
     return _REPO_ROOT / "scans"
 
 
-def _default_out_dir(objetivo: str | None) -> Path:
+def _default_out_dir(objetivo: str | None, todos: bool = False) -> Path:
     env = os.environ.get("REPORT_OUT_DIR")
     if env:
         return Path(env)
-    s = target_slug(objetivo) if objetivo else "sin_objetivo"
+    s = '_todos' if todos else target_slug(objetivo) if objetivo else "sin_objetivo"
     return _FRAMEWORK_ROOT / "11_Reports" / "generated" / s
 
 
@@ -81,12 +84,12 @@ def _default_profile_path() -> Path:
 
 def _session_target() -> str | None:
     """Primera línea de ``00_Config/.session`` si existe y no está vacía."""
-    session_file = _FRAMEWORK_ROOT / "00_Config" / ".session"
+    session_file = Path(os.environ.get("SESSION_FILE", str(_FRAMEWORK_ROOT / "00_Config" / ".session")))
     if not session_file.exists():
         return None
     try:
         text = session_file.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeError):
         return None
     for line in text.splitlines():
         stripped = line.strip()
@@ -105,7 +108,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--tipo", choices=["tecnico", "cliente", "ambos"], default="ambos",
                    help="Tipo de informe a generar (por defecto: ambos)")
     p.add_argument("--scans", default=None, help="Directorio de resultados de escaneo")
-    p.add_argument("--salida", default=None, help="Directorio de salida")
+    p.add_argument('--fuentes', default=None, help='Raíz del framework con evidencias anteriores (01/02/07/08/10)')
+    p.add_argument("--salida", default=None, help="Raíz de historial; cada generación crea runs/<id>/ sin sobrescribir")
     p.add_argument("--cliente", default=None, help="Nombre del cliente")
     p.add_argument("--auditor", default=None, help="Nombre del auditor")
     p.add_argument("--todos", action="store_true", help="Incluir hallazgos de todos los objetivos")
@@ -129,25 +133,28 @@ def _tipos_from_arg(tipo: str) -> list[str]:
 def _write_json(data: dict, out_dir: Path) -> Path:
     """Escribe findings.json usando la clave ``hallazgos`` (español)."""
     out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     # Renombrar "findings" -> "hallazgos" para el fichero en disco
     disk_data = dict(data)
     if "findings" in disk_data:
         disk_data["hallazgos"] = disk_data.pop("findings")
     path = out_dir / "findings.json"
-    path.write_text(json.dumps(disk_data, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_private(path, json.dumps(disk_data, indent=2, ensure_ascii=False))
     return path
 
 
 def _load_json(path: Path) -> dict:
     """Carga findings.json y normaliza ``hallazgos`` -> ``findings``."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError('el registro debe ser un objeto')
+    if 'hallazgos' in data and 'findings' in data:
+        raise ValueError('registro ambiguo: findings y hallazgos simultáneos')
     if "hallazgos" in data and "findings" not in data:
         data["findings"] = data.pop("hallazgos")
     return data
 
 
-def _summary(objetivo: str | None, collected, out_dir: Path) -> dict:
+def _summary(objetivo: str | None, collected, out_dir: Path, written: list[Path]) -> dict:
     confirmados = [f for f in collected.findings if f.confianza == "confirmado"]
     criticos = len([f for f in confirmados if f.severidad == "critica"])
     return {
@@ -156,7 +163,38 @@ def _summary(objetivo: str | None, collected, out_dir: Path) -> dict:
         "criticos": criticos,
         "no_evaluable": len(collected.no_evaluable),
         "salida": str(out_dir),
+        "archivos": [str(path.absolute()) for path in written],
+        "run_id": out_dir.name,
     }
+
+
+def _publish(collected, meta: dict, base: Path, tipos: list[str], args, objetivo: str | None) -> int:
+    """Normal y rerender comparten reserva exclusiva, cierre y recibo final."""
+    rc = 0 if collected.evaluado else 3
+    stamp = datetime.now(timezone.utc)
+    meta = dict(meta, fecha=stamp.strftime('%Y-%m-%d'), generado_en=stamp.isoformat())
+    if args.todos:
+        meta.update(objetivo='No especificado', alcance='Todos los objetivos incluidos', modo='todos')
+    mode = 'todos' if args.todos else ('incluir_sin_objetivo' if args.incluir_sin_objetivo else 'objetivo')
+    try:
+        run = history.reserve(base, objetivo, mode, args.tipo, 'json' if args.desde_json else 'scans')
+        written = write_reports(collected, meta, run.path, tipos)
+        written.append(_write_json(to_json(collected, meta), run.path))
+        written.append(history.finish(run, written, rc))
+    except (OSError, ValueError) as exc:
+        print(f'Error al publicar informes: {exc}', file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(_summary(objetivo, collected, run.path, written), ensure_ascii=False))
+    if rc == 3:
+        print('No hubo fuentes evaluables; informes limitados, no acredita ausencia de vulnerabilidades.', file=sys.stderr)
+    if args.abrir:
+        html = next(path for path in written if path.suffix == '.html')
+        try:
+            subprocess.run(['xdg-open', str(html)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+    return rc
 
 
 def run(argv: list[str] | None = None) -> int:
@@ -171,19 +209,35 @@ def run(argv: list[str] | None = None) -> int:
             return 0
         return 1
 
+    # Validar entradas antes de crear directorios o publicar resultados.
+    data = None
+    try:
+        if args.desde_json:
+            data = _load_json(Path(args.desde_json))
+            validation.document(data)
+        objetivo = args.objetivo
+        if objetivo is None and not args.todos:
+            objetivo = data['meta'].get('objetivo') if data is not None else _session_target()
+        if objetivo == 'No especificado' and args.todos:
+            objetivo = None
+        if objetivo is not None:
+            objetivo = validation.target(objetivo)
+        if objetivo is None and not args.todos:
+            raise ValueError('indique --objetivo, una sesión activa o --todos explícito')
+        if data is not None:
+            validation.scope(data, objetivo, args.todos, args.incluir_sin_objetivo)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        print(f'Error de entrada: {exc}', file=sys.stderr)
+        return 1
+
     # --- Cargar perfil y resolver valores por defecto ---
     profile_path = _default_profile_path()
-    profile = read_profile(profile_path)
-
-    # Objetivo: flag > session > None
-    objetivo = args.objetivo
-    if objetivo is None:
-        objetivo = _session_target()
+    try:
+        profile = read_profile(profile_path)
+    except (OSError, UnicodeError) as exc:
+        print(f'Error al leer perfil: {exc}', file=sys.stderr)
+        return 1
     todos = args.todos
-    if objetivo is None and not todos:
-        print("Aviso: no se indicó --objetivo ni hay sesión activa; se usan todos los hallazgos.",
-              file=sys.stderr)
-        todos = True
 
     # Cliente/auditor: flag > perfil > valor por defecto
     cliente = args.cliente
@@ -195,19 +249,21 @@ def run(argv: list[str] | None = None) -> int:
 
     # Scans y salida
     scans_dir = Path(args.scans) if args.scans else _default_scans_dir()
-    out_dir = Path(args.salida) if args.salida else _default_out_dir(objetivo)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(args.salida) if args.salida else _default_out_dir(objetivo, todos)
+    # Una raíz scans externa no autoriza leer los otros árboles del checkout.
+    fuentes = args.fuentes or os.environ.get('REPORT_FRAMEWORK_ROOT')
+    if fuentes is None and args.scans is None and not os.environ.get('REPORT_SCANS_DIR'):
+        fuentes = str(_FRAMEWORK_ROOT)
 
     tipos = _tipos_from_arg(args.tipo)
+    try:
+        preflight(out_dir / 'runs', [])
+    except OSError as exc:
+        print(f'Error de salida: {exc}', file=sys.stderr)
+        return 1
 
     # --- Modo --desde-json: no tocar scans ---
     if args.desde_json:
-        try:
-            data = _load_json(Path(args.desde_json))
-        except (OSError, json.JSONDecodeError, KeyError) as exc:
-            print(f"Error al cargar {args.desde_json}: {exc}", file=sys.stderr)
-            return 1
-
         # Aplicar overrides de cliente/auditor desde la CLI
         meta = dict(data.get("meta", {}))
         if args.cliente is not None:
@@ -222,25 +278,7 @@ def run(argv: list[str] | None = None) -> int:
             print(f"Error al reconstruir hallazgos: {exc}", file=sys.stderr)
             return 1
 
-        try:
-            write_reports(collected, meta, out_dir, tipos)
-            _write_json(data, out_dir)
-        except OSError as exc:
-            print(f"Error al escribir informes: {exc}", file=sys.stderr)
-            return 1
-
-        if args.json:
-            print(json.dumps(_summary(objetivo, collected, out_dir), ensure_ascii=False))
-
-        if args.abrir:
-            html = out_dir / ("informe_tecnico.html" if "tecnico" in tipos else "informe_cliente.html")
-            try:
-                subprocess.run(["xdg-open", str(html)], check=False,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except OSError:
-                pass
-
-        return 0
+        return _publish(collected, meta, out_dir, tipos, args, objetivo)
 
     # --- Modo normal: collect desde scans ---
     try:
@@ -250,6 +288,7 @@ def run(argv: list[str] | None = None) -> int:
             objetivo,
             incluir_sin_objetivo=args.incluir_sin_objetivo,
             todos=todos,
+            framework_root=Path(fuentes) if fuentes is not None else None,
         )
     except OSError as exc:
         print(f"Error al leer scans: {exc}", file=sys.stderr)
@@ -269,32 +308,7 @@ def run(argv: list[str] | None = None) -> int:
         }),
     }
 
-    # Escribir informes incluso si no hay nada evaluable
-    try:
-        write_reports(collected, meta, out_dir, tipos)
-        data = to_json(collected, meta)
-        _write_json(data, out_dir)
-    except OSError as exc:
-        print(f"Error al escribir informes: {exc}", file=sys.stderr)
-        return 1
-
-    if not collected.evaluado:
-        print("No se evaluó ningún parser con éxito; se generaron informes sin hallazgos evaluable.",
-              file=sys.stderr)
-        return 3
-
-    if args.json:
-        print(json.dumps(_summary(objetivo, collected, out_dir), ensure_ascii=False))
-
-    if args.abrir:
-        html = out_dir / ("informe_tecnico.html" if "tecnico" in tipos else "informe_cliente.html")
-        try:
-            subprocess.run(["xdg-open", str(html)], check=False,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except OSError:
-            pass
-
-    return 0
+    return _publish(collected, meta, out_dir, tipos, args, objetivo)
 
 
 def main() -> None:

@@ -9,7 +9,7 @@ import unittest
 
 SOURCE = Path(__file__).resolve().parents[1] / '06_PostExploitation/run_all_post.sh'
 LEAVES = (
-    'privilege_escalation/linpeas.sh', 'privilege_escalation/suid_check.sh',
+    'privilege_escalation/suid_check.sh',
     'privilege_escalation/capabilities_check.sh', 'privilege_escalation/cron_check.sh',
     'credential_access/linux_creds.sh', 'credential_access/history_parser.sh',
     'loot/file_collector.sh', 'loot/screenshot_collector.sh',
@@ -56,7 +56,7 @@ class PendingRunAllTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         logs = self.logs()
         self.assertTrue(any('rc=7' in p.read_text() for p in logs))
-        self.assertIn('Ejecutadas: 8 | Fallidas: 8', r.stdout)
+        self.assertIn('Ejecutadas: 7 | Fallidas: 7', r.stdout)
 
     def test_preserves_previous_error_log_and_separates_runs(self):
         old = self.scans / 'postexploitation/errores.log'
@@ -73,7 +73,7 @@ class PendingRunAllTests(unittest.TestCase):
     def test_passes_explicit_context_not_positional_arguments(self):
         self.assertEqual(self.run_flow('example.test').returncode, 0)
         lines = self.calls.read_text().splitlines()
-        self.assertEqual(len(lines), 8)
+        self.assertEqual(len(lines), 7)
         self.assertTrue(all(s.endswith('|example.test|0') for s in lines))
 
     def test_usage_matches_required_target(self):
@@ -104,8 +104,8 @@ class PendingRunAllTests(unittest.TestCase):
         (self.bin / 'scrot').unlink()
         r = self.run_flow('example.test')
         self.assertEqual(r.returncode, 0)
-        self.assertIn('Ejecutadas: 7 | Fallidas: 0 | Omitidas: 1', r.stdout)
-        self.assertEqual(len(self.calls.read_text().splitlines()), 7)
+        self.assertIn('Ejecutadas: 6 | Fallidas: 0 | Omitidas: 2', r.stdout)
+        self.assertEqual(len(self.calls.read_text().splitlines()), 6)
 
 
 if __name__ == '__main__':

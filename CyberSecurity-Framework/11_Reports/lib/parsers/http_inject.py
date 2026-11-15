@@ -58,8 +58,12 @@ def _vacio(archivo: str) -> ParseResult:
 def _leer_contexto(path: Path) -> str | None:
     """Host del ``contexto.txt`` hermano, o ``None`` si no existe."""
     contexto = path.parent / path.stem / "contexto.txt"
+    if contexto.is_symlink() or any(p.is_symlink() for p in contexto.parents):
+        raise OSError('contexto enlazado rechazado')
     if not contexto.is_file():
         return None
+    from lib.coverage import regular
+    regular(contexto)
     with open(contexto, encoding="utf-8", errors="replace") as fh:
         for linea in fh:
             linea = linea.strip()

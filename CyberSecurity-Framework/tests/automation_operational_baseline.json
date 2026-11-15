@@ -1,0 +1,31 @@
+{
+  "sha256": {
+    "CyberSecurity-Framework/00_Config/lib/automation/__init__.py": "c5a12f5be02832a069cc2f0dc9078525894078fc418fff8b92f83c65e79712f5",
+    "CyberSecurity-Framework/00_Config/lib/automation/adapters.py": "aa96d397f27113baebd52456240adc5ff032379569cddb94f6374a52c0d8fb54",
+    "CyberSecurity-Framework/00_Config/lib/automation/catalog.py": "04373b959b1d7eff2ab9d8e8bed0508abee1e7f3265d9b2869623ec1444eff01",
+    "CyberSecurity-Framework/00_Config/lib/automation/cli.py": "9848cd6330c26cc2a037401d694774c8eae3291284e5671bf4fe8ca2d1d46d4a",
+    "CyberSecurity-Framework/00_Config/lib/automation/model.py": "eed6af1cd5de8437c0d38ea9f0a328081cb87a1ba7ea7726dc1436689d5401f1",
+    "CyberSecurity-Framework/00_Config/lib/automation/planner.py": "10677312a1ca0c5fde7df731cfe4c1e4e68d9d7211c992c7463bb5400d937687",
+    "CyberSecurity-Framework/00_Config/lib/automation/reporting.py": "85441724aa6e4f02087987acbdbfc123ce413d0071a09052515e5db1d82449cd",
+    "CyberSecurity-Framework/00_Config/lib/automation/runner.py": "42bc87828311c6a3d4f860b8c0b9192e6dc27b7fa0e4b1c7cadacc990b2315e0",
+    "CyberSecurity-Framework/00_Config/lib/automation/storage.py": "b03967ced5ea254f079628073c9154ef3406dcbb99bceb33fdb4dd7fb1de47b2",
+    "CyberSecurity-Framework/00_Config/lib/automation/summary.py": "7859535034a74817b9db2eb6c2a0fb4b0026faffd2563a390e484fb10079cee7",
+    "CyberSecurity-Framework/00_Config/lib/automation/validation.py": "bcf39d537f719f48ae2efc02062d32bb4ec0926a4b854f361bb1e9f2300afc1c",
+    "CyberSecurity-Framework/00_Config/lib/automation/workflows.py": "f9bc4b50e14a5f1a95def848d817ffd4720286922a4c6c6549462b299e49d469",
+    "CyberSecurity-Framework/00_Config/lib/automation_menu.bash": "37ab8f3df5f7045426689e7b8351421116cd1dd57cb7b5408a801f623164728a",
+    "CyberSecurity-Framework/09_Automation/bash/auto_enum.sh": "fe538503a3e8615ba2c20a358c9c0dccd5e8b394edd72f49766b1247c2518a71",
+    "CyberSecurity-Framework/09_Automation/bash/auto_exploit.sh": "7961bb7e030b410d945d88ae7151a90df68e5f20777f0dfa4b40cf13d504fa33",
+    "CyberSecurity-Framework/09_Automation/bash/auto_recon.sh": "80aed2606b3a5bafb567f4eb03072034404068c01fedcbe0fa7f895a5d1afcf3",
+    "CyberSecurity-Framework/09_Automation/docker/Dockerfile": "7300f159f15948b8c2fcb481266a2a6611d40e281142e6a88a68895e454086c4",
+    "CyberSecurity-Framework/09_Automation/docker/docker-compose.yml": "9a345072237eb51fe286d9542c5b39f1a61b9c3c2b0b7c38240a3c70a25de035",
+    "CyberSecurity-Framework/09_Automation/powershell/auto_enum.ps1": "291e79492f8b13e77eb2e52c6dc35339505a1ee139c956be8c82a93b2a491b6a",
+    "CyberSecurity-Framework/09_Automation/python/auto_audit.py": "c8d49744a8115b4bea2ab096abadd59e75017afd8efb3c905bbf2d9dcd867bb6",
+    "CyberSecurity-Framework/09_Automation/python/orchestrator.py": "e787a2ee7b3d6865abc47d3e89f66fca0039bbe3d42cfc3e9f006e52873c87a1",
+    "CyberSecurity-Framework/09_Automation/python/report_generator.py": "c1537c8e7fb3508c8a2c230978addb1f572e2b9e26afc9ddf3dc913dac84f523",
+    "CyberSecurity-Framework/09_Automation/run_all_automation.sh": "32bcf810b25b90b4981bb9ec9bd85b9e6fb865dda691d7a8d7cbcef48264325a",
+    "CyberSecurity-Framework/09_Automation/workflows/full_audit.yaml": "cdba7fd6841edf6b7b76c043c12b9c6b73f3759ade7be3e15559ba6dd84eaba3",
+    "CyberSecurity-Framework/09_Automation/workflows/quick_scan.yaml": "5ed48c2153d98f59edb789094c186452470c8629e878f26db099700b36434cd1",
+    "CyberSecurity-Framework/cyber_framework.sh": "f5285f16825fe17d2b916be700ff5e4b1eabeb02ae4313e892717e2029833c15"
+  },
+  "version": 1
+}

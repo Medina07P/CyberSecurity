@@ -2,6 +2,9 @@
 
 Guía de uso de `cyber_framework.sh`, el punto de entrada interactivo del framework de auditoría de seguridad.
 
+Inventario de [todas las opciones, módulos 00–13 y entradas originales](MENU-OPCIONES.md):
+propósito, entradas, efectos y límites; un archivo presente no acredita integración operacional.
+
 ---
 
 ## Requisitos e instalación
@@ -61,6 +64,30 @@ La cabecera muestra:
 Cada script declara sus parámetros en su propia línea `Uso:`, así que el gestor pregunta exactamente los que necesita —también en los que piden dos o más— y ofrece el valor del `Ejemplo:` como defecto al pulsar Enter.
 
 ---
+
+## Fichas de entrada: elegir sin ejecutar
+
+Los catorce módulos (`00`–`13`) muestran bajo su cabecera y antes de las opciones
+una ficha breve: **Para qué sirve**, **Entrada**, **Incluye** y **Precauciones**.
+La ficha vuelve a aparecer al redibujar el menú, sin pausas ni preguntas nuevas.
+Entrar y leerla no lanza pruebas ni selecciona herramientas automáticamente;
+las opciones, confirmaciones y argumentos de cada acción se mantienen.
+Las herramientas mencionadas no están necesariamente instaladas o disponibles,
+y una entrada conservada no implica un flujo operacional integrado.
+
+No necesitas recorrer todos los módulos: elige los que correspondan al trabajo
+autorizado. Por ejemplo, para una **Metasploitable propia en una red de laboratorio**
+con IP privada `192.168.56.101`, normalmente puedes saltar `01_OSINT`: sus fuentes
+públicas no describen esa IP privada. Tras comprobar alcance y autorización en
+`00`, usa `02` para reconocimiento, `03` para puertos/servicios y `04` para
+profundizar en los servicios encontrados. Esas acciones generan tráfico y debes
+seleccionarlas y confirmarlas; leer la ficha no las ejecuta. La IP es un ejemplo,
+no un objetivo que debas copiar sin verificar tu laboratorio.
+
+**`99` no es una comprobación rápida**: encadena fases activas, incluida fuerza
+bruta y explotación; no añade Burp ni limpieza/persistencia/lateral excluidos por
+sus coordinadores. No lo uses para explorar el menú ni
+como prueba de funcionamiento.
 
 ## Objetivo de sesión
 
@@ -144,7 +171,21 @@ Al entrar en **03** aparece un menú específico:
 4. **Burp manual**: abre el lanzador y explica la captura; Community no escanea
    ni guarda proyectos.
 5. **Avanzado**: conserva los diez scripts. Smart completo, NSE, Nmap agresivo,
-   Masscan, RustScan y run_all son intensivos y piden confirmación adicional.
+    Masscan, RustScan y run_all son intensivos y piden confirmación adicional.
+6. **Control Burp**: 1 estado local sin conectar/crear salidas; 2 verificación
+   con URL HTTP(S), puerto explícito y permiso propio de enviar un GET; 3 parar
+   instancia propia por ID con consentimiento de TERM/posible KILL; 0 volver.
+   Abrir en03.4 no autoriza red posterior. No/EOF/0 cancelan sin aplicar/enviar.
+
+La apertura no ejecuta curl; Burp puede generar tráfico propio de la aplicación.
+Puerto ocupado y respuesta HTTP no acreditan dueño/captura. Parar tiene efectos,
+requiere recibo nuevo e identidad/pidfd; no adopta PID legacy. Config/log/recibos
+privados por instancia en `scans/burp/instances/<ID>/`; anteriores intactos.
+CLI: `--verificar URL --proxy-port N --execute --confirm-network` (en TTY, frase
+`ENVIAR GET` puede sustituir solo el último flag); `--parar --instance ID --execute`.
+Curl usa `--disable` primero, un GET max-time5, sin redirects/retries ni `-k`.
+No deriva URL/permiso de sesión ni añade Burp a coordinadores/99. Ver guía03 para
+migración de CLI y límites de Community/daemonización.
 
 Antes del análisis básico o web se muestra herramienta, objetivo e intensidad.
 Solo una confirmación afirmativa ejecuta. `0` o `!` cancela la pregunta de
@@ -203,7 +244,42 @@ Detalles, riesgos y ejemplos: `CyberSecurity-Framework/04_Enumeration/README.md`
 
 Todas las opciones piden confirmación antes de ejecutar y no elevan privilegios automáticamente. Las hojas capturadas mantienen sus contratos y permisos independientes (`SQLMAP_SI`, `SQLMAP_ENUMERAR`, `SQLMAP_TABLA`).
 
+**Login/rate (2026-11-14):** capturas con ruta relativa necesitan
+`BRUTE_ESQUEMA=http|https` o `RATE_LIMIT_ESQUEMA=http|https`; no hay sondeo previo
+ni inferencia por puerto. Una URL absoluta capturada aporta esquema solo con
+autoridad idéntica a `Host:`; override definido manda y vacío/inválido rechaza.
+El modo manual usa `BRUTE_URL` explícita y cuerpo crudo, no el compositor `.req`.
+WM1 tuvo RED observado; el arreglo literal de una pasada está implementado,
+pendiente de revisión y GREEN autorizado. No se acredita su cuerpo por el antiguo
+smoke. Campos ambiguos se rechazan localmente; `.req`
+codifica valores nuevos una vez, con presupuesto total1MiB de composición.
+Login conserva default200/tope1000 y produce candidatos heurísticos, no prueba
+de credencial válida. Rate conserva20/tope200 y `wrong-N`:403 sin señal explícita
+corta con NO DETERMINADO/rc1 aunque sea lento; Retry-After/cuota0 y429/503 tienen
+precedencia, sin nuevo reintento ni espera de Retry-After. Rechazo/EOF no autoriza
+transporte ni descargar diccionario. Las variables `*_SI=1` son consentimientos
+específicos existentes por hoja, no autorización global. Límites de tiempo,
+codificación, artefactos sensibles y diferencias del modo manual en la guía05.
+
 Detalles, riesgos y ejemplos: `CyberSecurity-Framework/05_Exploitation/README.md` y `docs/EXPLOTACION-2026-11-10.md`.
+
+## Módulo 06: limpieza LOCAL separada
+
+Las entradas originales de post-explotación se conservan. **06.7** muestra
+preview (Enter/1), aplicación (2) y cancelar (0/!); EOF no aplica. Solo después
+de explicar LOCAL, UID y efectos y obtener consentimiento específico pasa
+`--execute --confirm-local-cleanup`. La IP de sesión no es destino ni permiso.
+La hoja sin argumentos/`--preview`/`--help` es inerte; `--execute` en TTY requiere
+frase exacta `LIMPIAR LOCAL` si no se pasó el flag específico. Desconocidos o
+consentimiento solo retornan2 antes de efectos. No sirve un sí global.
+
+Cuatro logs fijos y `.bash_history` se truncan con credenciales actuales, sin
+sudo automático: fallos por permisos son parciales veraces/rc1. `history -c`
+solo afecta al hijo, nunca a la memoria del shell padre. Snapshot nuevo privado
+en `scans/cleanup/<uuid>/last_access.txt`; enlaces/objetos especiales rechazados,
+salidas anteriores y `/tmp/last_access.txt` legacy conservados sin migración.
+`run_all_post`/99 no adquieren limpieza. Nunca ejecutar cleanup como smoke.
+Guía: `CyberSecurity-Framework/06_PostExploitation/README.md`.
 
 ## Módulo 07: mantenimiento inalámbrico
 
@@ -258,15 +334,53 @@ El gestor:
 1. Pide **cliente** y **auditor** la primera vez y los guarda en `11_Reports/.report_profile` (git-ignored). Enter conserva el valor.
 2. Usa el objetivo de la sesión.
 3. Ejecuta el motor de informes (`11_Reports/report_engine.py`).
-4. Muestra las rutas de los informes generados.
-5. Ofrece abrir el HTML con `xdg-open`.
+4. Muestra solo los archivos escritos en esa ejecución, respetando salidas personalizadas.
+5. Ofrece abrir el HTML del tipo elegido; nunca uno histórico tras error.
+
+El motor lee evidencias existentes: no vuelve a ejecutar los módulos ni
+empaqueta evidencias automáticamente. Integra fuentes soportadas de `scans/`
+y contexto/metadata de 01, 02, 07, 08 y 10. No mezcla objetivos sin `--todos`
+explícito. Sin objetivo ni sesión falla, en lugar de agregar otros clientes.
+La sección **Cobertura de evidencias** indica fuentes evaluadas, contexto,
+no evaluables y no soportadas. Capturas, etiquetas y referencias CVE no son
+por sí solas vulnerabilidades. Detalles en `11_Reports/USE.md`.
 
 ### Los dos informes
 
 - **Técnico** (`informe_tecnico.md` y `.html`): hallazgos con severidad, activo, técnica, evidencia (`archivo:línea`), reproducción, recomendación y referencias.
 - **Cliente** (`informe_cliente.md` y `.html`): resumen ejecutivo, riesgo de negocio, plan de acción, sin payloads ni rutas internas.
 
-Ambos se generan en `11_Reports/generated/<objetivo>/`.
+Ambos se generan en `11_Reports/generated/<objetivo>/runs/<id>/`. Cada ejecución
+conserva sus documentos y recibo `run.json`, sin sobrescribir informes anteriores.
+`--todos` usa raíz `_todos`, sin tratar el host de sesión como alcance agregado.
+`--salida`/`REPORT_OUT_DIR` seleccionan raíz: se añade `runs/<id>/` dentro.
+Las automatizaciones deben usar `salida`/`archivos` del recibo `--json`.
+En09 cada paso de informe reserva `report-<id_paso>/report-profile` y `reports/`
+privados; el motor crea otra generación en `reports/runs/<id>/`.09 valida el
+recibo stdout y `run.json` concordante antes de consumir/publicar documentos;
+no busca HTML plano antiguo ni `latest`. El shim obsoleto conserva nombres
+externos fijos al publicar y los rc raw0/3 del motor. No implica que el input
+histórico proceda del plan actual. Véase `09_Automation/USE.md` para el estado
+acotado de la combinación. **Historia Phase B previa al GREEN:** ficha09
+implementada, GREEN aún NOT RUN en aquella entrega.
+
+**Observación acotada del controlador,2026-11-14, sobre82663d7
+(`82663d746e1b9347a74c7f7836fa6722f04c92a1`):** selector `--suite` rc0;
+60sandbox units,0fallos0errores0SKIP;179integration,0fallos0errores1SKIP.
+SKIP explícito: `test_automation_powershell.PowerShellTests.test_ps_mock_contract_and_ast`,
+pwsh dinámico ausente del runtime; no acredita Windows. Recibos existentes:
+`/tmp/opencode/automation-isolated-7708be2f5ddb4d5fb021a35bccce754b/evidence/`
+(`inside-result.json` PASS/rc0/tests_started=true, `host-wait.json` rc0,
+`sandbox-units.json`, `suite.json`). Es GREEN del selector en ese SHA, no del
+finalfix posterior (GREEN **NOT RUN**). No cierra Task4/Task9/global09 ni toda
+la rama, ni acredita nuevas carreras/cancelación, Docker u operación real.
+Esta conciliación documental no ejecuta nada ni autoriza repetir el selector;
+el siguiente gate es revisión independiente acotada y autorización exacta del controlador.
+
+Masscan JSON y RustScan texto estructurado aportan observaciones de puertos,
+combinadas con Nmap sin duplicados TCP/UDP. No acreditan último intento ni
+finalización; vacío o truncado no es «sin puertos». Consulte `11_Reports/USE.md`
+para formatos admitidos y límites. Rerender genera un nuevo run sin releer fuentes.
 
 ### Línea de comandos
 
@@ -288,12 +402,13 @@ python3 11_Reports/report_engine.py \
 | `--objetivo` | objetivo de `.session` | solo entra lo atribuible a ese host |
 | `--tipo` | `ambos` | `tecnico` / `cliente` / `ambos` |
 | `--scans` | `<repo>/scans` | raíz de resultados |
-| `--salida` | `11_Reports/generated/<slug>` | destino |
+| `--fuentes` | raíz del framework si scans no se personalizó | árboles anteriores; con scans externo debe seleccionarse explícitamente |
+| `--salida` | `11_Reports/generated/<slug>` | raíz de historial: salida real dentro de runs/<id>/ |
 | `--cliente` / `--auditor` | perfil / usuario del sistema | portada |
 | `--todos` | no | agrega todos los objetivos en un informe multiobjetivo |
 | `--incluir-sin-objetivo` | no | añade fuentes no atribuibles, marcadas |
 | `--desde-json <ruta>` | no | re-renderiza sin volver a escanear: edita `findings.json` (no el Markdown) y vuelve a generar |
-| `--json` | no | imprime el resumen JSON por stdout |
+| `--json` | no | imprime run_id, salida efectiva y archivos escritos (incluido run.json); también con rc3 |
 | `--abrir` | no | abre el HTML al terminar |
 
 ### Perfil de cliente
@@ -308,6 +423,55 @@ auditor=Ana
 Se crea la primera vez que usas `R` o puedes editarlo manualmente. Enter conserva el valor.
 
 ---
+
+## Evidencias: módulo 10
+
+`10` abre un menú sin adquisición/red ni cambio de TARGET: disponibilidad mediante
+`command -v`, importación explícita, listado, verificación, empaquetado, captura,
+coordinación offline y lista fija de las tres hojas originales. EOF/cancelar
+retorna 0 sin acciones. Nunca ejecuta código recuperado/importado; el modo
+preparado tampoco evita confirmaciones sensibles. `done` en fase 10 significa
+presencia de evidencia reconocible, **no integridad**.
+
+`evidence_manager.sh --add TIPO ARCHIVO [DESCRIPCION] [--target ETIQUETA]`
+acepta `screenshot`, `pcap`, `credential`, `finding` y `proof`. Las rutas relativas
+son del llamador y los espacios deben entrecomillarse. Solo archivos regulares,
+por copia sin ejecutar ni reemplazar el original; directorios nuevos 700,
+archivos 600. No hay atribución por sesión: la etiqueta es explícita y no cambia
+scope/targets. Registros nuevos SHA-256, históricos `.meta` MD5 de solo lectura,
+sin migración ni elevación automática de confianza.
+
+`--list` no verifica cuerpos y vacío es informativo (0); `--verify` vacío,
+huérfanos, corrupción o errores da 1. `--package [NOMBRE]` bloquea ante cualquier
+problema y publica datos/metadatos/manifiesto en `11_Reports/evidence/`, sin
+scripts/configuración/diagnósticos ni reemplazar salidas. **No hay cifrado** y
+puede incluir credenciales: confirme exportación en menú y custodie el resultado.
+No certifica autenticidad, firma ni custodia legal.
+
+`auto_capture.sh` exige acciones explícitas: `--web URL` (HTTP/HTTPS sin
+credenciales/fragmentos), `--traffic HOST --interface IFACE`,
+`--scan HOST --scan-profile basic|full` o `--system` (solo contexto OPERADOR).
+Red requiere `--authorize-network`; no es una barrera de alcance. Los subrecursos
+y redirecciones web también deben estar autorizados. No hay sudo/instalaciones.
+Tráfico: 10 s/100 paquetes por defecto, límites 1–300 s y 1–10000;
+web: deadline 60 s; Nmap basic: 100 TCP connect sin NSE/versionado, 120 s;
+full: `-sV -p-`, 1800 s, mayor intrusividad. Validaciones PNG/PCAP/finalización
+Nmap limitadas, no certifican contenido visual/protocolos/hallazgos.
+PCAP válido sin paquetes es `SIN TRÁFICO`. Diagnósticos privados en `logs/runs/`
+excluidos de exportación. Supervisión Linux de procesos propios, INT/TERM
+130/143, sin éxito del paso interrumpido; no aislamiento de backends hostiles.
+
+`run_all_evidence.sh --offline` lista/verifica; `--capture` coordina selecciones
+explícitas. La antigua llamada `<TARGET>` ahora devuelve 2 sin adquirir: bloquea
+la captura implícita de 10 desde 99, **no arregla el flujo 99 global**.
+Ayuda explícita 0, CLI inválida 2, fallo/parcial 1, éxito solicitado 0.
+
+Guías completas y ejemplos offline sintéticos:
+[`10_Evidence/README.md`](../CyberSecurity-Framework/10_Evidence/README.md),
+[`USE.md`](../CyberSecurity-Framework/10_Evidence/USE.md) y
+[`FLUJO.md`](../CyberSecurity-Framework/10_Evidence/FLUJO.md).
+Implementación pendiente de revisión global e integración; stubs no acreditan
+compatibilidad operacional.
 
 ## Cómo leer los veredictos
 
@@ -379,7 +543,7 @@ El motor de informes **no parsea** `scope.yaml` en v1 (evita depender de PyYAML)
 - Los escaneos van a `scans/<herramienta>/` en la raíz del repositorio, se lance el script desde donde se lance. Los artefactos OSINT quedan en los directorios ignorados de `01_OSINT` descritos arriba.
 - `scans/` está en `.gitignore`: contiene IPs y hallazgos de cada sesión, no se sube al repositorio.
 - Los scripts intrusivos (`[intrusiva]`) piden confirmación aparte.
-- Nunca ejecutes `99` como prueba de humo: ejecuta fuerza bruta, explotación y limpieza contra todos los objetivos configurados.
+- Nunca ejecutes `99` como prueba de humo: encadena fases activas con fuerza bruta/explotación; no añade Burp ni limpieza excluidos por sus coordinadores.
 
 ### Herramientas no instaladas
 

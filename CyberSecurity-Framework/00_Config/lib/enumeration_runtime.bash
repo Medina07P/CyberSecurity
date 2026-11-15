@@ -64,7 +64,9 @@ enum_step() {
         --source "$ENUM_WORK/$name.data" --error "$ENUM_WORK/$name.err" --rc "$ENUM_RC" --kind "$kind") || state=NO_DETERMINADO
     enum_publish "$name" "$state" || state=NO_DETERMINADO
     printf '  %s: %s\n' "$name" "$state"
-    if [[ "$state" == NO_DETERMINADO ]]; then
+    # Stable SMB opts into aggregate backend failure, even for DENEGADO. This
+    # only tightens rc accounting; it grants no operation or execution mode.
+    if [[ "$state" == NO_DETERMINADO ]] || { [[ "${ENUM_STRICT_RC:-0}" == 1 ]] && (( ENUM_RC != 0 )); }; then
         ENUM_FAILED=$((ENUM_FAILED + 1))
         return 1
     fi

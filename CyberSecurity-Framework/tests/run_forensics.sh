@@ -18,7 +18,7 @@ libraries = '''dangerous.txt enumeration_evidence.py enumeration_http.py
 enumeration_menu.bash enumeration_runtime.bash enumeration_services.bash enumeration_web.bash
 exploitation_evidence.py exploitation_menu.bash exploitation_runtime.bash
 forensics_disk.bash forensics_evidence.py forensics_menu.bash forensics_runtime.bash
-forensics_timeline.py forensics_volatility.bash http_request.bash params.bash
+forensics_timeline.py forensics_volatility.bash http_request.bash module_intro.bash params.bash
 phase_status.bash postexploitation_evidence.py postexploitation_menu.bash
 postexploitation_runtime.bash prompt.bash report_profile.bash scanner_runtime.bash
 scanners_menu.bash scans.bash session.bash web_target.bash wireless_menu.bash'''.split()

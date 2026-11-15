@@ -6,7 +6,39 @@
 
 # ─── Configuración ──────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR" || exit 1
+source "$SCRIPT_DIR/../00_Config/lib/module_intro.bash"
+
+# Raíces por categoría, solo durante este proceso. No migrar notas ni guardar
+# configuración. Crear/listar/editar usan siempre la misma selección explícita.
+LAB_HTB="$SCRIPT_DIR/hackthebox/machines"
+LAB_THM="$SCRIPT_DIR/tryhackme/rooms"
+LAB_AD="$SCRIPT_DIR/active_directory/machines"
+LAB_WEB="$SCRIPT_DIR/web_apps/machines"
+LAB_CLOUD="$SCRIPT_DIR/cloud/machines"
+
+select_lab_root() {
+    local variable="$1" candidate component current="/"
+    printf 'Raíz absoluta existente (Enter cancela): '
+    IFS= read -r candidate || return
+    [[ -n "$candidate" ]] || return
+    if [[ "$candidate" != /* || "$candidate" == *[[:cntrl:]]* ||
+          "/$candidate/" == *'/../'* || "/$candidate/" == *'/./'* ]]; then
+        printf '❌ Raíz no válida\n' >&2
+        return 1
+    fi
+    local -a components
+    IFS=/ read -r -a components <<< "$candidate"
+    for component in "${components[@]}"; do
+        [[ -n "$component" ]] || continue
+        current="${current%/}/$component"
+        if [[ -L "$current" || ! -d "$current" ]]; then
+            printf '❌ La raíz debe existir y no contener enlaces\n' >&2
+            return 1
+        fi
+    done
+    printf -v "$variable" '%s' "$candidate"
+    printf 'Raíz seleccionada para esta sesión: %s\n' "$candidate"
+}
 
 # Colores para mejor visualización
 RED='\033[0;31m'
@@ -67,17 +99,17 @@ show_stats() {
     echo -e "${YELLOW}━━━ Estadísticas Rápidas ━━━${NC}"
     
     # Contar máquinas HTB
-    HTB_COUNT=$(find hackthebox/machines -maxdepth 1 -type d 2>/dev/null | wc -l)
+    HTB_COUNT=$(find "$SCRIPT_DIR/hackthebox/machines" -maxdepth 1 -type d 2>/dev/null | wc -l)
     HTB_COUNT=$((HTB_COUNT - 1)) # Restar el directorio base
     echo -e "  🎯 HTB Máquinas: ${WHITE}$HTB_COUNT${NC}"
     
     # Contar salas THM
-    THM_COUNT=$(find tryhackme/rooms -maxdepth 1 -type d 2>/dev/null | wc -l)
+    THM_COUNT=$(find "$SCRIPT_DIR/tryhackme/rooms" -maxdepth 1 -type d 2>/dev/null | wc -l)
     THM_COUNT=$((THM_COUNT - 1))
     echo -e "  🎯 THM Salas: ${WHITE}$THM_COUNT${NC}"
     
     # Contar dominios AD
-    AD_COUNT=$(find active_directory/machines -maxdepth 1 -type d 2>/dev/null | wc -l)
+    AD_COUNT=$(find "$SCRIPT_DIR/active_directory/machines" -maxdepth 1 -type d 2>/dev/null | wc -l)
     AD_COUNT=$((AD_COUNT - 1))
     echo -e "  🎯 AD Dominios: ${WHITE}$AD_COUNT${NC}"
     
@@ -90,6 +122,7 @@ show_stats() {
 main_menu() {
     clear_screen
     show_banner
+    module_intro '13_Labs'
     show_vpn_status
     show_stats
     
@@ -123,17 +156,23 @@ htb_menu() {
     echo -e "${GREEN}3.${NC} Abrir notas de una máquina"
     echo -e "${GREEN}4.${NC} Ver notas generales HTB"
     echo -e "${GREEN}5.${NC} Volver al menú principal"
+    echo -e "${GREEN}6.${NC} Seleccionar raíz HTB (solo esta sesión): $LAB_HTB"
     echo ""
-    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-5]: ${NC}"
-    read -r option
+    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-6]: ${NC}"
+    read -r option || return
     
     case $option in
         1)
             echo -ne "${YELLOW}Nombre de la máquina: ${NC}"
             read -r machine
             if [[ -n "$machine" ]]; then
-                cd hackthebox && ./htb_setup.sh "$machine"
-                echo -e "\n${GREEN}✅ Máquina configurada correctamente${NC}"
+                "$SCRIPT_DIR/hackthebox/htb_setup.sh" "$machine" --root "$LAB_HTB"
+                rc=$?
+                if (( rc == 0 )); then
+                    echo -e "\n${GREEN}✅ Máquina configurada correctamente${NC}"
+                else
+                    echo -e "\n${RED}❌ Error al configurar la máquina${NC}"
+                fi
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
             fi
@@ -141,7 +180,9 @@ htb_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Máquinas configuradas:${NC}"
-            ls -la hackthebox/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$LAB_HTB/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             htb_menu
@@ -149,8 +190,8 @@ htb_menu() {
         3)
             echo -ne "${YELLOW}Nombre de la máquina: ${NC}"
             read -r machine
-            if [[ -f "hackthebox/machines/$machine/notes/README.md" ]]; then
-                ${EDITOR:-nano} "hackthebox/machines/$machine/notes/README.md"
+            if [[ "$machine" != */* && "$machine" != . && "$machine" != .. && -f "$LAB_HTB/$machine/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$LAB_HTB/$machine/notes/README.md"
             else
                 echo -e "${RED}❌ Máquina no encontrada${NC}"
                 sleep 2
@@ -158,14 +199,15 @@ htb_menu() {
             htb_menu
             ;;
         4)
-            if [[ -f "hackthebox/htb_notes.md" ]]; then
-                ${EDITOR:-nano} "hackthebox/htb_notes.md"
+            if [[ -f "$SCRIPT_DIR/hackthebox/htb_notes.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/hackthebox/htb_notes.md"
             else
                 echo -e "${RED}❌ Archivo de notas no encontrado${NC}"
                 sleep 2
             fi
             htb_menu
             ;;
+        6) select_lab_root LAB_HTB; htb_menu ;;
         5)
             main_menu
             ;;
@@ -187,17 +229,23 @@ thm_menu() {
     echo -e "${GREEN}3.${NC} Abrir notas de una sala"
     echo -e "${GREEN}4.${NC} Ver notas generales THM"
     echo -e "${GREEN}5.${NC} Volver al menú principal"
+    echo -e "${GREEN}6.${NC} Seleccionar raíz THM (solo esta sesión): $LAB_THM"
     echo ""
-    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-5]: ${NC}"
-    read -r option
+    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-6]: ${NC}"
+    read -r option || return
     
     case $option in
         1)
             echo -ne "${YELLOW}Nombre de la sala: ${NC}"
             read -r room
             if [[ -n "$room" ]]; then
-                cd tryhackme && ./thm_setup.sh "$room"
-                echo -e "\n${GREEN}✅ Sala configurada correctamente${NC}"
+                "$SCRIPT_DIR/tryhackme/thm_setup.sh" "$room" --root "$LAB_THM"
+                rc=$?
+                if (( rc == 0 )); then
+                    echo -e "\n${GREEN}✅ Sala configurada correctamente${NC}"
+                else
+                    echo -e "\n${RED}❌ Error al configurar la sala${NC}"
+                fi
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
             fi
@@ -205,7 +253,9 @@ thm_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Salas configuradas:${NC}"
-            ls -la tryhackme/rooms/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$LAB_THM/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             thm_menu
@@ -213,8 +263,8 @@ thm_menu() {
         3)
             echo -ne "${YELLOW}Nombre de la sala: ${NC}"
             read -r room
-            if [[ -f "tryhackme/rooms/$room/notes/README.md" ]]; then
-                ${EDITOR:-nano} "tryhackme/rooms/$room/notes/README.md"
+            if [[ "$room" != */* && "$room" != . && "$room" != .. && -f "$LAB_THM/$room/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$LAB_THM/$room/notes/README.md"
             else
                 echo -e "${RED}❌ Sala no encontrada${NC}"
                 sleep 2
@@ -222,14 +272,15 @@ thm_menu() {
             thm_menu
             ;;
         4)
-            if [[ -f "tryhackme/thm_notes.md" ]]; then
-                ${EDITOR:-nano} "tryhackme/thm_notes.md"
+            if [[ -f "$SCRIPT_DIR/tryhackme/thm_notes.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/tryhackme/thm_notes.md"
             else
                 echo -e "${RED}❌ Archivo de notas no encontrado${NC}"
                 sleep 2
             fi
             thm_menu
             ;;
+        6) select_lab_root LAB_THM; thm_menu ;;
         5)
             main_menu
             ;;
@@ -251,17 +302,23 @@ ad_menu() {
     echo -e "${GREEN}3.${NC} Abrir notas de un dominio"
     echo -e "${GREEN}4.${NC} Ver notas de ataques AD"
     echo -e "${GREEN}5.${NC} Volver al menú principal"
+    echo -e "${GREEN}6.${NC} Seleccionar raíz AD (solo esta sesión): $LAB_AD"
     echo ""
-    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-5]: ${NC}"
-    read -r option
+    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-6]: ${NC}"
+    read -r option || return
     
     case $option in
         1)
             echo -ne "${YELLOW}Nombre del dominio (ej: domain.local): ${NC}"
             read -r domain
             if [[ -n "$domain" ]]; then
-                cd active_directory && ./ad_setup.sh "$domain"
-                echo -e "\n${GREEN}✅ Dominio configurado correctamente${NC}"
+                "$SCRIPT_DIR/active_directory/ad_setup.sh" "$domain" --root "$LAB_AD"
+                rc=$?
+                if (( rc == 0 )); then
+                    echo -e "\n${GREEN}✅ Dominio configurado correctamente${NC}"
+                else
+                    echo -e "\n${RED}❌ Error al configurar el dominio${NC}"
+                fi
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
             fi
@@ -269,7 +326,9 @@ ad_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Dominios configurados:${NC}"
-            ls -la active_directory/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$LAB_AD/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             ad_menu
@@ -277,8 +336,8 @@ ad_menu() {
         3)
             echo -ne "${YELLOW}Nombre del dominio: ${NC}"
             read -r domain
-            if [[ -f "active_directory/machines/$domain/notes/README.md" ]]; then
-                ${EDITOR:-nano} "active_directory/machines/$domain/notes/README.md"
+            if [[ "$domain" != */* && "$domain" != . && "$domain" != .. && -f "$LAB_AD/$domain/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$LAB_AD/$domain/notes/README.md"
             else
                 echo -e "${RED}❌ Dominio no encontrado${NC}"
                 sleep 2
@@ -286,14 +345,15 @@ ad_menu() {
             ad_menu
             ;;
         4)
-            if [[ -f "active_directory/ad_attack_notes.md" ]]; then
-                ${EDITOR:-nano} "active_directory/ad_attack_notes.md"
+            if [[ -f "$SCRIPT_DIR/active_directory/ad_attack_notes.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/active_directory/ad_attack_notes.md"
             else
                 echo -e "${RED}❌ Archivo de notas no encontrado${NC}"
                 sleep 2
             fi
             ad_menu
             ;;
+        6) select_lab_root LAB_AD; ad_menu ;;
         5)
             main_menu
             ;;
@@ -315,17 +375,23 @@ web_menu() {
     echo -e "${GREEN}3.${NC} Abrir notas de una aplicación"
     echo -e "${GREEN}4.${NC} Ver notas generales Web"
     echo -e "${GREEN}5.${NC} Volver al menú principal"
+    echo -e "${GREEN}6.${NC} Seleccionar raíz Web (solo esta sesión): $LAB_WEB"
     echo ""
-    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-5]: ${NC}"
-    read -r option
+    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-6]: ${NC}"
+    read -r option || return
     
     case $option in
         1)
             echo -ne "${YELLOW}Nombre de la aplicación: ${NC}"
             read -r app
             if [[ -n "$app" ]]; then
-                cd web_apps && ./web_setup.sh "$app"
-                echo -e "\n${GREEN}✅ Aplicación configurada correctamente${NC}"
+                "$SCRIPT_DIR/web_apps/web_setup.sh" "$app" --root "$LAB_WEB"
+                rc=$?
+                if (( rc == 0 )); then
+                    echo -e "\n${GREEN}✅ Aplicación configurada correctamente${NC}"
+                else
+                    echo -e "\n${RED}❌ Error al configurar la aplicación${NC}"
+                fi
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
             fi
@@ -333,7 +399,9 @@ web_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Aplicaciones configuradas:${NC}"
-            ls -la web_apps/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$LAB_WEB/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             web_menu
@@ -341,8 +409,8 @@ web_menu() {
         3)
             echo -ne "${YELLOW}Nombre de la aplicación: ${NC}"
             read -r app
-            if [[ -f "web_apps/machines/$app/notes/README.md" ]]; then
-                ${EDITOR:-nano} "web_apps/machines/$app/notes/README.md"
+            if [[ "$app" != */* && "$app" != . && "$app" != .. && -f "$LAB_WEB/$app/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$LAB_WEB/$app/notes/README.md"
             else
                 echo -e "${RED}❌ Aplicación no encontrada${NC}"
                 sleep 2
@@ -350,14 +418,15 @@ web_menu() {
             web_menu
             ;;
         4)
-            if [[ -f "web_apps/web_notes.md" ]]; then
-                ${EDITOR:-nano} "web_apps/web_notes.md"
+            if [[ -f "$SCRIPT_DIR/web_apps/web_notes.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/web_apps/web_notes.md"
             else
                 echo -e "${RED}❌ Archivo de notas no encontrado${NC}"
                 sleep 2
             fi
             web_menu
             ;;
+        6) select_lab_root LAB_WEB; web_menu ;;
         5)
             main_menu
             ;;
@@ -379,17 +448,23 @@ cloud_menu() {
     echo -e "${GREEN}3.${NC} Abrir notas de un laboratorio"
     echo -e "${GREEN}4.${NC} Ver notas generales Cloud"
     echo -e "${GREEN}5.${NC} Volver al menú principal"
+    echo -e "${GREEN}6.${NC} Seleccionar raíz Cloud (solo esta sesión): $LAB_CLOUD"
     echo ""
-    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-5]: ${NC}"
-    read -r option
+    echo -ne "${BOLD}${WHITE}➜ Selecciona una opción [1-6]: ${NC}"
+    read -r option || return
     
     case $option in
         1)
             echo -ne "${YELLOW}Nombre del laboratorio: ${NC}"
             read -r lab
             if [[ -n "$lab" ]]; then
-                cd cloud && ./cloud_setup.sh "$lab"
-                echo -e "\n${GREEN}✅ Laboratorio configurado correctamente${NC}"
+                "$SCRIPT_DIR/cloud/cloud_setup.sh" "$lab" --root "$LAB_CLOUD"
+                rc=$?
+                if (( rc == 0 )); then
+                    echo -e "\n${GREEN}✅ Laboratorio configurado correctamente${NC}"
+                else
+                    echo -e "\n${RED}❌ Error al configurar el laboratorio${NC}"
+                fi
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
             fi
@@ -397,7 +472,9 @@ cloud_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Laboratorios configurados:${NC}"
-            ls -la cloud/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$LAB_CLOUD/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             cloud_menu
@@ -405,8 +482,8 @@ cloud_menu() {
         3)
             echo -ne "${YELLOW}Nombre del laboratorio: ${NC}"
             read -r lab
-            if [[ -f "cloud/machines/$lab/notes/README.md" ]]; then
-                ${EDITOR:-nano} "cloud/machines/$lab/notes/README.md"
+            if [[ "$lab" != */* && "$lab" != . && "$lab" != .. && -f "$LAB_CLOUD/$lab/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$LAB_CLOUD/$lab/notes/README.md"
             else
                 echo -e "${RED}❌ Laboratorio no encontrado${NC}"
                 sleep 2
@@ -414,14 +491,15 @@ cloud_menu() {
             cloud_menu
             ;;
         4)
-            if [[ -f "cloud/cloud_notes.md" ]]; then
-                ${EDITOR:-nano} "cloud/cloud_notes.md"
+            if [[ -f "$SCRIPT_DIR/cloud/cloud_notes.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/cloud/cloud_notes.md"
             else
                 echo -e "${RED}❌ Archivo de notas no encontrado${NC}"
                 sleep 2
             fi
             cloud_menu
             ;;
+        6) select_lab_root LAB_CLOUD; cloud_menu ;;
         5)
             main_menu
             ;;
@@ -672,14 +750,16 @@ delete_menu() {
     case $option in
         1)
             echo -e "\n${YELLOW}Máquinas HTB disponibles:${NC}"
-            ls -la hackthebox/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/hackthebox/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -ne "\n${YELLOW}Nombre de la máquina a eliminar: ${NC}"
             read -r machine
-            if [[ -n "$machine" && -d "hackthebox/machines/$machine" ]]; then
+            if [[ -n "$machine" && -d "$SCRIPT_DIR/hackthebox/machines/$machine" ]]; then
                 echo -ne "${RED}¿Estás seguro? (s/N): ${NC}"
                 read -r confirm
                 if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
-                    rm -rf "hackthebox/machines/$machine"
+                    rm -rf "$SCRIPT_DIR/hackthebox/machines/$machine"
                     echo -e "${GREEN}✅ Máquina eliminada${NC}"
                 else
                     echo -e "${YELLOW}Operación cancelada${NC}"
@@ -693,14 +773,16 @@ delete_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Salas THM disponibles:${NC}"
-            ls -la tryhackme/rooms/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/tryhackme/rooms/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -ne "\n${YELLOW}Nombre de la sala a eliminar: ${NC}"
             read -r room
-            if [[ -n "$room" && -d "tryhackme/rooms/$room" ]]; then
+            if [[ -n "$room" && -d "$SCRIPT_DIR/tryhackme/rooms/$room" ]]; then
                 echo -ne "${RED}¿Estás seguro? (s/N): ${NC}"
                 read -r confirm
                 if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
-                    rm -rf "tryhackme/rooms/$room"
+                    rm -rf "$SCRIPT_DIR/tryhackme/rooms/$room"
                     echo -e "${GREEN}✅ Sala eliminada${NC}"
                 else
                     echo -e "${YELLOW}Operación cancelada${NC}"
@@ -714,14 +796,16 @@ delete_menu() {
             ;;
         3)
             echo -e "\n${YELLOW}Dominios AD disponibles:${NC}"
-            ls -la active_directory/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/active_directory/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -ne "\n${YELLOW}Nombre del dominio a eliminar: ${NC}"
             read -r domain
-            if [[ -n "$domain" && -d "active_directory/machines/$domain" ]]; then
+            if [[ -n "$domain" && -d "$SCRIPT_DIR/active_directory/machines/$domain" ]]; then
                 echo -ne "${RED}¿Estás seguro? (s/N): ${NC}"
                 read -r confirm
                 if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
-                    rm -rf "active_directory/machines/$domain"
+                    rm -rf "$SCRIPT_DIR/active_directory/machines/$domain"
                     echo -e "${GREEN}✅ Dominio eliminado${NC}"
                 else
                     echo -e "${YELLOW}Operación cancelada${NC}"
@@ -735,14 +819,16 @@ delete_menu() {
             ;;
         4)
             echo -e "\n${YELLOW}Aplicaciones web disponibles:${NC}"
-            ls -la web_apps/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/web_apps/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -ne "\n${YELLOW}Nombre de la aplicación a eliminar: ${NC}"
             read -r app
-            if [[ -n "$app" && -d "web_apps/machines/$app" ]]; then
+            if [[ -n "$app" && -d "$SCRIPT_DIR/web_apps/machines/$app" ]]; then
                 echo -ne "${RED}¿Estás seguro? (s/N): ${NC}"
                 read -r confirm
                 if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
-                    rm -rf "web_apps/machines/$app"
+                    rm -rf "$SCRIPT_DIR/web_apps/machines/$app"
                     echo -e "${GREEN}✅ Aplicación eliminada${NC}"
                 else
                     echo -e "${YELLOW}Operación cancelada${NC}"
@@ -756,14 +842,16 @@ delete_menu() {
             ;;
         5)
             echo -e "\n${YELLOW}Laboratorios cloud disponibles:${NC}"
-            ls -la cloud/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/cloud/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -ne "\n${YELLOW}Nombre del laboratorio a eliminar: ${NC}"
             read -r lab
-            if [[ -n "$lab" && -d "cloud/machines/$lab" ]]; then
+            if [[ -n "$lab" && -d "$SCRIPT_DIR/cloud/machines/$lab" ]]; then
                 echo -ne "${RED}¿Estás seguro? (s/N): ${NC}"
                 read -r confirm
                 if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
-                    rm -rf "cloud/machines/$lab"
+                    rm -rf "$SCRIPT_DIR/cloud/machines/$lab"
                     echo -e "${GREEN}✅ Laboratorio eliminado${NC}"
                 else
                     echo -e "${YELLOW}Operación cancelada${NC}"
@@ -859,7 +947,10 @@ main() {
     
     while true; do
         main_menu
-        read -r choice
+        if ! IFS= read -r choice; then
+            echo
+            break
+        fi
         
         case $choice in
             1) htb_menu ;;
@@ -870,7 +961,7 @@ main() {
             6) tools_menu ;;
             7) 
                 clear_screen
-                ./run_all_labs.sh
+                "$SCRIPT_DIR/run_all_labs.sh"
                 echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
                 ;;
@@ -892,7 +983,7 @@ main() {
 # ─── Ejecutar ──────────────────────────────────────────────
 
 # Verificar que estamos en el directorio correcto
-if [[ ! -f "setup_lab.sh" ]]; then
+if [[ ! -f "$SCRIPT_DIR/setup_lab.sh" ]]; then
     echo -e "${RED}❌ Error: No se encuentra setup_lab.sh${NC}"
     echo -e "${YELLOW}Ejecuta este script desde el directorio 13_Labs${NC}"
     exit 1

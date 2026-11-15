@@ -42,6 +42,7 @@
 05_Exploitation/wireless/wifi_attack.sh
 06_PostExploitation/cleanup/logs_cleaner.sh
 06_PostExploitation/lateral_movement/ps_exec.sh
+06_PostExploitation/privilege_escalation/linpeas.sh
 06_PostExploitation/lateral_movement/ssh_jump.sh
 06_PostExploitation/persistence/cron_persistence.sh
 06_PostExploitation/persistence/ssh_backdoor.sh

@@ -35,6 +35,7 @@ enumeration_menu() {
         clear_screen
         target=$(session_target)
         printf '━━━ 04 · ENUMERACIÓN GUIADA ━━━\nObjetivo: %s\n\n' "${target:-sin definir}"
+        if declare -F module_intro >/dev/null; then module_intro '04_Enumeration'; fi
         echo '  1. Comprobar herramientas (local, sin red)'
         echo '  2. SSH — versión, autenticación, usuarios y algoritmos'
         echo '  3. FTP — banner, anónimo/listado y NSE ftp-*'
@@ -45,7 +46,7 @@ enumeration_menu() {
         echo '  8. API — endpoints, GET/POST/PUT/DELETE/PATCH/OPTIONS/HEAD y Swagger'
         echo '  9. Flujo completo original (accesos, NSE, fuzzing y credenciales)'
         echo ' 10. Ver resultados del objetivo (sin red)'
-        echo ' 11. Lista completa: las 16 entradas, auxiliares y generadores'
+        echo ' 11. Lista completa: las 16 entradas, auxiliares y modos explícitos'
         echo '  0. Volver al menú principal'
         printf 'Selecciona [0–11]: '
         IFS= read -r choice || return 0
@@ -56,7 +57,7 @@ enumeration_menu() {
             11) run_module_scripts '04_Enumeration' '04_Enumeration · TODAS LAS CAPACIDADES'; continue ;;
             2) script=ssh/enum_ssh.sh; default=22; description='Versión, métodos de autenticación, usuarios (si no es localhost) y algoritmos SSH.' ;;
             3) script=ftp/enum_ftp.sh; default=21; description='Banner, login anónimo/listado y TODOS los NSE ftp-*; pueden incluir pruebas intrusivas.' ;;
-            4) script=smb/enum_smb_advanced.sh; default=''; description='Null session, usuarios RPC, enum4linux, shares y NSE SMB en 445.' ;;
+            4) script=smb/enum_smb.sh; default=''; description='Null session, usuarios RPC, enum4linux, shares, NSE SMB y siete shares comunes en 445.' ;;
             5) script=ldap/enum_ldap.sh; default=389; description='Consulta anónima RootDSE, namingContexts y usuarios; LDAP/LDAPS según puerto.' ;;
             6)
                 echo '1. MySQL: banner y root sin contraseña'
@@ -107,6 +108,8 @@ enumeration_menu() {
         echo 'La confirmación siguiente autoriza esta ejecución del menú, no sustituye el documento de alcance.'
         if [[ -n "$port" ]]; then
             execute_script "04_Enumeration/$script" '04_Enumeration' --prepared "$target" "$port"
+        elif [[ "$script" == smb/enum_smb.sh ]]; then
+            execute_script "04_Enumeration/$script" '04_Enumeration' --prepared "$target" --execute
         else
             execute_script "04_Enumeration/$script" '04_Enumeration' --prepared "$target"
         fi

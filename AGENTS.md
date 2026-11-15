@@ -1,5 +1,185 @@
 # AGENTS.md
 
+**Rectificación del cierre local, 2026-11-15 — NO APROBADO:** la nota anterior
+que declaraba Tasks1–6 completadas y revisión independiente por tarea era
+prematura. La revisión final propia sobre `d89a371` encontró defectos abiertos
+en gates Linpeas, preservación/rutas Labs y clasificación/IO de ping; además,
+el plan de menores/conciliación global no está implementado. Los recibos
+históricos PASS (local12, web7, consentimiento9, suite179 con1SKIP pwsh)
+se conservan, pero no cubren estos hallazgos ni acreditan cierre global.
+Ver `docs/LOCAL-ESTABILIDAD-TRANSVERSAL-2026-11-14.md` y
+`.superpowers/sdd/2026-11-14-cross-module-local/final-integration-review.md`.
+El usuario solicitó terminar la revisión personalmente: es revisión propia,
+NO independiente. Sin nuevas ejecuciones, push, merge ni borrado de artefactos.
+No cerrar Task4/Task9/global09 ni declarar compatibilidad operacional.
+
+**Reanudación e integración hacia09, 2026-11-14:** usuario autorizó corregir
+también fallos funcionales de otros módulos y el merge local de develop
+`1e6d0fe` hacia el worktree09 basado en `c80da1a`; NO integración inversa ni push.
+Conservar ambos históricos, logs y artefactos. La revisión semántica independiente
+de130hojas/217filas está en el workspace09: detectó discrepancias pendientes,
+por lo que Task9/global09 NO están cerrados. develop ya elimina el empaquetado
+automático de informes; no repetir ese arreglo. Integración global de develop
+documentada en `docs/INTEGRACION-PRUEBAS-GLOBALES-2026-11-14.md`: sus resultados
+no verifican esta combinación. Las restricciones de pruebas aisladas y revisión
+previa siguen vigentes; no ejecutar suites/helpers/probes ni herramientas reales
+por completar este merge. Bloques de estados anteriores conservados como historia.
+
+**Estado actual Task4/aislador09, 2026-11-14 — LISTO PARA REVISIÓN FINAL
+INDEPENDIENTE, NO APROBACIÓN GLOBAL:** sobre1fde308 el controlador verificó
+suite rc0:60sandbox units PASS y159legacy/integration,0fallos0errores1SKIP
+dinámico por pwsh ausente del runtime;25casos con permiso ejecutados, workers
+Landlock ABI7 observado. Carreras rc0:20recibos×8=160PASS. Cancelación externa
+controlada después de race01: SIGINT130/24descendientes observados salidos y
+SIGTERM143/23salidos, señal solo al launcher directo por pidfd según controlador.
+Recibos: `/tmp/opencode/automation-isolated-483f2446911e4dd99e8573f69b952e8a/`,
+`/tmp/opencode/automation-isolated-f3855feac6bd45d0b985542ca5cf6831/` y
+`/tmp/opencode/automation-outer-cancel-a879a56f3bf748eab64f5b3395a1fbe7/`.
+Runs parciales/fuentes/evidencias/logs y el incidente Nmap histórico se conservan.
+Entrega documental actual NO ejecuta ni autoriza nuevos helpers/tests/probes.
+Falta review final independiente/controlador: no cerrar Task4/Task9/global ni
+ledger como aprobado. M1 terminal-receipt diferido; metadata/ioctl Landlock ABI3
+no cubiertos, sin certificado kernel/hostil ni garantías realtime/cgroupsper-tree.
+No compatibilidad Windows/Docker ni rama/suites antiguas completas verdes.
+No auditoría/red/install/sudo/push/merge/cleanupglobal. Ver guía/reporteTask4.
+**Los bloques fechados de seguimiento anteriores son históricos respecto a su
+estado.** Las reglas generales y de seguridad siguen vigentes; ningún bloque
+autoriza nuevas ejecuciones por sí solo.
+
+**Enmienda Task4 Landlock, 2026-11-14 — ESTÁTICA NOT RUN:** usuario autorizó
+descartar temporales sintéticos NUEVOS de25casos; estados intermedios run.json
+son descartables, no evidencia de engagement. Worker por caso escrito con
+Landlock ABI>=3, scratch nuevo fijado, registro exacto IDs y pipe/logs nuevos;
+guard default sin excepción fuera de worker/caso25. ABI ausente bloquea sin
+fallback. Revisión enfocada/controlador antes de helpers/tests/probes/syscalls.
+Outer bwrap/seccomp/mounts/producto intactos; fuente/evidencia/logs/previos y
+árboles finales preservados, fixture.close no borra. ABI3 no media chmod/xattrs/
+utime: límite documentado, NO certificado kernel/hostil. Runtime histórico
+ea414a9:60unit+109elegibles sin fallos,1SKIP/rc2; ni25casos ni160carreras nuevas
+acreditados. Ver reporteTask4/guía; sin auditoría/install/push/merge/cleanupglobal.
+
+**Aislador test-only09 — Task4 estática sobre367b9db, 2026-11-13:** Tasks1/2
+revisadas; el controlador observó seis probes PASS/rc0 en367b9db, con
+tests_started=false. Integración fixture persistente/discovery por manifiesto,
+unit tests interiores y selección cerrada escrita NOT RUN, pendiente de revisión
+independiente y autorización explícita ANTES de cualquier nuevo run/helper/import/
+probe/suite. Listado exacto de25casos BLOCKED-preservation en
+`CyberSecurity-Framework/tests/automation_preservation_cases.json`; no borrar ni
+mockear cleanup/replace de producto para pasar. Wrapper ya delega al launcher
+fijo (el bloque anterior es histórico), sin nested bwrap/flags arbitrarios.
+Ver `docs/AUTOMATION-TEST-ISOLATION-2026-11-13.md` y ledger del aislador.
+NPROC256 aplica al workload, bootstrap hereda límite host sin elevar; mapping
+userns se interpreta en padre inmediato con composición VFS canary400. No cuota
+cgroups por árbol ni certificado kernel. Task3 unit/cancel externo, Task4 runtime,
+Task9/I1/global09 siguen pendientes. Ninguna auditoría/instalación/push/merge ni
+eliminación autorizada; conservar workspace y todos los artefactos históricos.
+
+**Task9 round1 sobre09e16c8 — NEEDS_CONTEXT / EJECUCIÓN BLOQUEADA:** revisión
+estática encontró I1–I3. I1 permanece abierto: no hay aislamiento SO heredado
+acreditado. Runner ahora solo printf/exit2 builtins, sin discovery/imports,
+probes/hijos/fallback/env-bypass. Audithook adicional local rechaza todo Popen;
+no acepta basename ni /tmp/opencode/automation-* como identidad. No ejecutar
+framework/tests/negativos/pwsh/probes/backends hasta revisión estática
+independiente y autorización explícita del controlador. I2 corregido (K.4
+sin confirmación adicional) sin tocarK. I3 namespaces fuente/contrato y
+mutaciones ampliados; pruebas hijo/nieto solo doubles sintéticos para bloqueo,
+escritas SIN ejecución, no prueba de sandbox. M1 diferido. Solo AST/Bash-n/diff
+en este round; ningún nuevo RED/GREEN ni conteo de pruebas. Resultados debajo
+son históricos y no acreditan aislamiento ni autorizan nuevos runs. Conservar
+incidente/evidencia y no cerrar Task9/global; sin instalaciones/push/merge.
+
+**09_Automation — Task9, 2026-11-13:** documentación/runner/contratos implementados
+sobre72c6a9c, pendientes de revisión independiente del controlador, NO cierre
+global. `09_Automation/USE.md` explica previews/permisos y conservación;
+`docs/MENU-OPCIONES.md` inventaría módulos00–13, teclas, submenús y130hojas por
+fuentes; no cambiar comportamiento ajeno ni fichas-modulos. Suite09 final113tests
+rc0; carreras20×8=160 rc0 bajo supervisor sintético, sin supervivientes vivos.
+Regresiones solo en copia fuentes/config sintética: config19/scanners27/enum39,
+reports28checks+78tests/e2e11 y explotación sin red54 verdes. Smoke solo
+subconjunto23checks sin99; explotación web/run_tests/SSTI no ejecutados. Ver
+`docs/AUTOMATION-2026-11-13.md` y reporte local Task9. **Incidencia del harness**:
+una prueba negativa invocó Nmap real a192.0.2.1 por clasificación incorrecta de
+ejecutable relativo; se comunicó, conservó evidencia y corrigió guarda más stub
+de respaldo. No afirmar que toda la sesión fue exclusivamente sintética ni
+operacionalmente autorizada/validada. Sin instalaciones, Docker build/up,99,
+merge ni push; conservar todos los logs/workspace. Nota de próxima sesión bajo
+este bloque es histórica:09 sí fue solicitado posteriormente.
+**Integración local de correcciones globales cerrada, 2026-11-14:** por petición
+expresa del usuario se creó `87d7ce8` y develop avanzó por fast-forward desde
+`8435c05`. Premerge sintético: global520/0, runtime7/7, SSTI e informes rc0.
+Posmerge desde develop en copia sintética: global520/0 en129.343s, runtime7/7,
+SSTI5 métodos/7casos e informes29shell/78Python rc0. Guardas hash/modo intactas;
+detalle en `docs/INTEGRACION-PRUEBAS-GLOBALES-2026-11-14.md`. scope.yaml/targets.txt y
+notas locales preservados fuera del commit. La pausa siguiente es histórica,
+superada por reanudación y petición expresa de merge. Conservar worktree/logs;
+sin push ni iniciar otro módulo. Nunca ejecutar run_tests sobre datos reales.
+
+**Pausa solicitada, 2026-11-14:** usuario quiere corregir fallos de la suite
+global, pero primero parar y limpiar contexto. No iniciar fixes ni otro módulo
+hasta reanudación expresa. Leer `docs/RETOMAR-PRUEBAS-GLOBALES-2026-11-14.md`.
+Develop en8435c05,11 ya integrado; scope.yaml/targets.txt locales preservados.
+Desajustes identificados de recuentos/rutas SQLi/cleanup; timeout180s sin causa
+confirmada. No ejecutar run_tests en checkout con datos; copia/config/HOME
+sintéticos, sin red externa. Nota/AGENTS sin commit, sin push.
+
+**Integración local 11, 2026-11-14:** por petición expresa del usuario, los dos
+bloques de informes se consolidaron en `1682fa1` y se integraron por fast-forward
+en develop desde `e558207`. Posmerge desde develop:
+`tests/run_reports_evidence.sh`175tests/rc0/GUARD OK; hash y modo de scope.yaml/
+targets.txt locales intactos. Se conservó el plan inicial no versionado en
+`/tmp/opencode/merge-reports-6di_p716/untracked-initial-plan.md` antes de incorporar
+su versión actual. Evidencia y límites en `docs/INTEGRACION-11-2026-11-14.md`;
+guía `11_Reports/USE.md`. Worktree, rama de informes y logs conservados; sin push.
+Revisión propia, no independiente; run_tests global heredada mantiene sus cuatro
+fallos observados/timeout. No declarar rama completa verde, compatibilidad
+operacional universal ni custodia legal. No iniciar siguiente módulo sin petición.
+
+**Integración local 10, 2026-11-13:** usuario confirmó merge; `develop`
+avanzó por fast-forward de `3a63550` a `1979d7f` (código revisado `8518c91`,
+último commit solo documentación). Verificación posmerge desde develop:
+145 tests/rc0/GUARD OK; hash y modo de scope.yaml/targets.txt locales intactos.
+Las notas siguientes de integración pendiente son históricas. Worktree, rama
+y logs conservados; sin push. Estado detallado en
+`docs/EVIDENCIAS-INTEGRAL-2026-11-13.md`. No declara rama completa verde,
+compatibilidad operacional, autenticidad ni custodia legal.
+
+**Cierre de revisión 10, 2026-11-13 (integración pendiente):** las ocho tareas
+y la ola global I1/I2 tienen revisión independiente aprobada sobre `8518c91`.
+Verificación del controlador: `tests/run_evidence.sh` 145 tests/rc0/GUARD OK;
+9 Bash sin stderr y 18 AST Python correctos, diff sin incidencias. Cinco
+regresiones sintéticas rc0 según reporte final. Evidencia de cierre en
+`.superpowers/sdd/2026-11-13-evidence-integral/final-fix-review.md` y
+`controller-verification.log`. No implica rama completa verde, compatibilidad
+operacional ni custodia legal. Conservar worktree/logs y pendientes ajenos.
+Sin push; integración en develop requiere confirmación final.
+
+**Fixes globales 10, 2026-11-13 (re-review e integración pendientes):**
+I1 corregido en `5a02c8c`: ownership acreditado antes de entregar INT/TERM,
+cleanup conserva interrupción y no borra reemplazos ajenos; copia larga sigue
+interrumpible. I2 en `ebc19fb`: fase reconoce `FILE:` con espacios en raíz/subárboles
+de seis categorías; excluye `logs/runs` y enlaces, sin leer cuerpos ni hashes.
+Fixtures legacy compartidos con inventario. Reporte/logs de esta ola en
+`.superpowers/sdd/2026-11-13-evidence-integral/final-fix-report.md`.
+No equivale a revisión global aprobada, integración, compatibilidad operacional,
+custodia legal ni rama completa verde. Conservar workspace/logs; sin push.
+
+**Entrega implementación 10, 2026-11-13 (pendiente revisión global/integración):**
+Tasks1–7 revisadas según controlador; Task8 entregables1–6 añade runner allowlist
+y guardas de fuentes permitidas (hash/modo/layout sin leer config/evidencia real),
+HOME/scope/targets/session sintéticos y PATH cerrado. Suite dedicada actual:
+`tests/run_evidence.sh` (142 tests). Contratos en `10_Evidence/{README,USE,FLUJO}.md`,
+`docs/MANUAL-GESTOR.md` y `docs/EVIDENCIAS-INTEGRAL-2026-11-13.md`.
+Tres wrappers conservados, núcleo `00_Config/lib/evidence/`: cinco tipos públicos,
+SHA-256 nuevo/MD5 legacy no migrado, empaquetado bloqueante confidencial sin
+cifrado, captura solo explícita y sin sudo/instalaciones. `10` no adopta TARGET;
+fase done significa presencia, no integridad. `<TARGET>` antiguo retorna2 sin
+adquirir: no se declara reparado99. Pruebas exclusivamente sintéticas/stubs,
+no compatibilidad operacional, autenticidad ni custodia legal. Regresiones solo
+en archivo git versionado con configuración/HOME sintéticos; nunca sobre este
+checkout con datos. Revisión independiente e integración son gates del controlador,
+no aprobados por esta nota; no declarar rama completa verde. Conservar workspace,
+logs, pendientes ajenos y notas históricas; sin push ni tocar checkout original.
+
 **Próxima sesión, 2026-11-13:** usuario pide continuar con `09_Automation`;
 leer `docs/RETOMAR-09-2026-11-13.md`. No iniciar09 ahora ni asumir diseño
 aprobado. 08 cerrado según bloque siguiente; preservar ledger/logs y pendientes.

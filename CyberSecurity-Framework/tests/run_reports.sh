@@ -83,12 +83,13 @@ OUT=$( \
         printf "3\n\n\n" | quick_report
     ' 2>&1 )
 
-if [ -f "$QR_TMP/out/informe_cliente.md" ]; then
+QR_RUN=$(python3 -c 'import sys; from pathlib import Path; sys.path.insert(0,sys.argv[1]); from reports_fixture import latest_run; print(latest_run(Path(sys.argv[2])))' "$TESTS_DIR" "$QR_TMP/out")
+if [ -f "$QR_RUN/informe_cliente.md" ]; then
     ok "quick_report: genera informe_cliente.md"
 else
     bad "quick_report: no genera informe_cliente.md"
 fi
-if [ -f "$QR_TMP/out/informe_tecnico.md" ]; then
+if [ -f "$QR_RUN/informe_tecnico.md" ]; then
     ok "quick_report: genera informe_tecnico.md"
 else
     bad "quick_report: no genera informe_tecnico.md"
@@ -136,23 +137,29 @@ eq "phase_state 11_Reports pending sin datos" \
 # ──────────────────────────────────────────────────────────
 section "Legacy shim (09_Automation): obsoleto y genera"
 LEGACY_TMP="$TMPD/legacy"
-mkdir -p "$LEGACY_TMP/scans/nmap" "$LEGACY_TMP/out"
+mkdir -p "$LEGACY_TMP/scans/nmap"
 printf '%s' '<nmaprun><host><status state="up"/><address addr="10.0.0.1" addrtype="ipv4"/><ports><port protocol="tcp" portid="80"><state state="open"/><service name="http"/></port></ports></host></nmaprun>' > "$LEGACY_TMP/scans/nmap/a.xml"
+# Sesión sintética de respaldo; el shim09 exige objetivo y permisos explícitos.
+printf '10.0.0.1\n' > "$LEGACY_TMP/.session"
 
 OUT=$( \
+    SESSION_FILE="$LEGACY_TMP/.session" \
     REPORT_SCANS_DIR="$LEGACY_TMP/scans" \
     REPORT_OUT_DIR="$LEGACY_TMP/out" \
     REPORT_PROFILE="$LEGACY_TMP/.report_profile" \
     python3 "$FW/09_Automation/python/report_generator.py" \
         --input "$LEGACY_TMP/scans" \
-        --output "$LEGACY_TMP/out/informe.html" 2>&1 )
+        --output "$LEGACY_TMP/out/informe.html" \
+        --target 10.0.0.1 --execute --allow report:report_read 2>&1 )
+eq "legacy shim: completa la generación con sesión sintética" "$?" "0"
 
 if printf '%s' "$OUT" | grep -qi "obsoleto"; then
     ok "legacy shim: dice obsoleto"
 else
     bad "legacy shim: no dice obsoleto"
 fi
-if [ -f "$LEGACY_TMP/out/informe_cliente.md" ] || [ -f "$LEGACY_TMP/out/informe_tecnico.md" ]; then
+LEGACY_RUN=$(python3 -c 'import sys; from pathlib import Path; sys.path.insert(0,sys.argv[1]); from reports_fixture import latest_run; print(latest_run(Path(sys.argv[2])))' "$TESTS_DIR" "$LEGACY_TMP/out")
+if [ -f "$LEGACY_RUN/informe_cliente.md" ] || [ -f "$LEGACY_RUN/informe_tecnico.md" ]; then
     ok "legacy shim: genera al menos un informe"
 else
     bad "legacy shim: no genera informes"
