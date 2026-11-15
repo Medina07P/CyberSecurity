@@ -5,20 +5,22 @@ import sys
 # -I excludes cwd and PYTHONPATH; load only the leaf's own reviewed library.
 sys.path.insert(0, str(Path(__file__).absolute().parent))
 from generate import emit_launcher
-from stable_tools import run_smb, run_psexec, validate_smb, validate_psexec
+from stable_tools import run_smb, run_psexec, run_linpeas, validate_smb, validate_psexec
 
 
 def main(argv: list[str]) -> int:
-    if not argv or argv[0] not in ('smb', 'psexec'):
+    if not argv or argv[0] not in ('smb', 'psexec', 'linpeas'):
         print('Herramienta no válida.', file=sys.stderr)
         return 2
     kind, args = argv[0], argv[1:]
     usage = ('enum_smb.sh HOST [PREFIJO] [--execute]' if kind == 'smb' else
-             'ps_exec.sh HOST DOMINIO USUARIO PASS COMANDO [--execute]')
+             'ps_exec.sh HOST DOMINIO USUARIO PASS COMANDO [--execute]' if kind == 'psexec' else
+             'linpeas.sh --binary FILE|--download [--execute] [--allow-sudo]')
     help_text = (f'Uso: {usage}\nPreview por defecto: no ejecuta herramientas.\n'
                  'Modos exclusivos: --preview, --help, --execute, --generate DESTINO.\n'
                  'Generar no ejecuta ni guarda objetivo/credenciales; requiere destino NUEVO fuera del framework.\n'
                  'El lanzador requiere --framework-root DIR y modo explícito.\n'
+                 'Linpeas exige --binary o --download, además de --execute y --allow-sudo.\n'
                  'PSExec no oculta argv del sistema ni garantiza redacción universal del backend.')
     try:
         if args == ['--help'] or not args or args == ['--preview']:
@@ -31,8 +33,52 @@ def main(argv: list[str]) -> int:
             emit_launcher(kind, Path(args[1]), framework)
             print('Lanzador nuevo creado; no ejecutado. Requiere raíz explícita del framework.')
             return 0
+        if kind == 'linpeas':
+            binary = None
+            download = False
+            execute = False
+            allow_sudo = False
+            i = 0
+            while i < len(args):
+                token = args[i]
+                if token == '--binary':
+                    if i + 1 >= len(args):
+                        raise ValueError('Linpeas requiere --binary ARCHIVO.')
+                    binary = args[i + 1]
+                    i += 2
+                    continue
+                if token == '--download':
+                    download = True
+                    i += 1
+                    continue
+                if token == '--execute':
+                    execute = True
+                    i += 1
+                    continue
+                if token == '--allow-sudo':
+                    allow_sudo = True
+                    i += 1
+                    continue
+                if token in ('--preview', '--help'):
+                    i += 1
+                    continue
+                raise ValueError('Opción Linpeas desconocida o fuera de posición.')
+            if binary is not None and download:
+                raise ValueError('Linpeas: --binary y --download son incompatibles.')
+            if binary is None and not download:
+                if execute or allow_sudo:
+                    raise ValueError('Linpeas requiere --binary o --download.')
+                print(help_text)
+                return 0
+            if not execute or not allow_sudo:
+                print(help_text)
+                return 0
+            framework = Path(__file__).absolute().parents[3]
+            return run_linpeas(Path(binary) if binary is not None else None,
+                               download, allow_sudo, framework.parent, None)
+
         mode = 'preview'
-        if args[-1] in ('--execute', '--preview'):
+        if args and args[-1] in ('--execute', '--preview'):
             mode = args[-1][2:]
             args = args[:-1]
         # Only the final position is interpreted as a mode. In particular a
