@@ -49,7 +49,10 @@ def main():
             return 126
         return subprocess.run(['/bin/bash', str(path), *command[1:]], check=False).returncode
     elif name == 'nmap':
-        print(response.get('stdout', '445/tcp open microsoft-ds\n| smb-os-discovery: synthetic'))
+        # Genuine classifier requires the report header as well as a port row.
+        # Explicit programmed stdout/rc still overrides this transport default.
+        print(response.get('stdout', 'Nmap scan report for ' + argv[-1] +
+                           '\n445/tcp open microsoft-ds\n| smb-os-discovery: synthetic'))
     elif name == 'rpcclient':
         print(response.get('stdout', 'user:[synthetic] rid:[0x1]'))
     elif name == 'smbclient':

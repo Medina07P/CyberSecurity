@@ -15,6 +15,8 @@
     "CyberSecurity-Framework/00_Config/lib/automation_menu.bash",
     "CyberSecurity-Framework/00_Config/lib/consent/__init__.py",
     "CyberSecurity-Framework/00_Config/lib/consent/generate.py",
+    "CyberSecurity-Framework/00_Config/lib/consent/stable_tools.py",
+    "CyberSecurity-Framework/00_Config/lib/consent/stable_cli.py",
     "CyberSecurity-Framework/00_Config/lib/consent/burp.py",
     "CyberSecurity-Framework/00_Config/lib/consent/burp_cli.py",
     "CyberSecurity-Framework/00_Config/lib/consent/cleanup.py",
