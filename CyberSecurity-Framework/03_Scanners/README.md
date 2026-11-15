@@ -27,7 +27,7 @@ No se aceptan credenciales en la URL: utiliza Burp para una sesión autenticada.
 - Los modos de red aceptan IPv4 o dominio; IPv6 literal se rechaza antes de
   invocar herramientas porque estos perfiles/informes no implementan IPv6.
 - Solo necesita estar instalada la herramienta elegida; la comprobación no las ejecuta.
-- Masscan necesita **root**. El menú no eleva privilegios ni ejecuta `sudo`.
+- Masscan necesita **root** y un objetivo **remoto** (no loopback ni IP propia; ver «Masscan»). El menú no eleva privilegios ni ejecuta `sudo`.
 - Nmap básico usa TCP connect sin root; Smart completo incluye detección de SO
   y otros perfiles avanzados pueden necesitar privilegios.
 - RustScan no requiere root por defecto; guarda stdout y usa modo greppable,
@@ -107,6 +107,44 @@ sin migrar, borrar o adoptar sus PIDs. `BURP_LAUNCHER_ESPERA` antiguo ya no se u
 Community puede ignorar el puerto: revisar Settings → Proxy → Proxy settings y
 `--estado`, sin confundir listener con captura. Ni `run_all_scanners` ni99
 adquieren acciones Burp.
+
+## Masscan: cuándo sirve y cómo leer el resultado
+
+Masscan es un escáner de **velocidad sobre redes remotas**. No usa la pila TCP
+del kernel: fabrica los SYN y los inyecta por la interfaz. Consecuencias:
+
+- **No sirve contra esta misma máquina.** `127.0.0.1`, `127.0.0.0/8` y las IP
+  propias (por ejemplo la de `eth0`) se **rechazan antes de ejecutar** (código 1),
+  porque devolverían «0 puertos» aunque haya servicios. Para eso usa
+  `nmap -sT -p <puertos> 127.0.0.1` o el modo básico del menú (03 → 2).
+- **Necesita root.** El script no usa `sudo` solo; si no eres root no ejecuta nada.
+- **Es ruidoso.** Úsalo solo contra redes que tengas autorizadas.
+
+```bash
+sudo ./masscan_scan.sh <red> [PUERTOS] [TASA]
+sudo ./masscan_scan.sh 192.0.2.0/24 80,443          # tasa por defecto: 1000 pps
+sudo ./masscan_scan.sh 192.0.2.1 1-1024 200         # tasa baja, red frágil
+sudo MASSCAN_RATE=5000 ./masscan_scan.sh 192.0.2.0/24 22,80,443
+```
+
+| Parámetro | Detalle |
+|---|---|
+| `<red>` | IPv4 o CIDR remoto. Sin dominios ni IPv6. |
+| `PUERTOS` | Por defecto `1-65535`. Acepta `80,443,8000-8100`. |
+| `TASA` | Paquetes por segundo, 1–100000. Por defecto **1000** (antes 10000 fijo). También `MASSCAN_RATE`; el argumento manda. Subirla acelera, pero en redes con pérdida o con firewalls se **pierden respuestas** y salen falsos negativos. |
+
+La salida es `<repo>/scans/masscan/masscan_<objetivo>.json`. El script termina
+con uno de estos estados:
+
+| Mensaje | Significado | Qué hacer |
+|---|---|---|
+| `🔴 N puerto(s) abierto(s) respondieron` | Hubo respuestas. Es una observación, no una explotación. | Confirma servicios con `nmap -sV -p <puertos>`. |
+| `🟡 SIN PUERTOS ABIERTOS DETECTADOS` | Masscan terminó bien y no recibió respuestas. **No prueba que estén cerrados**: un firewall que descarta, una tasa alta o pérdida de red se ven igual. | Repite con tasa menor y confirma con `nmap -sT`. |
+| `❌ … NO DETERMINADO` (código 1) | Falló la herramienta o no creó el JSON. | Mira `scans/masscan/errores.log`. |
+
+`errores.log` conserva el banner y los errores reales de cada ejecución; la
+barra de progreso (`rate: … found=0`, que se repite cada segundo y las ~10 s de
+espera final por defecto de masscan) se filtra para que no ahogue el historial.
 
 ## Resultados y fallos
 
