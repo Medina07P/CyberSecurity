@@ -800,7 +800,7 @@ class ConsentTests(unittest.TestCase):
         self.assertEqual(f.records(), [[
             'record-dispatch', '06_PostExploitation/lateral_movement/ps_exec.sh',
             '06_PostExploitation', '--prepared', 'example.test', 'LAB', 'operator',
-            'literal-psexec-secret', 'whoami']])
+            'literal-psexec-secret', 'whoami', '--execute']])
         for output in (result.stdout, result.stderr):
             self.assertNotIn('literal-psexec-secret', output)
         self.assertIn('[ocultos: contienen credenciales]', result.stdout)

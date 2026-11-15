@@ -615,4 +615,92 @@ SHA-256 / mode of the files changed by fixwave2:
 |00_Config/lib/params.bash|ece553fe91a0695c4f97b58fe160b17411aa03d3508fb8ec6c1c03e1bea5000b|775|
 |00_Config/lib/prompt.bash|cca403984d972fc2180dfb216d23990e2c103f2792c8c500e4b3a4fbd58bb8ba|775|
 |tests/cross_module_fixture.py|e2dd5df4ac0917a939d312a03ad5e4e9839d2b69099adeef1b9966a5974665d8|664|
-|tests/test_cross_local.py|aab1ea55d3c54a32f779cdce7ba8e80e7f26629920e88cc0e3d10f06423ee2f8|664|
+|tests/test_cross_local.py|bd6f1003bb695ceda8d9b341339146b44a656cba8ceac3f1d9d548f957b7540e|664|
+
+That table identifies commit `a11a580` and was regenerated after the re-review:
+each hash comes from `git cat-file blob a11a580:<path> | sha256sum` and each
+mode from `git ls-tree a11a580 -- <path>` (`100755`→`775`, `100644`→`664`). The
+earlier `aab1ea55…` value was the draft content before the final guard edit, not
+the committed file.
+
+## Task2 fixwave3 — re-review 2 findings (STATIC / NOT RUN)
+
+Base/HEAD `a11a580`. Only the five items of `task-2-static-rereview-2.md`
+("Findings (all Minor)" + item 2 of the Gate blockers) were addressed.
+
+### Exact changes
+
+1. **Evidence table.** The fixwave2 table above now carries the hash of the
+   committed `tests/test_cross_local.py`
+   (`bd6f1003bb695ceda8d9b341339146b44a656cba8ceac3f1d9d548f957b7540e`) and
+   states how all four hashes/modes were recomputed (above).
+2. **M2 refusal asserted, inside the existing `LocalMenuTests` case (no new ID).**
+   New fixture driver `run_prompt_identity(script, rel, stdin, module=None)` runs
+   the real `params.bash`/`prompt.bash` (no leaf, no backend) with an explicit
+   identity pair and the existing read-boundary observer. Assertions:
+   `./`-prefixed identities for both leaves still select `stable` and reach the
+   adapter (stdout `--preview`, no field read, rc 0); an absolute identity (and
+   the `rel`-absent fallback) and a foreign-prefixed SMB identity are refused
+   with the stderr notice, rc 1 (contract cancel), stdout empty, **zero
+   `read` receipts** (so the generic echo/trim route is not reached) and no
+   dispatch of either leaf.
+   Supporting product-consistent fix: `_prompt_stable_tool` now checks its
+   position contract against the same `_params_stable_identity` form, so a
+   `./`-prefixed identity that `params_mode` classifies `stable` is not then
+   rejected by the adapter's own exact-string check.
+3. **Residual pinned.** The same test asserts the single product call site
+   (`rel_path="${script_path#$module_dir/}"` +
+   `prompt_for_slots "$rel_path" "$script_path"`, exactly one occurrence, and
+   no `prompt_for_slots "$script_path"`), and that a bare-basename or
+   module-relative identity *does* reach the generic prompt (observed `read`
+   without `-s`, `IFS=''`, rc 2 on EOF), so a future caller passing another
+   spelling is caught.
+4. **Fixture cleanup.** Removed the dead constant check at
+   `cross_module_fixture.py:269`; the `.session` shim is now written only by
+   `run_full_list(..., needs_session=True)` (mode-2/execute routes), not on
+   preview-only runs, and the same driver keeps the `exit 94/95` fail-closed
+   guards. `full_list_target()` exposes the value name without writing.
+5. **Consumer adaptation for explicit execution (test-only).**
+   `tests/test_cross_consent.py` PSExec dispatch expectation gains `--execute`;
+   `tests/test_enumeration_orchestrator.py` gains `--execute` on the executing
+   assertion (`smb/enum_smb.sh example.invalid`), while the no-argument call
+   keeps its "runs nothing" meaning. Product call sites already pass it
+   (`postexploitation_menu.bash:149`, `enumeration_menu.bash:112`); no product,
+   consent or Labs file was touched.
+
+### Static verification (commands + results)
+
+- `bash -n` with captured stderr: `00_Config/lib/params.bash`,
+  `00_Config/lib/prompt.bash` → rc0, stderr empty.
+- stdlib `ast.parse` (no import) of `tests/cross_module_fixture.py`,
+  `tests/test_cross_local.py`, `tests/test_cross_consent.py`,
+  `tests/test_enumeration_orchestrator.py` → OK (24/21/37/6 functions).
+- `git diff -U0` shows no `class`/`def test_` addition or rename → 12 case IDs,
+  11 grants, 1 pure, selection/manifest/cases JSON unchanged; Linpeas, Labs and
+  CIDR sources untouched; consent production untouched; I1–I3 and M1–M3 hunks
+  intact.
+- `git diff --check` empty.
+- Hashes recomputed with `sha256sum` over the worktree (clean tree = committed
+  tree) and modes with `git ls-tree HEAD` semantics (`100755`→`775`,
+  `100644`→`664`) after all edits; table below.
+
+### Runtime NOT RUN
+
+No repository import, source, fixture, worker, launcher, double, backend, test
+or probe was executed, in the sandbox or outside it. The new refusal/residual
+assertions, the `read`-boundary receipts and the consumer adaptations are
+**unverified at runtime**; no PTY/terminal, kernel or backend guarantee is
+claimed, and this wave does not authorize execution.
+
+SHA-256 / mode of the files changed by fixwave3:
+
+| Framework-relative source | SHA-256 | mode |
+|---|---|---|
+|00_Config/lib/prompt.bash|086b1c715069259cf02ffe9e963572296f805fa36af48c4f67a376f5abd8beca|775|
+|tests/cross_module_fixture.py|fcee77127299b25b0733b662afb4e44914a852c5fa0ae36dd6c36cc1e76b39e5|664|
+|tests/test_cross_local.py|a93e94aa7d56beda4bcea3e942d5f40d407327ff8a35430dcba4ae3fb863c1e4|664|
+|tests/test_cross_consent.py|67aaf099200573be887d84c00f8b519443e53eb72742e6e184ffec521e8b7018|664|
+|tests/test_enumeration_orchestrator.py|20e3d541e44c502a17761256b2a1eaa61f53b7f6901059a1e91a4ab1dc6a3450|664|
+
+`00_Config/lib/params.bash` is unchanged by this wave
+(`ece553fe91a0695c4f97b58fe160b17411aa03d3508fb8ec6c1c03e1bea5000b`, 775).

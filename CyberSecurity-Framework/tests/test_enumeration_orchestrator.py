@@ -66,7 +66,7 @@ exit "${FAKE_CHILD_RC:-0}"
         result = self.leaf('smb/enum_smb.sh')
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertEqual(self.invoked(),[])
-        result = self.leaf('smb/enum_smb.sh','example.invalid')
+        result = self.leaf('smb/enum_smb.sh','example.invalid','--execute')
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         args = [' '.join(c['args']) for c in self.invoked('smbclient')]
         for share in ('ADMIN$','IPC$','C$','public','share','documents','backup'):
