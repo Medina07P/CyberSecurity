@@ -262,12 +262,16 @@ class CrossModuleFixture:
         with (self.framework / '00_Config/.session').open('x') as stream:
             stream.write(target + '\n')
 
+    def full_list_target(self):
+        """Synthetic session value NAME; writing is per-route (set_...)."""
+        if self.group != '--cross-local':
+            raise ValueError('Full-list session shim requires local worker')
+        return FULL_LIST_TARGET
+
     def set_full_list_session(self):
         """Minimum synthetic session shim for the full-list driver: value only."""
         if self.group != '--cross-local':
             raise ValueError('Full-list session shim requires local worker')
-        if '\n' in FULL_LIST_TARGET or not FULL_LIST_TARGET:
-            raise ValueError('Full-list session shim value is not a plain single line')
         path = self.framework / '00_Config/.session'
         if path.exists():
             if path.read_text() != FULL_LIST_TARGET + '\n':
@@ -358,7 +362,7 @@ class CrossModuleFixture:
                 'record-dispatch __read-policy__ "$IFS" "$@" ;; esac; '
                 'builtin read "$@"; }\n')
 
-    def run_full_list(self, relative, stdin, through_list=False):
+    def run_full_list(self, relative, stdin, through_list=False, needs_session=False):
         if self.group != '--cross-local' or relative not in (
                 '04_Enumeration/smb/enum_smb.sh',
                 '06_PostExploitation/lateral_movement/ps_exec.sh'):
@@ -372,16 +376,18 @@ class CrossModuleFixture:
         # ONLY replace the final external Bash-process transport. The actual
         # list, params, prompt, consent, argv reconstruction and summary run.
         policies = policies.replace(boundary, '        record-dispatch "$script_path" "${argv[@]}"')
-        # The real manager sources session.bash; the driver must too, so the
-        # displayed default target is exercised from a synthetic session value.
-        self.set_full_list_session()
+        # The synthetic session shim exists only for routes that really read the
+        # session target (the position prompt), never for preview-only runs.
+        session = ''
+        if needs_session:
+            self.set_full_list_session()
+            session = ('source "$1/00_Config/lib/session.bash"\n'
+                       'declare -F session_target >/dev/null 2>&1 || exit 94\n'
+                       '[[ -n "$(session_target)" ]] || exit 95\n')
         driver = self.output / ('full-list-' + str(self._invocations) + '.sh')
         _new_text(driver,
-                  'source "$1/00_Config/lib/params.bash"\n'
-                  'source "$1/00_Config/lib/session.bash"\n'
+                  'source "$1/00_Config/lib/params.bash"\n' + session +
                   'source "$1/00_Config/lib/prompt.bash"\n'
-                  'declare -F session_target >/dev/null 2>&1 || exit 94\n'
-                  '[[ -n "$(session_target)" ]] || exit 95\n'
                   'source "$1/00_Config/lib/module_intro.bash"\n'
                   'clear_screen() { :; }; pause() { :; }\n' + policies +
                   self._read_observer() +
@@ -390,6 +396,29 @@ class CrossModuleFixture:
                   ('run_module_scripts "$2" "$2"\n' if through_list else 'execute_script "$3" "$2"\n'))
         return self._run(['/bin/bash', '--noprofile', '--norc', str(driver),
                           str(self.framework), module, relative], stdin)
+
+    def run_prompt_identity(self, script, rel, stdin, module=None):
+        """Real prompt_for_slots with an explicit identity pair; never dispatches.
+
+        Only the real params/prompt/read code runs (no leaf, no backend). The
+        module sets the cwd so module-relative spellings resolve as in the
+        manager. Stdout is the values (if any); every receipt is in the log.
+        """
+        if self.group != '--cross-local':
+            raise ValueError('Identity route probe requires local worker')
+        driver = self.output / ('identity-' + str(self._invocations) + '.sh')
+        _new_text(driver,
+                  'source "$1/00_Config/lib/params.bash"\n'
+                  'source "$1/00_Config/lib/prompt.bash"\n'
+                  + self._read_observer() +
+                  'record-dispatch __mode__ "$(params_mode "$2" "$3")"\n'
+                  'prompt_for_slots "$2" "$3"\n'
+                  'rc=$?\n'
+                  'record-dispatch __rc__ "$rc"\n'
+                  'exit 0\n')
+        cwd = self.framework / module if module else self.framework
+        return self._run(['/bin/bash', '--noprofile', '--norc', str(driver),
+                          str(self.framework), script, rel], stdin, cwd=cwd)
 
     def run_menu(self, name, stdin, real_list=False, observe_reads=False):
         if name not in ('scanners_menu', 'postexploitation_menu', 'enumeration_menu'):

@@ -119,7 +119,7 @@ _prompt_read_literal() {
 # Closed SMB/PSExec full-list adapter. Selecting an entry never grants execution.
 # stdout is exclusively argv (one literal field per line), like prompt_for_slots.
 _prompt_stable_tool() {
-    local script="$1" rel="$2" choice value line pos name kind type target def
+    local script="$1" rel="$2" choice value line pos name kind type target def identity
     local -a out=() slotlines=()
     printf '\n1. Preview sin operación (predeterminado)\n2. Ejecutar con posiciones explícitas\n3. Generar lanzador NUEVO\n0. Cancelar\nModo [1]: ' >&2
     IFS= read -r choice || return 2
@@ -138,7 +138,10 @@ _prompt_stable_tool() {
     esac
     target=$(session_target)
     mapfile -t slotlines < <(params_slots "$script")
-    case "$rel:${#slotlines[@]}" in
+    # Same strictly lexical identity as params_mode: './'-prefixed or duplicated
+    # '/' forms select the adapter AND satisfy its position contract.
+    identity=$(_params_stable_identity "$rel")
+    case "$identity:${#slotlines[@]}" in
         04_Enumeration/smb/enum_smb.sh:2|06_PostExploitation/lateral_movement/ps_exec.sh:5) : ;;
         *) printf 'Contrato de posiciones no válido.\n' >&2; return 1 ;;
     esac

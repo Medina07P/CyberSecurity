@@ -611,7 +611,7 @@ class LocalMenuTests(LocalCase):
         # Independent pinned names + actual manager listing policy. Create ONLY
         # missing inert scratch leaves, never read protected source-folder bodies.
         listing = self.fixture()
-        session_target_value = listing.set_full_list_session()
+        session_target_value = listing.full_list_target()
         listing.install_local_inventory(ORIGINAL_ENTRIES)
         for menu, choice, module in (('enumeration_menu', '11\n0\n0\n', '04_Enumeration'),
                                      ('postexploitation_menu', '9\n0\n0\n', '06_PostExploitation')):
@@ -653,8 +653,10 @@ class LocalMenuTests(LocalCase):
                     # remaining modes call that same extracted execute_script
                     # consumer directly, without broad manager initialization.
                     through_list = expected and expected[0] != '--preview'
-                    result = listing.run_full_list(relative, (index if through_list else '') + mode_input,
-                                                   through_list=bool(through_list))
+                    result = listing.run_full_list(
+                        relative, (index if through_list else '') + mode_input,
+                        through_list=bool(through_list),
+                        needs_session=mode_input.startswith('s\n2'))
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     rows = listing.records()[offset:]
                     self.assertIn(['record-dispatch', '__params-policy__', 'stable',
@@ -678,7 +680,7 @@ class LocalMenuTests(LocalCase):
                 offset = len(listing.records())
                 result = listing.run_full_list(
                     relative, index + 's\n2\n\n' + '\n'.join(positions[1:]) + '\n0\n',
-                    through_list=True)
+                    through_list=True, needs_session=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn('[' + session_target_value + ']', result.stderr)
                 self.assertEqual(
@@ -691,10 +693,76 @@ class LocalMenuTests(LocalCase):
                 for tail in ('', '0\n0\n', '!\n0\n'):
                     with self.subTest(secret_cancel=tail):
                         offset = len(listing.records())
-                        result = listing.run_full_list(relative, 's\n2\nexample.test\nSYNTH\nuser\n' + tail)
+                        result = listing.run_full_list(
+                            relative, 's\n2\nexample.test\nSYNTH\nuser\n' + tail,
+                            needs_session=True)
                         self.assertEqual(result.returncode, 0, result.stderr)
                         self.assertFalse(any(len(r) > 1 and r[1] == PSEXEC for r in listing.records()[offset:]))
             self.assertFalse(Path(generate).exists(), 'full-list transport must not generate/execute its dispatch')
+        # M2 refusal branch + accepted residual (inside this existing case; no
+        # new case ID). prompt_for_slots runs for real with explicit identity
+        # pairs and the read-boundary observer shows which route was taken.
+        psexec_abs = str(listing.framework / PSEXEC)
+        smb_abs = str(listing.framework / SMB)
+        refusal = 'identidad no canónica'
+        for script, rel, expected_mode in (
+                (psexec_abs, './' + PSEXEC, 'stable'),
+                (smb_abs, './' + SMB, 'stable'),
+                (psexec_abs, psexec_abs, 'slots'),
+                (psexec_abs, '', 'slots'),
+                (smb_abs, 'external/04_Enumeration/smb/enum_smb.sh', 'slots')):
+            with self.subTest(identity=rel or '<empty>'):
+                offset = len(listing.records())
+                result = listing.run_prompt_identity(script, rel, '1\n')
+                rows = listing.records()[offset:]
+                self.assertEqual([r for r in rows if r[1:2] == ['__mode__']],
+                                 [['record-dispatch', '__mode__', expected_mode]])
+                if expected_mode == 'stable':
+                    # './'-prefixed canonical identity: the real adapter runs,
+                    # previews only, reads no field and dispatches nothing.
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, '--preview\n')
+                    self.assertEqual([r for r in rows if r[1:2] == ['__rc__']],
+                                     [['record-dispatch', '__rc__', '0']])
+                    self.assertFalse([r for r in rows if r[1:2] == ['__read-policy__']])
+                else:
+                    # Closed consumer under an absolute/foreign identity: notice,
+                    # contract cancel code, and NO generic echo/trim secret read.
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, '')
+                    self.assertIn(refusal, result.stderr)
+                    self.assertEqual([r for r in rows if r[1:2] == ['__rc__']],
+                                     [['record-dispatch', '__rc__', '1']])
+                    self.assertFalse([r for r in rows if r[1:2] == ['__read-policy__']])
+                    self.assertEqual([r[1:2] for r in rows
+                                      if r[1:2] not in (['__mode__'], ['__rc__'])], [])
+                    self.assertFalse(any(len(r) > 1 and r[1].endswith(
+                        ('enum_smb.sh', 'ps_exec.sh')) for r in rows))
+        # Single product call site: $1 is derived from the framework-relative $2,
+        # so no other spelling reaches the prompt from the shipped manager.
+        manager = (listing.framework / 'cyber_framework.sh').read_text()
+        self.assertEqual(manager.count('prompt_for_slots "$rel_path" "$script_path"'), 1)
+        self.assertEqual(manager.count('rel_path="${script_path#$module_dir/}"'), 1)
+        self.assertNotIn('prompt_for_slots "$script_path"', manager)
+        # Accepted residual, pinned: a bare-basename or module-relative identity
+        # still reaches the GENERIC prompt (echoing read, whitespace trimmed).
+        # That is safe only because the call site above cannot emit it.
+        for identity in ('ps_exec.sh', 'lateral_movement/ps_exec.sh'):
+            with self.subTest(module_relative_identity=identity):
+                offset = len(listing.records())
+                result = listing.run_prompt_identity(
+                    'ps_exec.sh', identity, '', module='06_PostExploitation/lateral_movement')
+                rows = listing.records()[offset:]
+                self.assertEqual([r for r in rows if r[1:2] == ['__mode__']],
+                                 [['record-dispatch', '__mode__', 'slots']])
+                self.assertEqual([r for r in rows if r[1:2] == ['__rc__']],
+                                 [['record-dispatch', '__rc__', '2']])
+                reads = [r for r in rows if r[1:2] == ['__read-policy__']]
+                self.assertTrue(reads)
+                flags = ''.join(x[1:] for x in reads[0][3:-1] if x.startswith('-'))
+                self.assertNotIn('s', flags, 'generic secret read must not be silent')
+                self.assertEqual(reads[0][2], '')
+                self.assertEqual(reads[0][-1], 'value')
         self.unchanged_sources(listing)
         self.assert_product_privacy(listing, password)
         # Real guided menus and their actual secret read boundary, not a PTY
