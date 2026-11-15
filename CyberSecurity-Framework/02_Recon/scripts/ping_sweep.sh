@@ -25,7 +25,7 @@ OUTPUT_DIR="$MODULE_DIR/host_discovery"
 OUTPUT="$OUTPUT_DIR/ping_sweep_$(date +%Y%m%d).txt"
 
 # Parseo previo: no crear salida si el objetivo/rango es inválido.
-_RCFILE="$(mktemp)"
+_RCFILE="$(mktemp)" || exit 1
 mapfile -t IPS < <(python3 -I -B "$LIB/recon_targets.py" "$NETWORK" "$RANGE"; rc=$?; printf '%s\n' "$rc" > "$_RCFILE"; exit "$rc")
 PARSE_RC="$(cat "$_RCFILE" 2>/dev/null)"
 rm -f "$_RCFILE"
@@ -39,10 +39,17 @@ if ! command -v ping >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "🔍 Escaneando: $NETWORK ${RANGE:+($RANGE)}"
+DISPLAY_NETWORK="$NETWORK"
+if [[ "$NETWORK" == */24 ]]; then
+    DISPLAY_NETWORK="${NETWORK%.*}.0/24"
+fi
+echo "🔍 Escaneando: $DISPLAY_NETWORK ${RANGE:+($RANGE)}"
 echo "────────────────────────────────────────"
 
-mkdir -p "$OUTPUT_DIR"
+if ! mkdir -p "$OUTPUT_DIR"; then
+    echo "❌ No se pudo preparar el directorio de resultados" >&2
+    exit 1
+fi
 
 FOUND=0
 BACKEND_ERROR=0
@@ -50,13 +57,16 @@ for IP in "${IPS[@]}"; do
     ping -c 1 -W 1 "$IP" >/dev/null 2>&1
     PING_RC=$?
     if [[ "$PING_RC" -eq 0 ]]; then
+        if ! printf '%s|%s|ping\n' "$IP" "$(date)" >> "$OUTPUT"; then
+            echo "❌ No se pudo guardar el resultado de esta ejecución" >&2
+            exit 1
+        fi
         echo "  ✅ $IP - Activo"
-        echo "$IP|$(date)|ping" >> "$OUTPUT"
         FOUND=$((FOUND + 1))
         # Resolver hostname
         HOST=$(host "$IP" 2>/dev/null | head -1 | awk '{print $NF}')
         [[ -n "$HOST" ]] && echo "    ↳ $HOST"
-    elif [[ "$PING_RC" -eq 2 ]]; then
+    elif [[ "$PING_RC" -ne 1 ]]; then
         echo "  ⚠️  $IP - Error de backend ping (rc=$PING_RC)"
         BACKEND_ERROR=1
     else
@@ -70,8 +80,8 @@ if [[ "$BACKEND_ERROR" -ne 0 ]]; then
     exit 1
 fi
 if [[ "$FOUND" -gt 0 ]]; then
-    echo "✅ $FOUND hosts activos encontrados"
-    echo "📁 Resultados guardados en: $OUTPUT"
+    echo "✅ $FOUND hosts activos encontrados en esta ejecución"
+    echo "📁 Archivo diario acumulado (incluye históricos): $OUTPUT"
 else
     echo "⚠️  No se encontraron hosts activos"
     echo "📁 Sin resultados que guardar en: $OUTPUT"

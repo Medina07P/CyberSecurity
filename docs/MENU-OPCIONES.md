@@ -35,20 +35,32 @@ En el principal se acepta un dígito como alias de00–09; `?` admite también
 | Opción | Finalidad | Entrada | Efectos y límites |
 |---|---|---|---|
 | `00` | Configuración y claves | selección de hoja | lista genérica; valida o edita datos locales según hoja, no autoriza una auditoría |
+Wizard: descripción opcional y protocolo por defecto; 10 --add admite descripción opcional; 11 exige objetivo
+scope.yaml tiene .bak; targets.txt se añade por append sin backup
+Claves: estado [--json|--faltan H]; pedir H [--campo C]
 | `01` | OSINT por fuentes | dominio/empresa/archivo | lista genérica; consultas externas y resultados con cobertura; DNS activo solo opt-in |
+DNS normal y controles wildcard sin diccionario; DNS_SI solo para diccionario
 | `02` | Reconocimiento | host/red/dominio | lista genérica; puede ampliar a /24, AXFR y escaneo completo en auto_recon; revisar hoja |
 | `03` | Escáneres | opción guiada y host/URL | menú específico; disponibilidad sin red al elegir1, escaneo solo explícito |
 | `04` | Enumeración de servicios | opción y host/puerto/URL | menú específico; incluye accesos anónimos, credenciales de prueba, métodos HTTP y fuzzing |
+ftp_anonymous prueba login; enum_ftp añade listado
 | `05` | Explotación | opción y petición/host/URL | menú específico; son sondas activas o guías según hoja; no todo es exploit funcional |
+SQLmap CLI: replay solo no-GET/HEAD; enum con database y dump con table independientes; menú conservador
+run_all_attacks selecciona SSH/web/Postgres/MySQL/Redis; no AD
+run_all_exploits selecciona cuatro hojas; no descubre exploits/
+Plantillas: conexiones TCP80/nc22; SSH: NSE e Hydra con dos listas, sin topes de 09
 | `06` | Post-explotación | opción y datos locales/remotos | mantenimiento del menú, no integración operacional completa; puede cambiar el host actual |
 | `07` | Wireless y radio | opción de mantenimiento | entrar no transmite ni modifica interfaces; lista original conserva hojas peligrosas |
 | `08` | Forense | fuente explícita, nunca IP de sesión | análisis offline por copias; local/adquisición/instalación solo explícitos; sin custodia legal certificada |
+Visor forense: stdout de metadatos, lectura privada para hashes; no reabre originales
+08.10 no pide filtros; los filtros pertenecen a la CLI del visor
 | `09` | Automatización | target explícito y plan | menú sin heredar sesión; preview primero, ejecución y permisos nuevos; [USE](../CyberSecurity-Framework/09_Automation/USE.md) |
 | `10` | Evidencia | selección explícita, archivos y etiqueta opcional | menú específico0–9; no adopta sesión; importación/captura/exportación separadas, no custodia legal |
 | `11` | Informes | tipo/objetivo/input | lista genérica; motor11 lee existentes e históricos atribuibles; cada generación conserva runs/id y recibo propio |
 | `12` | Base de conocimiento | término de búsqueda | lista genérica; lectura local, no auditoría ni explotación |
 | `13` | Laboratorios | menú Labs/nombre/ruta | abre main.sh; plantillas locales y acciones rápidas/VPN/borrado, no despliegue automático de infraestructura |
 | `99` | Flujo heredado completo | objetivo de sesión y confirmación | encadena00/01/02/03/04/05/06/10/11; puede incluir fuerza bruta/explotación, pero no añade Burp ni cleanup/persistencia/lateral excluidos por sus coordinadores; no incluye09 ni prueba éxito por fase; no ejecutar como validación |
+99 conserva peligro; 06 omite persistencia/lateral/cleanup y no garantiza cobertura completa
 | `R` | Informe rápido | 1 técnico,2 cliente,3 ambos,0 volver; perfil/nombres | genera desde datos existentes; ofrece abrir HTML; no inicia escáner ni acredita actualidad |
 | `T` | Cambiar objetivo | número de targets o0/manual; IP/dominio | guarda .session y registra scope.yaml/targets.txt con backups; scope es registro best-effort, no barrera de autorización |
 | `K` | Registro de API keys | subopción y herramienta/campo | puede leer/escribir HOME y registro; secretos nunca deben publicarse; Enter conserva y '-' borra |
@@ -255,26 +267,31 @@ y no usar sus borrados para higiene de tests.
 | `13.htb.3` | Notas de máquina | nombre explícito | abre EDITOR/nano, puede modificar notas |
 | `13.htb.4` | Notas generales HTB | ninguna adicional | abre archivo local si existe, no consulta plataforma |
 | `13.htb.5` | Volver Labs | ninguna adicional | sin nueva acción de setup ni borrado |
+| `13.htb.6` | Seleccionar raíz HTB | ruta absoluta existente | solo memoria de sesión; no migra, no persiste, no sigue enlaces ni crea carpetas |
 | `13.thm.1` | Nueva sala | nombre explícito | thm_setup crea estructura/guías; no inicia instancia |
 | `13.thm.2` | Listar salas | ninguna adicional | solo directorios locales, no estado remoto |
 | `13.thm.3` | Notas de sala | nombre explícito | editor local con posibilidad de escritura |
 | `13.thm.4` | Notas generales THM | ninguna adicional | archivo local si existe, sin consulta remota |
 | `13.thm.5` | Volver Labs | ninguna adicional | sin acciones nuevas de plataforma |
+| `13.thm.6` | Seleccionar raíz THM | ruta absoluta existente | solo memoria de sesión; no migra ni persiste |
 | `13.ad.1` | Nuevo dominio | nombre explícito | crea estructura/plantillas AD; no DC ni usuarios reales |
 | `13.ad.2` | Listar dominios | ninguna adicional | muestra carpetas locales, no enumeración AD |
 | `13.ad.3` | Notas de dominio | nombre explícito | abre README con editor, no conecta dominio |
 | `13.ad.4` | Notas ataques AD | ninguna adicional | edita guía local; no ejecuta técnicas descritas |
 | `13.ad.5` | Volver Labs | ninguna adicional | no inicia despliegue ni auditoría |
+| `13.ad.6` | Seleccionar raíz AD | ruta absoluta existente | solo memoria de sesión; no migra ni persiste |
 | `13.web.1` | Nueva aplicación | nombre explícito | crea carpetas/guías; no servidor vulnerable |
 | `13.web.2` | Listar aplicaciones | ninguna adicional | directorios locales solamente |
 | `13.web.3` | Notas aplicación | nombre explícito | editor sobre README local; puede escribir |
 | `13.web.4` | Notas generales Web | ninguna adicional | lectura/edición de guía, no solicitudes HTTP |
 | `13.web.5` | Volver Labs | ninguna adicional | no crea ni elimina aplicación |
+| `13.web.6` | Seleccionar raíz Web | ruta absoluta existente | solo memoria de sesión; no migra ni persiste |
 | `13.cloud.1` | Nuevo lab cloud | nombre explícito | estructura/notas, no Terraform ni recursos remotos |
 | `13.cloud.2` | Listar labs cloud | ninguna adicional | solo carpetas locales, no inventario cloud real |
 | `13.cloud.3` | Notas lab cloud | nombre explícito | editor local, no accede cuentas cloud |
 | `13.cloud.4` | Notas generales Cloud | ninguna adicional | guía local si existe; no CLI de proveedor |
 | `13.cloud.5` | Volver Labs | ninguna adicional | sin nuevas operaciones cloud |
+| `13.cloud.6` | Seleccionar raíz Cloud | ruta absoluta existente | solo memoria de sesión; no migra ni persiste |
 | `13.tools.1` | Nmap llamado rápido | IP explícita | realmente -sV -sC -p-; completo/NSE, no básico100 |
 | `13.tools.2` | WhatWeb | URL explícita | tráfico HTTP directo, no evaluación de vulnerabilidad |
 | `13.tools.3` | ffuf | URL con FUZZ y wordlist | fuzzing directo, sin garantías baseline compartidas de04 |

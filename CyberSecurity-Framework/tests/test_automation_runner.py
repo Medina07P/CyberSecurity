@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import unittest
+import time
 from unittest.mock import patch
 
 from automation_fixture import AutomationFixture, preserve
@@ -214,11 +215,30 @@ class RunnerTests(unittest.TestCase):
 
     def test_term_is_not_inherited_blocked(self):
         marker = self.fixture.repo / 'term-received'
+        ready = self.fixture.repo / 'handler-ready'
         code = ('import signal, pathlib; '
-                f'signal.signal(signal.SIGTERM, lambda *a: (pathlib.Path({str(marker)!r}).touch(), exit(0))); '
-                'signal.pause()')
-        result = run_plan(self.plan, self.ctx, self.permissions,
-                          lambda step, root: (self.command(code, 0.2),))
+                 f'signal.signal(signal.SIGTERM, lambda *a: (pathlib.Path({str(marker)!r}).touch(), exit(0))); '
+                f'pathlib.Path({str(ready)!r}).touch(); '
+                 'signal.pause()')
+        original = subprocess.Popen
+
+        def spawn(*args, **kwargs):
+            process = original(*args, **kwargs)
+            try:
+                deadline = time.monotonic() + 5
+                while not ready.exists():
+                    if time.monotonic() >= deadline:
+                        self.fail('Synthetic backend did not install its signal handler before readiness deadline')
+                    time.sleep(0.005)
+                return process
+            except BaseException:
+                from automation.runner import _finish_group
+                _finish_group(process)
+                raise
+
+        with patch('automation.runner.subprocess.Popen', side_effect=spawn):
+            result = run_plan(self.plan, self.ctx, self.permissions,
+                              lambda step, root: (self.command(code, 1),))
         self.assertEqual(result.rc, 1)
         self.assertTrue(marker.exists(), 'Child inherited parent signal mask')
 

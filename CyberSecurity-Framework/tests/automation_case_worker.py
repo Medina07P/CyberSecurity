@@ -247,7 +247,7 @@ def _child(case, root, root_fd, pinned, result_fd, stdout_fd, stderr_fd, permitt
             os._exit(0)  # Never run inherited atexit hooks/finalizers.
 
 
-def _collect_result(case_id, pid, read_fd):
+def _collect_result(case_id, pid, read_fd, on_ready=None):
     """Bounded readiness + final receipt; missing evidence is never an ABI block.
 
     READY marks the case execution boundary, not proof that any assertion ran.
@@ -273,6 +273,8 @@ def _collect_result(case_id, pid, read_fd):
             raw.extend(data)
         if not ready and raw.startswith(READY):
             ready = True
+            if on_ready is not None:
+                on_ready()
             del raw[:len(READY)]
         if len(raw) > MAX_RESULT:
             return fail('Worker receipt too large')
@@ -302,6 +304,30 @@ def _collect_result(case_id, pid, read_fd):
     return value
 
 
+def _write_terminal(path, value):
+    """Best effort exclusive parent receipt. Never replace a partial or result."""
+    fd = None
+    try:
+        raw = (json.dumps(value, sort_keys=True) + '\n').encode('utf-8')
+        if len(raw) > MAX_RESULT:
+            return False
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW |
+                     os.O_CLOEXEC, 0o600)
+        os.fchmod(fd, 0o600)
+        if os.write(fd, raw) != len(raw):
+            return False
+        os.fsync(fd)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
 def run_case(case, permitted, index):
     """Only validated controller calls this; permission from exact ID inventory."""
     import __main__ as controller
@@ -314,7 +340,7 @@ def run_case(case, permitted, index):
     if permitted != case_disposable_allowed(case.id()) or type(permitted) is not bool:
         raise WorkerBlocked('Case permission does not match closed inventory')
     selector = getattr(controller, 'validated_selection', lambda: None)()
-    if selector in ('--cross-consent', '--cross-web', '--cross-local'):
+    if selector in ('--cross-consent', '--cross-web', '--cross-local', '--cross-closure'):
         from cross_module_selection import group_cases
         if case.id() not in group_cases(selector):
             raise WorkerBlocked('Cross case identity outside validated selection')
@@ -326,6 +352,13 @@ def run_case(case, permitted, index):
     fd = read_fd = write_fd = None
     logs = []
     pid = None
+    primary = None
+    observed_ready = False
+
+    def ready():
+        nonlocal observed_ready
+        observed_ready = True
+
     oldmask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM, signal.SIGALRM})
     try:
         fd = os.open(root, os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
@@ -348,7 +381,7 @@ def run_case(case, permitted, index):
         write_fd = None
         os.set_blocking(read_fd, False)
         signal.pthread_sigmask(signal.SIG_SETMASK, oldmask)
-        value = _collect_result(case.id(), pid, read_fd)
+        value = _collect_result(case.id(), pid, read_fd, on_ready=ready)
         if value['state'] == 'DONE' and (value.get('abi', 0) < 3 or
                 value.get('scratch') != str(root) or value.get('identity') != list(pinned) or
                 value.get('disposable_permission') is not permitted):
@@ -356,14 +389,48 @@ def run_case(case, permitted, index):
         identity(root, fd)
         write_json('/evidence/case-' + str(index).zfill(5) + '.result.json', value)
         return value
+    except BaseException as exc:
+        primary = exc
+        raise
     finally:
         # Block repeated cancellation during owned child/adopted descendant reap.
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM, signal.SIGALRM})
+        reap_error = None
+        reaped = False
+        close_error = None
         try:
             if pid != 0:
-                reap_owned()
+                try:
+                    reap_owned()
+                    reaped = True
+                except BaseException as exc:
+                    reap_error = exc
+            exceptional = primary if primary is not None else reap_error
+            if exceptional is not None:
+                signame = 'INT' if isinstance(exceptional, KeyboardInterrupt) else None
+                if isinstance(exceptional, SystemExit):
+                    signame = {130: 'INT', 143: 'TERM', 142: 'ALRM'}.get(exceptional.code)
+                result_path = Path('/evidence/case-' + str(index).zfill(5) + '.result.json')
+                try:
+                    present = stat.S_ISREG(os.stat(result_path, follow_symlinks=False).st_mode)
+                except OSError:
+                    present = False
+                exception_type = type(exceptional).__name__
+                if exception_type not in ('KeyboardInterrupt', 'SystemExit', 'OSError', 'WorkerBlocked',
+                                           'ValueError', 'RuntimeError'):
+                    exception_type = 'Exception'
+                _write_terminal(Path('/evidence/case-' + str(index).zfill(5) + '.terminal.json'), {
+                    'version': 1, 'case_id': case.id(),
+                    'state': 'CANCELLED' if signame is not None else 'ERROR',
+                    'ready': observed_ready, 'reaped': reaped, 'result_present': present,
+                    'exception_type': exception_type, 'signal': signame})
             for number in (fd, read_fd, write_fd, *logs):
                 if number is not None:
-                    os.close(number)
+                    try:
+                        os.close(number)
+                    except OSError as exc:
+                        close_error = close_error or exc
         finally:
             signal.pthread_sigmask(signal.SIG_SETMASK, oldmask)
+        if primary is None and (reap_error is not None or close_error is not None):
+            raise reap_error if reap_error is not None else close_error

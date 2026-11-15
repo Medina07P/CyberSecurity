@@ -603,7 +603,7 @@ full_workflow() {
     echo -e "  ${GREEN}8.${NC} Evidencia        (10_Evidence)"
     echo -e "  ${GREEN}9.${NC} Reporte          (11_Reports)"
     echo ""
-    echo -e "${RED}${BOLD}⚠️  Incluye fuerza bruta, persistencia y limpieza.${NC}"
+    echo -e "${RED}${BOLD}⚠️  Incluye fuerza bruta; persistencia y limpieza quedan excluidas por sus coordinadores.${NC}"
     echo -e "${RED}   Solo contra equipos propios o con autorización escrita.${NC}"
     echo ""
 

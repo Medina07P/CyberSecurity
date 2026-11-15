@@ -11,6 +11,7 @@ from .model import Permissions, PlanError, PreflightError, RunResult, RuntimeCon
 from .planner import build_plan, render_plan
 from .validation import validate
 from .workflows import load_workflow
+from .summary import render_result
 
 
 INPUTS = ('target', 'url', 'domain', 'ports', 'port', 'request_file', 'scheme',
@@ -130,7 +131,9 @@ def main(argv: Sequence[str] | None = None, *, ctx: RuntimeContext | None = None
         if not plan.steps:
             raise PlanError('Guía post no ejecutable; consultar 06')
         # No stdin prompts here: neither --execute nor piped yes is authority.
-        return execute_plan(plan, ctx, permissions).rc
+        result = execute_plan(plan, ctx, permissions)
+        print(render_result(result))
+        return result.rc
     except PlanError as exc:
         print(f'Error: {exc}', file=sys.stderr)
         return 2
@@ -169,7 +172,9 @@ def interactive_plan(plan, ctx):
                 grants.append(token)
             elif answer != 'NO':
                 return 0
-    return execute_plan(plan, ctx, permissions_for(plan, targets, grants)).rc
+    result = execute_plan(plan, ctx, permissions_for(plan, targets, grants))
+    print(render_result(result))
+    return result.rc
 
 
 def menu(ctx: RuntimeContext) -> int:
@@ -225,7 +230,7 @@ def menu(ctx: RuntimeContext) -> int:
                     plan = build_plan('quick' if choice == '3' else 'full',
                                       {'target': ask('Target IPv4/dominio explícito: ')})
                 rc = interactive_plan(plan, ctx)
-                print(f'Resultado: rc={rc}; no se conservan permisos.')
+                print('No se conservan permisos.')
             else:
                 print('Opción no válida.')
         except (EOFError, KeyboardInterrupt):

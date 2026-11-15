@@ -40,6 +40,19 @@ LOCAL_CASES = (
 LOCAL_PURE = 'test_cross_local.ReconTests.test_ping_target_parser'
 LOCAL_GRANTS = tuple(name for name in LOCAL_CASES if name != LOCAL_PURE)
 
+CLOSURE_CASES = tuple('test_cross_closure.SummaryTests.' + name for name in (
+    'test_cli_summary_is_safe', 'test_interactive_summary_and_pre_store_failure')) + tuple(
+    'test_cross_closure.TerminalTests.' + name for name in (
+        'test_cancel_before_and_after_ready', 'test_existing_result_is_preserved',
+        'test_receipt_io_failure_preserves_cancellation', 'test_reap_failure_is_not_success')) + tuple(
+    'test_cross_documentation.DocumentationTests.' + name for name in (
+        'test_dns_resolution_and_dictionary_gate', 'test_ftp_login_vs_listing',
+        'test_actual_exploitation_children', 'test_templates_and_ssh_have_real_effects',
+        'test_forensic_metadata_vs_private_hash_reads', 'test_scope_backup_vs_targets_append',
+        'test_forensic_menu_vs_cli_filters', 'test_99_warning_matches_omissions',
+        'test_wizard_defaults_and_resolved_components', 'test_key_cli_signatures',
+        'test_sqlmap_gates_by_channel'))
+
 
 def _inventory():
     data = load_json(Path(__file__).with_name('cross_module_cases.json'), {
@@ -54,6 +67,7 @@ def _inventory():
             '--cross-consent': {'case_ids': list(CONSENT_CASES), 'grant_ids': list(CONSENT_CASES)},
             '--cross-web': {'case_ids': list(WEB_CASES), 'grant_ids': list(WEB_GRANTS)},
             '--cross-local': {'case_ids': list(LOCAL_CASES), 'grant_ids': list(LOCAL_GRANTS)},
+            '--cross-closure': {'case_ids': list(CLOSURE_CASES), 'grant_ids': []},
         }}
     if data != expected:
         raise ValueError('Cross inventory differs from exact reviewed per-group maps')
@@ -61,7 +75,7 @@ def _inventory():
 
 
 def group_cases(selector: str) -> tuple[str, ...]:
-    if selector not in ('--cross-consent', '--cross-web', '--cross-local'):
+    if selector not in ('--cross-consent', '--cross-web', '--cross-local', '--cross-closure'):
         raise ValueError('Unknown closed cross selection')
     return tuple(_inventory()[selector]['case_ids'])
 

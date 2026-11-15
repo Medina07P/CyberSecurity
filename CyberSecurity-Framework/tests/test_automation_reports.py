@@ -1,5 +1,7 @@
 """Report contracts using only allowlisted copied sources and synthetic input."""
 import json
+from contextlib import redirect_stderr
+from io import StringIO
 import os
 from pathlib import Path
 import subprocess
@@ -19,6 +21,8 @@ from automation.planner import build_plan
 REPORT_NAMES = ('findings.json', 'informe_tecnico.md', 'informe_tecnico.html',
                 'informe_cliente.md', 'informe_cliente.html')
 RUN_ID = 'run-20261114T120000000000Z-' + 'a' * 32
+REPORT_WARNING = ('Aviso: report_input puede contener históricos; el informe no acredita '
+                  'que 09 haya ejecutado esas fases.\n')
 NEW_ENGINE_SOURCES = (
     '11_Reports/lib/coverage.py', '11_Reports/lib/exploitation_metadata.py',
     '11_Reports/lib/history.py', '11_Reports/lib/publication.py',
@@ -100,7 +104,9 @@ raise SystemExit(''' + str(rc) + ')\n')
         from automation.reporting import report_command
         run = self.f.repo / 'run'
         run.mkdir(mode=0o700)
-        cmd = report_command(self.plan().steps[0], run, self.ctx)
+        with redirect_stderr(StringIO()) as warning:
+            cmd = report_command(self.plan().steps[0], run, self.ctx)
+        self.assertEqual(warning.getvalue(), REPORT_WARNING)
         for flag in ('--objetivo', '--scans', '--salida', '--tipo', '--cliente', '--auditor', '--json'):
             self.assertIn(flag, cmd.argv)
         for flag in ('--todos', '--incluir-sin-objetivo', '--abrir'):
@@ -128,7 +134,9 @@ raise SystemExit(''' + str(rc) + ')\n')
         commands = []
         snapshots = []
         for step in plan.steps:
-            command = report_command(step, run, self.ctx)
+            with redirect_stderr(StringIO()) as warning:
+                command = report_command(step, run, self.ctx)
+            self.assertEqual(warning.getvalue(), REPORT_WARNING)
             commands.append(command)
             result = subprocess.run(command.argv, cwd=command.cwd, env=command.env,
                                     text=True, capture_output=True, timeout=10)
@@ -147,8 +155,9 @@ raise SystemExit(''' + str(rc) + ')\n')
             self.assertEqual(profile.stat().st_mode & 0o777, 0o600)
             self.assertEqual(output.stat().st_mode & 0o777, 0o700)
             self.assertEqual(output.parent.stat().st_mode & 0o777, 0o700)
-        with self.assertRaises(PreflightError):
+        with redirect_stderr(StringIO()) as warning, self.assertRaises(PreflightError):
             report_command(plan.steps[0], run, self.ctx)
+        self.assertEqual(warning.getvalue(), '')
         self.assertEqual((snapshots[0][0] / 'findings.json').read_bytes(), snapshots[0][1])
 
     def test_report_engine_rc3(self):

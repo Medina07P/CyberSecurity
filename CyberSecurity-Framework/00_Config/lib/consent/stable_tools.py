@@ -5,8 +5,10 @@ from dataclasses import dataclass
 import uuid
 from pathlib import Path
 import re
+import resource
 import shutil
 import subprocess
+import stat
 import sys
 import unicodedata
 
@@ -157,21 +159,49 @@ def _valid_local_binary(path):
     return True
 
 
-def _chmod_private_tree(path):
-    path = Path(path)
-    for child in sorted(path.rglob('*'), key=lambda item: len(item.parts)):
-        try:
-            if child.is_dir() and not child.is_symlink():
-                os.chmod(child, 0o700)
-            elif child.is_file() and not child.is_symlink():
-                os.chmod(child, 0o600)
-        except OSError:
-            pass
+def _download_limits():
+    # Child-only cap applies even when a server omits Content-Length or wget
+    # lacks curl's max-filesize option. Never raise an inherited tighter cap.
+    soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+    cap = min(v for v in (soft, hard, LINPEAS_MAX_BYTES) if v != resource.RLIM_INFINITY)
+    resource.setrlimit(resource.RLIMIT_FSIZE, (cap, cap))
+
+
+def _new_linpeas_run(root):
+    parent = (_linpeas_scans_root(root) / 'linpeas').absolute()
+    if '..' in parent.parts:
+        raise ValueError('Ruta de salida no válida.')
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
-        if path.is_dir() and not path.is_symlink():
-            os.chmod(path, 0o700)
-    except OSError:
-        pass
+        for index, component in enumerate(parent.parts[1:], start=1):
+            # Only the output hierarchy may be created, never missing ancestors.
+            if index >= len(parent.parts) - 2:
+                try:
+                    os.mkdir(component, 0o700, dir_fd=fd)
+                except FileExistsError:
+                    pass
+            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW |
+                            os.O_CLOEXEC, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        run_id = uuid.uuid4().hex
+        os.mkdir(run_id, 0o700, dir_fd=fd)  # No adoption on UUID collision.
+        child = os.open(run_id, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW |
+                        os.O_CLOEXEC, dir_fd=fd)
+        return parent / run_id, child
+    finally:
+        os.close(fd)
+
+
+def _private_run_file(directory_fd, name):
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW |
+                 os.O_CLOEXEC, 0o600, dir_fd=directory_fd)
+    try:
+        os.fchmod(fd, 0o600)
+        return os.fdopen(fd, 'wb')
+    except BaseException:
+        os.close(fd)
+        raise
 
 
 def run_linpeas(binary=None, download=False, allow_sudo=False, root=None, ops=None):
@@ -192,25 +222,18 @@ def run_linpeas(binary=None, download=False, allow_sudo=False, root=None, ops=No
     if root is None:
         root = Path.cwd()
 
-    scans_root = _linpeas_scans_root(root) / 'linpeas'
     try:
-        scans_root.mkdir(parents=True, mode=0o700, exist_ok=True)
+        run_dir, run_fd = _new_linpeas_run(root)
     except OSError:
         return 1
     try:
-        os.chmod(scans_root, 0o700)
-    except OSError:
-        pass
+        return _run_linpeas_selected(binary, download, ops, run_dir, run_fd)
+    finally:
+        os.close(run_fd)
 
-    run_id = uuid.uuid4().hex
-    run_dir = scans_root / run_id
-    try:
-        run_dir.mkdir(mode=0o700)
-    except OSError:
-        return 1
-    os.chmod(run_dir, 0o700)
 
-    ops.run_id = run_id
+def _run_linpeas_selected(binary, download, ops, run_dir, run_fd):
+    ops.run_id = run_dir.name
     ops.run_dir = run_dir
     ops.download_path = None
     ops.source_path = None
@@ -224,7 +247,6 @@ def run_linpeas(binary=None, download=False, allow_sudo=False, root=None, ops=No
         if downloader is None:
             downloader = shutil.which('wget')
         if downloader is None:
-            _chmod_private_tree(run_dir)
             return 1
         destination = run_dir / 'downloaded-linpeas.sh'
         if is_curl:
@@ -234,54 +256,71 @@ def run_linpeas(binary=None, download=False, allow_sudo=False, root=None, ops=No
                        '-o', str(destination), LINPEAS_URL]
         else:
             command = [downloader, '--timeout=' + str(LINPEAS_MAX_SECONDS),
-                       '--max-filesize=' + str(LINPEAS_MAX_BYTES),
+                       '--tries=1',
                        '-O', str(destination), LINPEAS_URL]
         stdout_path = run_dir / 'download.stdout.log'
         stderr_path = run_dir / 'download.stderr.log'
         try:
-            with stdout_path.open('xb') as stdout, stderr_path.open('xb') as stderr:
-                os.fchmod(stdout.fileno(), 0o600)
-                os.fchmod(stderr.fileno(), 0o600)
-                result = subprocess.run(command, stdout=stdout, stderr=stderr, check=False)
-        except OSError:
-            _chmod_private_tree(run_dir)
+            with _private_run_file(run_fd, stdout_path.name) as stdout, \
+                    _private_run_file(run_fd, stderr_path.name) as stderr:
+                result = subprocess.run(command, stdout=stdout, stderr=stderr, check=False,
+                                        timeout=LINPEAS_MAX_SECONDS, umask=0o077,
+                                        preexec_fn=_download_limits)
+        except (OSError, subprocess.TimeoutExpired):
+            # subprocess.run kills and waits for the direct downloader on timeout.
+            # Preserve its partial; no sudo fallback and no second downloader.
             return 1
         ops.download_path = destination
         ops.stdout_path = stdout_path
         ops.stderr_path = stderr_path
         if result.returncode != 0:
-            _chmod_private_tree(run_dir)
             return result.returncode
-        if not destination.is_file():
-            _chmod_private_tree(run_dir)
+        try:
+            metadata = os.stat(destination.name, dir_fd=run_fd, follow_symlinks=False)
+            if (not stat.S_ISREG(metadata.st_mode) or not 0 < metadata.st_size <= LINPEAS_MAX_BYTES):
+                return 1
+            downloaded_fd = os.open(destination.name, os.O_RDONLY | os.O_NOFOLLOW |
+                                    os.O_CLOEXEC, dir_fd=run_fd)
+            try:
+                opened = os.fstat(downloaded_fd)
+                if (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino):
+                    return 1
+                os.fchmod(downloaded_fd, 0o600)
+            finally:
+                os.close(downloaded_fd)
+        except OSError:
             return 1
         selected = destination
     else:
         source = Path(binary)
         if not _valid_local_binary(source):
-            _chmod_private_tree(run_dir)
             return 2
         destination = run_dir / 'selected-linpeas.sh'
         try:
-            fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+            fd = os.open(destination.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                         os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=run_fd)
         except OSError:
-            _chmod_private_tree(run_dir)
             return 1
         try:
+            os.fchmod(fd, 0o600)
             with os.fdopen(fd, 'wb') as stream:
-                os.fchmod(stream.fileno(), 0o600)
-                stream.write(source.read_bytes())
-                stream.flush()
-                os.fsync(stream.fileno())
+                source_fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+                try:
+                    with os.fdopen(source_fd, 'rb') as source_stream:
+                        if not stat.S_ISREG(os.fstat(source_stream.fileno()).st_mode):
+                            return 2
+                        shutil.copyfileobj(source_stream, stream)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                except BaseException:
+                    os.close(source_fd)
+                    raise
         except OSError:
-            _chmod_private_tree(run_dir)
             return 1
-        os.chmod(destination, 0o600)
         selected = destination
         ops.source_path = destination
 
     if selected is None:
-        _chmod_private_tree(run_dir)
         return 1
 
     if ops.source_path is None and download:
@@ -290,15 +329,18 @@ def run_linpeas(binary=None, download=False, allow_sudo=False, root=None, ops=No
     stdout_path = run_dir / 'linpeas.stdout.log'
     stderr_path = run_dir / 'linpeas.stderr.log'
     try:
-        with stdout_path.open('xb') as stdout, stderr_path.open('xb') as stderr:
-            os.fchmod(stdout.fileno(), 0o600)
-            os.fchmod(stderr.fileno(), 0o600)
+        # Refuse a moved/replaced hierarchy before handing path argv to sudo.
+        # This is not a guarantee against a hostile concurrent rename after check.
+        pinned = os.fstat(run_fd)
+        current = os.stat(run_dir, follow_symlinks=False)
+        if (pinned.st_dev, pinned.st_ino) != (current.st_dev, current.st_ino):
+            return 1
+        with _private_run_file(run_fd, stdout_path.name) as stdout, \
+                _private_run_file(run_fd, stderr_path.name) as stderr:
             result = subprocess.run(['sudo', '/bin/bash', str(selected)],
                                     stdout=stdout, stderr=stderr, check=False)
     except OSError:
-        _chmod_private_tree(run_dir)
         return 1
     ops.stdout_path = stdout_path
     ops.stderr_path = stderr_path
-    _chmod_private_tree(run_dir)
     return result.returncode
