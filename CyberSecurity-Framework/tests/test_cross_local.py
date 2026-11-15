@@ -638,15 +638,15 @@ class LocalMenuTests(LocalCase):
             generate = str(listing.repo / ('new launcher-' + module + '.sh'))
             positions = (['example.test', 'stable_prefix'] if relative == SMB else
                          ['example.test', 'SYNTH', 'user', password, command])
-            for mode_input, expected, secret in (
-                    ('s\n1\n0\n', ['--preview'], False),
-                    ('s\n\n0\n', ['--preview'], False),
-                    ('s\n3\n' + generate + '\n0\n', ['--generate', generate], False),
-                    ('s\n2\n' + '\n'.join(positions) + '\n0\n', [*positions, '--execute'], relative == PSEXEC),
-                    ('s\n0\n0\n', [], False), ('s\n!\n0\n', [], False),
-                    ('s\n', [], False), ('s\n3\n', [], False),
-                    ('s\n3\n!\n0\n', [], False), ('s\n2\n', [], False),
-                    ('s\n2\n0\n0\n', [], False), ('n\n0\n', [], False), ('', [], False)):
+            for mode_input, expected, secret, needs_session in (
+                    ('s\n1\n0\n', ['--preview'], False, False),
+                    ('s\n\n0\n', ['--preview'], False, False),
+                    ('s\n3\n' + generate + '\n0\n', ['--generate', generate], False, False),
+                    ('s\n2\n' + '\n'.join(positions) + '\n0\n', [*positions, '--execute'], relative == PSEXEC, True),
+                    ('s\n0\n0\n', [], False, False), ('s\n!\n0\n', [], False, False),
+                    ('s\n', [], False, False), ('s\n3\n', [], False, False),
+                    ('s\n3\n!\n0\n', [], False, False), ('s\n2\n', [], False, False),
+                    ('s\n2\n0\n0\n', [], False, False), ('n\n0\n', [], False, False), ('', [], False, False)):
                 with self.subTest(full_list=relative, mode=mode_input):
                     offset = len(listing.records())
                     # Execute/generate also traverse the actual inventory entry;
@@ -656,7 +656,7 @@ class LocalMenuTests(LocalCase):
                     result = listing.run_full_list(
                         relative, (index if through_list else '') + mode_input,
                         through_list=bool(through_list),
-                        needs_session=mode_input.startswith('s\n2'))
+                        needs_session=needs_session)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     rows = listing.records()[offset:]
                     self.assertIn(['record-dispatch', '__params-policy__', 'stable',
@@ -724,6 +724,11 @@ class LocalMenuTests(LocalCase):
                     self.assertEqual(result.stdout, '--preview\n')
                     self.assertEqual([r for r in rows if r[1:2] == ['__rc__']],
                                      [['record-dispatch', '__rc__', '0']])
+                    # Dispatch slot is initialised empty and (no real dispatch
+                    # having occurred) stays empty: a recorded fact, not an
+                    # inference. Its presence proves the slot is writable.
+                    self.assertEqual([r for r in rows if r[1:2] == ['__dispatch__']],
+                                     [['record-dispatch', '__dispatch__', '']])
                     self.assertFalse([r for r in rows if r[1:2] == ['__read-policy__']])
                 else:
                     # Closed consumer under an absolute/foreign identity: notice,
@@ -733,17 +738,44 @@ class LocalMenuTests(LocalCase):
                     self.assertIn(refusal, result.stderr)
                     self.assertEqual([r for r in rows if r[1:2] == ['__rc__']],
                                      [['record-dispatch', '__rc__', '1']])
+                    # Zero dispatch is a recorded fact: the initialised slot
+                    # stayed empty and no dispatch target row appeared.
+                    self.assertEqual([r for r in rows if r[1:2] == ['__dispatch__']],
+                                     [['record-dispatch', '__dispatch__', '']])
+                    self.assertFalse(any(len(r) > 1 and r[1] not in ('__mode__', '__rc__', '__dispatch__')
+                                        and r[1].endswith(('enum_smb.sh', 'ps_exec.sh')) for r in rows))
                     self.assertFalse([r for r in rows if r[1:2] == ['__read-policy__']])
                     self.assertEqual([r[1:2] for r in rows
-                                      if r[1:2] not in (['__mode__'], ['__rc__'])], [])
+                                      if r[1:2] not in (['__mode__'], ['__rc__'], ['__dispatch__'])], [])
                     self.assertFalse(any(len(r) > 1 and r[1].endswith(
                         ('enum_smb.sh', 'ps_exec.sh')) for r in rows))
-        # Single product call site: $1 is derived from the framework-relative $2,
-        # so no other spelling reaches the prompt from the shipped manager.
+        # Product call sites of prompt_for_slots: exactly one, and its first
+        # argument is the module-relative path derived from $script_path. Counted
+        # structurally (invocation, not definition/comment) so a new call site
+        # anywhere in the product tree is caught; the wrong (absolute) form is
+        # also forbidden.
+        import re
         manager = (listing.framework / 'cyber_framework.sh').read_text()
-        self.assertEqual(manager.count('prompt_for_slots "$rel_path" "$script_path"'), 1)
-        self.assertEqual(manager.count('rel_path="${script_path#$module_dir/}"'), 1)
+        invocation_re = re.compile(r'(?m)(?<![A-Za-z0-9_])prompt_for_slots\s+("[^"]*"\s+"[^"]*")')
+        invocations = [m.group(1).strip() for m in invocation_re.finditer(manager)]
+        self.assertEqual(len(invocations), 1, invocations)
+        self.assertEqual(invocations[0], '"$rel_path" "$script_path"')
+        self.assertEqual(len(re.findall(r'(?m)rel_path="\$\{script_path#\$module_dir/\}"', manager)), 1)
         self.assertNotIn('prompt_for_slots "$script_path"', manager)
+        product_invocations = 0
+        for path in (listing.framework).rglob('*'):
+            if not path.is_file() or path.suffix not in ('.sh', '.bash', '.py'):
+                continue
+            if 'tests' in path.relative_to(listing.framework).parts:
+                continue
+            for line in path.read_text(errors='replace').splitlines():
+                stripped = line.strip()
+                if stripped.startswith('#'):
+                    continue
+                if (re.search(r'(?<![A-Za-z0-9_])prompt_for_slots\s+\S', stripped) and
+                        '()' not in stripped.split('prompt_for_slots', 1)[-1][:3]):
+                    product_invocations += 1
+        self.assertEqual(product_invocations, 1)
         # Accepted residual, pinned: a bare-basename or module-relative identity
         # still reaches the GENERIC prompt (echoing read, whitespace trimmed).
         # That is safe only because the call site above cannot emit it.

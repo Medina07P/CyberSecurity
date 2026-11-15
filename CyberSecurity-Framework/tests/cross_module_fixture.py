@@ -406,11 +406,20 @@ class CrossModuleFixture:
         """
         if self.group != '--cross-local':
             raise ValueError('Identity route probe requires local worker')
+        # Closed-pair allowlist: only the two canonical public leaves may be
+        # probed, mirroring run_full_list. Fail closed on any other identity.
+        if Path(script).name not in ('enum_smb.sh', 'ps_exec.sh'):
+            raise ValueError('Identity route probe requires exact local public leaf')
+        if module is not None and module not in (
+                '04_Enumeration', '04_Enumeration/smb',
+                '06_PostExploitation', '06_PostExploitation/lateral_movement'):
+            raise ValueError('Identity route probe requires exact local module')
         driver = self.output / ('identity-' + str(self._invocations) + '.sh')
         _new_text(driver,
                   'source "$1/00_Config/lib/params.bash"\n'
                   'source "$1/00_Config/lib/prompt.bash"\n'
                   + self._read_observer() +
+                  'record-dispatch __dispatch__ ""\n'
                   'record-dispatch __mode__ "$(params_mode "$2" "$3")"\n'
                   'prompt_for_slots "$2" "$3"\n'
                   'rc=$?\n'

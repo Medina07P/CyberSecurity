@@ -704,3 +704,44 @@ SHA-256 / mode of the files changed by fixwave3:
 
 `00_Config/lib/params.bash` is unchanged by this wave
 (`ece553fe91a0695c4f97b58fe160b17411aa03d3508fb8ec6c1c03e1bea5000b`, 775).
+
+## fixwave4 (static, HEAD 902f4a9 -> this commit)
+
+Fixes exactly the four Minor items of `task-2-static-rereview-3.md` (Remaining
+Minor), test/fixture only, no product code, no new test IDs.
+
+- (1) `test_cross_local.py`: replaced the textual single-file pin with a
+  structural count of `prompt_for_slots` invocations (regex capturing the
+  quoted call argument, excluding definitions/comments), exactly one in
+  `cyber_framework.sh` with first argument `"$rel_path" "$script_path"`, plus a
+  tree-wide product invocation count (excluding `tests/`) of exactly one; kept
+  the known-wrong-form negative assertion `prompt_for_slots "$script_path"`.
+- (2) `cross_module_fixture.py` + `test_cross_local.py`: `run_prompt_identity`
+  driver now emits an initialised dispatch slot `record-dispatch __dispatch__ ""`
+  (only a real dispatch would overwrite it); refusal case asserts the slot stayed
+  at its initialised empty value (recorded zero-dispatch fact); accepted
+  canonical-`./` case asserts the slot is present/writable.
+- (3) `test_cross_local.py`: replaced `needs_session=mode_input.startswith('s\n2')`
+  with an explicit per-case `needs_session` flag in the mode tuple, passed through
+  to `run_full_list(..., needs_session=needs_session)`.
+- (4) `cross_module_fixture.py`: `run_prompt_identity` now applies the same
+  closed-pair allowlist as `run_full_list` (leaf basename in the two canonical
+  leaves; module, when given, in the two canonical module paths), failing closed
+  on any other identity.
+
+### Static verification
+
+- `python3 -m py_compile` on both changed files: PASS.
+- Regex/tree-wide counts recomputed by standalone read-only Python over the
+  product tree: exactly one invocation, as expected.
+- Runtime NOT RUN: no repository import, fixture, worker, launcher, double,
+  backend, test or probe was executed. No PTY/kernel/backend claim.
+
+### SHA-256 / mode of files changed by fixwave4
+
+| Framework-relative source | SHA-256 | mode |
+|---|---|---|
+|tests/cross_module_fixture.py|0a0fca67d34e1fd4aafbd6cdf47ef7d42aefb14ff89edfe55b9bd151157a7c4a|664|
+|tests/test_cross_local.py|b26bdcb2089e0568f2c9e06f967549d7b826706bc6493045e71cc06db7159658|664|
+
+No item required a product-code change; none was reported instead of fixed.
