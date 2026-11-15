@@ -86,6 +86,29 @@ def write_reports(
 # Informe técnico
 # ---------------------------------------------------------------------------
 
+def _tech_labels(findings: list) -> dict:
+    """Título del hallazgo en el técnico; si varios comparten título, añade
+    qué los distingue (el activo, o el último tramo de su clave: endpoint,
+    parámetro...) para que no se lean como repetidos."""
+    por_titulo: dict[str, list] = {}
+    for f in findings:
+        por_titulo.setdefault(f.titulo, []).append(f)
+    labels = {}
+    for titulo, fs in por_titulo.items():
+        if len(fs) == 1:
+            labels[fs[0].id] = titulo
+            continue
+        activos_distintos = len({f.activo for f in fs}) > 1
+        for f in fs:
+            if activos_distintos:
+                extra = f.activo
+            else:
+                partes = [p for p in f.key.split("|")[1:] if p and p != f.activo]
+                extra = "/".join(partes) if partes else f.id[:8]
+            labels[f.id] = f"{titulo} — {extra}"
+    return labels
+
+
 def _render_technical_md(collected: Collected, meta: dict) -> str:
     """Genera el informe técnico en Markdown."""
     lines: list[str] = []
@@ -122,10 +145,11 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
     # Hallazgos confirmados
     lines.append("## Hallazgos")
     lines.append("")
+    etiquetas = _tech_labels(collected.findings)
     confirmados = [f for f in collected.findings if f.confianza == "confirmado"]
     if confirmados:
         for f in confirmados:
-            lines.append(f"### {f.titulo}")
+            lines.append(f"### {etiquetas[f.id]}")
             lines.append("")
             lines.append(f"**ID:** {f.id}")
             lines.append(f"**Severidad:** {f.severidad}")
@@ -166,7 +190,7 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
     candidatos = [f for f in collected.findings if f.confianza == "candidato"]
     if candidatos:
         for f in candidatos:
-            lines.append(f"### {f.titulo}")
+            lines.append(f"### {etiquetas[f.id]}")
             lines.append("")
             lines.append(f"**ID:** {f.id}")
             lines.append(f"**Severidad:** {f.severidad}")
@@ -197,7 +221,7 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
     observaciones = [f for f in collected.findings if f.confianza == "observacion"]
     if observaciones:
         for f in observaciones:
-            lines.append(f"### {f.titulo}")
+            lines.append(f"### {etiquetas[f.id]}")
             lines.append("")
             lines.append(f"**ID:** {f.id}")
             lines.append(f"**Severidad:** {f.severidad}")
@@ -338,11 +362,12 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
 
     # Hallazgos
     html_parts.append("<h2>Hallazgos</h2>")
+    etiquetas = _tech_labels(collected.findings)
     confirmados = [f for f in collected.findings if f.confianza == "confirmado"]
     if confirmados:
         for f in confirmados:
             sev_class = html.escape(f.severidad)
-            html_parts.append(f"<h3>{html.escape(f.titulo)}</h3>")
+            html_parts.append(f"<h3>{html.escape(etiquetas[f.id])}</h3>")
             html_parts.append(f"<p><strong>ID:</strong> {html.escape(f.id)}</p>")
             html_parts.append(f"<p><strong>Severidad:</strong> <span class='{sev_class}'>{html.escape(f.severidad)}</span></p>")
             html_parts.append(f"<p><strong>Activo:</strong> {html.escape(f.activo)}</p>")
@@ -377,7 +402,7 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
     candidatos = [f for f in collected.findings if f.confianza == "candidato"]
     if candidatos:
         for f in candidatos:
-            html_parts.append(f"<h3>{html.escape(f.titulo)}</h3>")
+            html_parts.append(f"<h3>{html.escape(etiquetas[f.id])}</h3>")
             html_parts.append(f"<p><strong>ID:</strong> {html.escape(f.id)}</p>")
             html_parts.append(f"<p><strong>Severidad:</strong> <span class='{html.escape(f.severidad)}'>{html.escape(f.severidad)}</span></p>")
             html_parts.append(f"<p><strong>Activo:</strong> {html.escape(f.activo)}</p>")
@@ -403,7 +428,7 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
     observaciones = [f for f in collected.findings if f.confianza == "observacion"]
     if observaciones:
         for f in observaciones:
-            html_parts.append(f"<h3>{html.escape(f.titulo)}</h3>")
+            html_parts.append(f"<h3>{html.escape(etiquetas[f.id])}</h3>")
             html_parts.append(f"<p><strong>ID:</strong> {html.escape(f.id)}</p>")
             html_parts.append(f"<p><strong>Severidad:</strong> <span class='{html.escape(f.severidad)}'>{html.escape(f.severidad)}</span></p>")
             html_parts.append(f"<p><strong>Activo:</strong> {html.escape(f.activo)}</p>")
@@ -669,14 +694,15 @@ def _render_cliente_md(collected: Collected, meta: dict) -> str:
     # Plan de acción 30/60/90
     lines.append("## Plan de acción 30/60/90 días")
     lines.append("")
-    dias_30 = _client_groups([f for f in confirmados if f.severidad in ("critica", "alta")])
+    dias_30 = _client_groups([f for f in confirmados + candidatos if f.severidad in ("critica", "alta")])
     dias_60 = _client_groups([f for f in confirmados + candidatos if f.severidad == "media"])
     dias_90 = _client_groups([f for f in confirmados if f.severidad in ("baja", "info")])
 
     lines.append("### 30 días")
     if dias_30:
         for g in dias_30:
-            lines.append(f"- {_gl(g)}: {g['rec']}")
+            pend = " (validar primero)" if g["f"].confianza == "candidato" else ""
+            lines.append(f"- {_gl(g)}{pend}: {g['rec']}")
     else:
         lines.append("- No hay hallazgos críticos o altos que abordar en este plazo.")
     lines.append("")
@@ -824,7 +850,7 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
 
     # Plan 30/60/90
     html_parts.append("<h2>Plan de acción 30/60/90 días</h2>")
-    dias_30 = _client_groups([f for f in confirmados if f.severidad in ("critica", "alta")])
+    dias_30 = _client_groups([f for f in confirmados + candidatos if f.severidad in ("critica", "alta")])
     dias_60 = _client_groups([f for f in confirmados + candidatos if f.severidad == "media"])
     dias_90 = _client_groups([f for f in confirmados if f.severidad in ("baja", "info")])
 
@@ -832,7 +858,8 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
     if dias_30:
         html_parts.append("<ul>")
         for g in dias_30:
-            html_parts.append(f"<li>{html.escape(_gl(g))}: {html.escape(g['rec'])}</li>")
+            pend = " (validar primero)" if g["f"].confianza == "candidato" else ""
+            html_parts.append(f"<li>{html.escape(_gl(g) + pend)}: {html.escape(g['rec'])}</li>")
         html_parts.append("</ul>")
     else:
         html_parts.append("<p>No hay hallazgos críticos o altos que abordar en este plazo.</p>")

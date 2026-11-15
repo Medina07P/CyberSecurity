@@ -909,6 +909,25 @@ class ClientReconciliationTests(unittest.TestCase):
         self.assertEqual(md.count("Recurso (×50)"), 1)
         self.assertEqual(ht.count("Recurso (×50)"), 1)
 
+    def test_technical_titles_distinguish_same_title(self):
+        from lib.engine import Collected
+        a = self.mk("rate|h|/api/login", "Login", "alta", "confirmado")
+        b = self.mk("rate|h|/otro", "Login", "alta", "confirmado")
+        c = self.mk("xss|h:1|web", "Reflexión", "alta", "candidato"); c.activo = "h:1"
+        d = self.mk("xss|h:2|web", "Reflexión", "alta", "candidato"); d.activo = "h:2"
+        out = Path(tmp()); write_reports(Collected([a, b, c, d], {}, [], [], ["h"], True), {}, out, ["tecnico"])
+        md = (out / "informe_tecnico.md").read_text()
+        for h in ("### Login — /api/login", "### Login — /otro", "### Reflexión — h:1", "### Reflexión — h:2"):
+            self.assertIn(h, md)
+
+    def test_high_candidates_in_30_day_plan(self):
+        from lib.engine import Collected
+        fs = [self.mk("a", "Login", "alta", "confirmado"), self.mk("x", "XSS", "alta", "candidato")]
+        out = Path(tmp()); write_reports(Collected(fs, {}, [], [], ["h"], True), {}, out, ["cliente"])
+        md = (out / "informe_cliente.md").read_text()
+        plan = md.split("### 30 días")[1].split("### 60 días")[0]
+        self.assertIn("XSS (validar primero)", plan)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
