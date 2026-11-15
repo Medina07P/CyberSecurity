@@ -111,9 +111,14 @@ params_slot_count() {
 
 # ─── Modo de invocación ────────────────────────────────────
 
-# params_mode <script> → none | manual | slots
+# params_mode <script> [ruta-relativa] → none | manual | slots | stable
 params_mode() {
     local rest first name up slots
+    # Closed public consumers only. Do not relax generic slots/manual parsing.
+    case "${2:-$1}" in
+        04_Enumeration/smb/enum_smb.sh|06_PostExploitation/lateral_movement/ps_exec.sh)
+            printf 'stable\n'; return ;;
+    esac
     rest=$(params_rest "$1") || { printf 'none\n'; return; }
     [[ -z "$rest" ]] && { printf 'none\n'; return; }
 

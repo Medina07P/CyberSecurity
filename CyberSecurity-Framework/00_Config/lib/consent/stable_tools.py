@@ -83,7 +83,9 @@ def run_psexec(host: str, domain: str, user: str, password: str, command: str) -
         print('PSExec no instalado.', file=sys.stderr)
         return 1
     try:
-        result = subprocess.run([backend, f'{domain}/{user}:{password}@{host}', command],
+        # One argv item is not enough: Impacket also parses backend options.
+        # Terminate options so even --help/-k/-target-ip are remote command DATA.
+        result = subprocess.run([backend, f'{domain}/{user}:{password}@{host}', '--', command],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     except OSError:
         print('No se pudo iniciar PSExec.', file=sys.stderr)
