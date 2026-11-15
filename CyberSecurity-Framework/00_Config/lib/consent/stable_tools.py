@@ -134,6 +134,8 @@ def _valid_local_binary(path):
         return False
     if not candidate.is_absolute():
         return False
+    if '..' in candidate.parts:
+        return False
     try:
         if candidate.is_symlink():
             return False
@@ -144,6 +146,8 @@ def _valid_local_binary(path):
     # Reject any symlink component without resolving the final target.
     current = Path('/')
     for part in candidate.parts[1:]:
+        if part in ('', '.', '..'):
+            return False
         current = current / part
         try:
             if current.is_symlink():
