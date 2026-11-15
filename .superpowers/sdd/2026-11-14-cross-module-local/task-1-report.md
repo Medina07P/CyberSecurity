@@ -461,3 +461,174 @@ source/runtime/grant/launcher/fixture/business-test baselines unchanged; AST
 comparison confirms seccomp and mount/layout/runtime argv unchanged beyond the
 fixed-root guard. Local exact12/11 and pure ungranted confirmed. This is static
 analysis only, not a sandbox/test pass.
+
+## Task1 generation phase ONLY — base1ed7f57, 2026-11-14 (new code NOT RUN)
+
+Controller authorized generation implementation after observing initial RED on
+the reviewed storage combination. This phase implements ONLY the optional emitter
+and actual-source registration. It does not implement stable SMB/PSExec/Linpeas,
+Labs, CIDR or their consumers. Prior twelve test methods/oracles are unchanged.
+
+### Prior RED receipts read as data BEFORE implementation
+
+Read the existing aggregate `cross-local.json` and both generation stderr logs at:
+
+```text
+.superpowers/sdd/isolated-runtime-runs/automation-isolated-116ede3ae9d44635befb60b4201c1d28/evidence/
+```
+
+`case-00001.stderr.log` and `case-00002.stderr.log` identify the exact existing IDs:
+
+- `test_cross_local.GenerationTests.test_generation_is_exclusive_and_inert`
+- `test_cross_local.GenerationTests.test_generated_launcher_requires_root_and_mode`
+
+Both fail with FileNotFoundError from the in-method `load_helper` for NEW fixture
+`00_Config/lib/consent/generate.py`, not loader discovery, blocked Landlock or an
+incorrect fixture import. These are the intended missing-feature RED errors.
+Subsequent read-only registry inspection confirms their exact granted IDs and
+new scratch identities; aggregate workers report DONE/ready=true/ABI7, errors1
+each. Registries retain their initial REGISTERED-NOT-RUN state; the later worker
+aggregate/logs establish that they actually ran (do not mistake registry state
+alone for runtime success). No existing receipt/log was modified or recreated.
+
+Standalone JSON data summaries of existing controller receipts corroborated:
+
+| Existing controller selection/receipt | Recorded outcome |
+|---|---|
+| `automation-isolated-39e8ad55435246898d943eca83ada10b/evidence/sandbox-units.json` |65, successful=true,0failures/0errors/0skips|
+| same run `suite.json` |179, successful=true,0failures/0errors/1skip, blocked={}|
+| `automation-isolated-116ede3ae9d44635befb60b4201c1d28/evidence/cross-local-sandbox-units.json` |65, successful=true,0failures/0errors/0skips|
+| same run `cross-local.json` |12, successful=false,8failures/4errors/0skips, blocked={},12ABI7 workers,11grants/1false|
+
+Controller supplied rc0 for suite and rc1 for cross-local; pwsh absence accounts
+for the legacy skip. These are **prior controller results on1ed7f57**, not fresh
+verification of the emitter added here. Other pending business defects remain
+explicitly RED; their implementations were not attempted.
+
+### Implemented interface and filesystem behavior
+
+New `CyberSecurity-Framework/00_Config/lib/consent/generate.py` exports:
+
+```python
+emit_launcher(kind: str, destination: Path, framework: Path) -> Path
+```
+
+- Closed constants `smb`, `psexec`, `linpeas` select only the three existing public
+  leaf paths. Unknown kind raises ValueError before effects. No executable search,
+  operator-data discovery, backend call, child process, install or network.
+- Existing framework and destination-parent directories are opened by no-follow
+  descriptor traversal; no directory is created. Reject `..` rather than silently
+  resolving across links. Relative paths anchor to the current cwd without using
+  symlink-resolving `resolve()`; the return value preserves the supplied Path.
+- Destination must be outside framework by lexical containment and must not
+  traverse its pinned directory identity under another name. Framework is used
+  ONLY for validation/containment, never serialized into the generated file.
+- New file created O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC at0600 while writing; every
+  existing name (empty/full file, link/dangling, directory, FIFO/special/hardlink)
+  is rejected without opening/truncating/adopting it. After a complete write,
+  fchmod0700 and fsync; require named/new-fd regular inode agreement and linkcount1.
+- Short write/error raises; own new partial is retained. No unlink, rename,
+  replacement publication, finalizer deletion or repair. Parent and original
+  objects are never chmodded, overwritten or removed. Durability/capacity is not
+  guaranteed if I/O fails; no fallback is added.
+
+### Fixed generated artifact and explicit runtime contract
+
+Each kind gets one fixed Bash launcher body depending on `/usr/bin/python3` and
+`/bin/bash`. A constant Python string is shell-quoted as ONE `-c` argument, followed
+by `"$@"`; operator paths/targets/users/secrets/argument strings never enter code.
+Only closed leaf constants replace the fixed placeholder. Unlike a heredoc,
+the `-c` form leaves stdin available for the selected public leaf's own prompts.
+Python runs `-I -B`, without importing checkout code during artifact dispatch.
+
+Generated usage is `--framework-root DIR <leaf arguments including explicit mode>`.
+Require this leading root argument, reject duplicate root/traversal and require
+an explicit public mode token (`--execute`, `--generate`, `--preview`, `--help`).
+Those literal names are syntax checks, NOT embedded grants or auto-added flags.
+Root/sources are checked through no-follow directory traversal and regular leaf
+identity validation. Missing/invalid root or absent mode exits2 with generic safe
+diagnostic; no argv/password/root values or raw backend diagnostics are printed.
+
+Dispatch uses the chosen PUBLIC path with `/bin/bash --noprofile --norc`, preserving
+all remaining argv one argument each and stdin. No eval, shell=True, interpolation
+of operator strings into code, implicit `--execute`, implied `--allow-sudo`, or
+other consent injection. The actual public leaf owns argument/consent validation,
+operation and rc. No promise of hiding OS argv or redacting arbitrary leaf output.
+
+### Actual-source registration and unchanged boundaries
+
+Only two existing source registries changed:
+
+- `tests/automation_sandbox_sources.json`: add the NOW EXISTING exact
+  `CyberSecurity-Framework/00_Config/lib/consent/generate.py` once. All original
+  source entries/order remain after filtering this one addition.
+- `tests/cross_module_fixture.py`: add `00_Config/lib/consent/generate.py` once to
+  LOCAL_SOURCE_FILES (now31). This follows existing per-case copy/reference/mode
+  and RO `/source` rules. No new discovery, placeholder or conditional omission.
+
+The helper is self-contained standard library so the existing fixture-local
+importlib loader does not require package-path changes or a files.py copy.
+Existing `consent/files.py`, cleanup/Burp implementations and consent/web maps
+are untouched. Future stable_tools/stable_cli/labs_runtime/recon_targets remain
+absent and unregistered. Runtime manifest, utility closure, fixed RUN_PARENT,
+mounts/seccomp/inside/launcher, worker/Landlock, historical25, exact local12/11 and
+pure parser false grant are byte-identical to1ed7f57. No blanket baseline refresh.
+
+### Actual static checks, self-review and pending concerns
+
+- `git status --short`: clean before implementation on1ed7f57.
+- Tool reads of the existing generation logs/aggregate/registries as above; no
+  receipt helper, test runner, framework import or prior run process executed.
+- Standalone `python3 -I -B -` source/data-only analysis uses `ast.literal_eval`
+  on the emitter's `_LEAVES` and `_LAUNCHER_CODE` constants, parses each resulting
+  Python body and renders the constant Bash quoting with standard-library shlex.
+  `/bin/bash --noprofile --norc -n` on stdin for three fixed bodies: **three rc0,
+  captured stderr empty**; Python bodies AST OK. No emit_launcher/repo import,
+  artifact creation or generated code execution occurred.
+- Same standalone AST/JSON check: helper/fixture source parses, manifest JSON
+  parses, actual helper registered once. No test import/discovery was performed.
+- Read-only standalone JSON summaries of prior controller evidence: **rc0**,
+  exact recorded counts above,12workersABI7/11granted/1ungranted and both intended
+  generation missing-helper errors. This does not reclassify any case as GREEN.
+- Standalone source/JSON provenance checks: **rc0**, exact helper once in closed
+  RO manifest and local31 map; unchanged twelve IDs/eleven grants/test oracles,
+  runtime/storage/policy/launcher/worker/ELF/historical25; downstream helpers absent.
+- New helper source SHA-256:
+  `ae36d9c61e223f3e1dcb1f3e2fe4312a164d4db7734f510131e52f61c5e62dcf`;
+  worktree source mode0664 (new non-executable module, not a generated artifact).
+  Generated successful destination mode0700 is implemented, **not observed**.
+
+Self-review: closed kind map and constant-only rendering prevent embedding
+operator data; exclusive/no-follow publication prevents replacement of existing
+destinations and retains errors/partials; package-independent imports preserve
+the existing in-method test loader; `-c` preserves caller stdin; real public path
+preserves leaf self-location. No business-oracle weakening or test method change.
+
+**Concern for independent review:** generated runtime validation rejects existing
+root/ancestor/leaf symlinks, but dispatch must reopen the public source path to
+preserve the leaf's BASH_SOURCE-relative library contract. It does not certify
+absence of a hostile concurrent source replacement between validation and Bash's
+open. No stronger kernel/race guarantee is claimed. The two current generation
+methods do not establish such a guarantee; reviewer must assess this limitation.
+
+**Operational boundary:** legacy public generator wrappers are deliberately still
+unfixed in this phase. Do NOT use generated artifacts against them as smoke or
+assume preview semantics are now operationally safe. Only synthetic sentinel
+dispatch is covered by the two intended generation tests; stable public modes
+and consumers belong to subsequent separately reviewed Tasks2/3.
+
+**NOT RUN for new code:** repo import, emit_launcher, generated artifact, prepare,
+launcher, probes, tests/discovery, product/backend/double, rm/ls/rmdir, network,
+sudo/install/download/GUI. No new run tree, fixture, output partial or cleanup
+operation was created by this implementation phase. No subagent, push or merge.
+Independent static review of exact sources/maps/SHA and controller exact-command
+gate are required before any new run. Target expectation is ONLY the two existing
+generation cases GREEN; other selected cases must stay explicit pending RED, never
+be omitted to claim a full local pass. **Task1 is not complete; no new GREEN.**
+
+Final staged static check: **rc0**, exactly4 staged files (new helper, two exact
+registries, this appended report), AST/JSON valid; helper top level restricted to
+imports/constants/definitions, source SHA confirmed; exact12/11/pure false retained.
+`git diff --check` returned rc0 with no output. No generated file was created or
+run by any static check. Commit hooks/signing disabled for the scoped commit as
+in earlier phases, avoiding unreviewed hook execution.
