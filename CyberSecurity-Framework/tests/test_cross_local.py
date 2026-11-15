@@ -296,14 +296,17 @@ class StableToolTests(LocalCase):
             self.responses(f, **{'psexec.py': {'rc': rc}, 'impacket-psexec': {'rc': rc}})
             for _ in range(2):
                 before = len(f.records())
+                parses = len(f.psexec_parsed())
                 result = self.leaf(f, PSEXEC, (*positions, '--execute'))
                 self.assertEqual(result.returncode, rc, result.stdout + result.stderr)
-                self.assertEqual(f.records()[before:], [[f.records()[-1][0],
+                self.assertEqual(f.records()[before:], [['psexec.py',
                     'SYNTH/synthetic-user:' + password + '@example.test', '--', command]])
-                self.assertEqual(f.psexec_parsed()[-1], {
-                    'backend': f.records()[-1][0],
+                # Explicit expected row for THIS dispatch only: the slice must
+                # hold exactly one receipt, so a stale earlier row cannot pass.
+                self.assertEqual(f.psexec_parsed()[parses:], [{
+                    'backend': 'psexec.py',
                     'target': 'SYNTH/synthetic-user:' + password + '@example.test',
-                    'command': [command], 'debug': False, 'k': False, 'target_ip': None, 'copy': None})
+                    'command': [command], 'debug': False, 'k': False, 'target_ip': None, 'copy': None}])
                 self.assertNotIn(password, result.stdout + result.stderr)
         self.assertFalse((f.framework / 'forbidden-local').exists())
         for args in ((*positions[:-1], '--execute'), (*positions, '--unknown'),
@@ -339,21 +342,29 @@ class StableToolTests(LocalCase):
                 if option_command == '-target-ip': self.assertEqual(mutant.returncode, 2)
                 if option_command == '-debug': self.assertTrue(mutant_rows[-1]['debug'])
                 if option_command == '-k': self.assertTrue(mutant_rows[-1]['k'])
+                dispatch = len(f.records())
+                parses = len(f.psexec_parsed())
                 result = self.leaf(f, PSEXEC, (*positions[:-1], option_command, '--execute'))
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertEqual(f.records()[-1], ['psexec.py', target, '--', option_command])
-                self.assertEqual(f.psexec_parsed()[-1], {
+                self.assertEqual(f.records()[dispatch:], [['psexec.py', target, '--', option_command]])
+                self.assertEqual(f.psexec_parsed()[parses:], [{
                     'backend': 'psexec.py', 'target': target, 'command': [option_command],
-                    'debug': False, 'k': False, 'target_ip': None, 'copy': None})
+                    'debug': False, 'k': False, 'target_ip': None, 'copy': None}])
         complex_password = 'synthetic:pass/with\\space and punctuation!'
+        dispatch = len(f.records())
         self.assertEqual(self.leaf(f, PSEXEC, (positions[0], positions[1], positions[2],
                                               complex_password, command, '--execute')).returncode, 0)
-        self.assertEqual(f.records()[-1][1], 'SYNTH/synthetic-user:' + complex_password + '@example.test')
+        self.assertEqual(f.records()[dispatch:], [['psexec.py',
+            'SYNTH/synthetic-user:' + complex_password + '@example.test', '--', command]])
         (f.bin / 'psexec.py').rename(f.bin / 'psexec.py.retained')
         self.responses(f, **{'impacket-psexec': {'rc': 2}})
+        dispatch = len(f.records())
+        parses = len(f.psexec_parsed())
         self.assertEqual(self.leaf(f, PSEXEC, (*positions, '--execute')).returncode, 2)
-        self.assertEqual(f.records()[-1][0], 'impacket-psexec')
-        self.assertEqual(f.psexec_parsed()[-1]['command'], [command])
+        self.assertEqual(f.records()[dispatch:], [['impacket-psexec', target, '--', command]])
+        self.assertEqual(f.psexec_parsed()[parses:], [{
+            'backend': 'impacket-psexec', 'target': target, 'command': [command],
+            'debug': False, 'k': False, 'target_ip': None, 'copy': None}])
         (f.bin / 'impacket-psexec').rename(f.bin / 'impacket-psexec.retained')
         before = len(f.records())
         self.assertEqual(self.leaf(f, PSEXEC, (*positions, '--execute')).returncode, 1)
@@ -600,6 +611,7 @@ class LocalMenuTests(LocalCase):
         # Independent pinned names + actual manager listing policy. Create ONLY
         # missing inert scratch leaves, never read protected source-folder bodies.
         listing = self.fixture()
+        session_target_value = listing.set_full_list_session()
         listing.install_local_inventory(ORIGINAL_ENTRIES)
         for menu, choice, module in (('enumeration_menu', '11\n0\n0\n', '04_Enumeration'),
                                      ('postexploitation_menu', '9\n0\n0\n', '06_PostExploitation')):
@@ -659,6 +671,21 @@ class LocalMenuTests(LocalCase):
                         flags = ''.join(x[1:] for x in secret_read[3:-1] if x.startswith('-'))
                         self.assertIn('s', flags)
                         self.assertIn('r', flags)
+            # The synthetic session target is OFFERED as the visible default of
+            # the first field and adopted when that field is left empty; it is
+            # never silently substituted nor read from operator configuration.
+            with self.subTest(full_list_session_default=relative):
+                offset = len(listing.records())
+                result = listing.run_full_list(
+                    relative, index + 's\n2\n\n' + '\n'.join(positions[1:]) + '\n0\n',
+                    through_list=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('[' + session_target_value + ']', result.stderr)
+                self.assertEqual(
+                    [r for r in listing.records()[offset:] if len(r) > 1 and r[1] in (SMB, PSEXEC)],
+                    [['record-dispatch', relative, session_target_value,
+                      *positions[1:], '--execute']])
+                self.assertNotIn(password, result.stdout + result.stderr)
             # EOF/cancel at the secret boundary, not just at the first prompt.
             if relative == PSEXEC:
                 for tail in ('', '0\n0\n', '!\n0\n'):

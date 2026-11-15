@@ -184,6 +184,14 @@ prompt_for_slots() {
         _prompt_stable_tool "$script" "$rel"
         return $?
     fi
+    # A closed consumer under any other lexical identity (absolute path, extra
+    # prefix) must never fall into the generic slot loop: that loop echoes the
+    # secret and trims whitespace. Refuse explicitly instead of degrading mode.
+    if params_is_stable_identity "${rel:-$script}"; then
+        printf '✖ %s: identidad no canónica; usa la ruta relativa exacta al framework. No se piden credenciales por la vía genérica.\n' \
+            "${rel:-$script}" >&2
+        return 1
+    fi
     [[ "$mode" == "none" ]] && return 0
 
     usage=$(params_usage "$script" 2>/dev/null) || usage=""
