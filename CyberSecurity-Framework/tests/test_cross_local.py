@@ -238,8 +238,18 @@ class GenerationTests(LocalCase):
 class StableToolTests(LocalCase):
     def test_smb_keeps_all_methods_without_source_mutation(self):
         f = self.fixture()
-        for args in ((), ('example.test',), ('--preview',)):
+        for args in ((), ('example.test',), ('--preview',), ('--help',)):
             self.leaf(f, SMB, args)
+            self.assertEqual(f.records(), [])
+        generated = f.repo / 'smb-launcher.sh'
+        self.assertEqual(self.leaf(f, SMB, ('--generate', str(generated))).returncode, 0)
+        image = fingerprint(generated)
+        self.assertNotEqual(self.leaf(f, SMB, ('--generate', str(generated))).returncode, 0)
+        self.assertEqual(fingerprint(generated), image)
+        self.assertEqual(f.records(), [])
+        for args in (('--generate', str(f.repo / 'mixed-smb'), '--execute'),
+                     ('example.test', '--unknown'), ('example.test', '--execute', '--execute')):
+            self.assertNotEqual(self.leaf(f, SMB, args).returncode, 0)
             self.assertEqual(f.records(), [])
         calls = []
         for _ in range(2):
@@ -261,6 +271,9 @@ class StableToolTests(LocalCase):
             self.assertEqual(len(f.records()), offset)
         self.responses(f, rpcclient={'rc': 2, 'stderr': 'synthetic rpc failure'})
         self.assertNotEqual(self.leaf(f, SMB, ('example.test', 'again', '--execute')).returncode, 0)
+        # An access-denied classification must not mask a failing backend rc.
+        self.responses(f, smbclient={'rc': 1, 'stderr': 'NT_STATUS_ACCESS_DENIED'})
+        self.assertNotEqual(self.leaf(f, SMB, ('example.test', 'denied', '--execute')).returncode, 0)
         self.unchanged_sources(f)
 
     def test_psexec_preserves_argv_and_secret_privacy(self):
@@ -269,6 +282,15 @@ class StableToolTests(LocalCase):
         command = 'printf "%s" "two words"; $(touch forbidden-local) & | > forbidden-local'
         positions = ('example.test', 'SYNTH', 'synthetic-user', password, command)
         self.leaf(f, PSEXEC, positions)
+        self.assertEqual(f.records(), [])
+        for args in ((), ('--help',), ('--preview',), (*positions, '--preview')):
+            self.assertEqual(self.leaf(f, PSEXEC, args).returncode, 0)
+            self.assertEqual(f.records(), [])
+        generated = f.repo / 'psexec-launcher.sh'
+        self.assertEqual(self.leaf(f, PSEXEC, ('--generate', str(generated))).returncode, 0)
+        self.assertNotIn(password, generated.read_text())
+        self.assertNotIn('example.test', generated.read_text())
+        self.assertNotIn(str(f.framework), generated.read_text())
         self.assertEqual(f.records(), [])
         for rc in (0, 1, 2):
             self.responses(f, **{'psexec.py': {'rc': rc}, 'impacket-psexec': {'rc': rc}})
@@ -282,10 +304,37 @@ class StableToolTests(LocalCase):
         self.assertFalse((f.framework / 'forbidden-local').exists())
         for args in ((*positions[:-1], '--execute'), (*positions, '--unknown'),
                      ('--bad', *positions[1:], '--execute'),
-                     ('example.test', 'bad/domain', *positions[2:], '--execute')):
+                      ('example.test', 'bad/domain', *positions[2:], '--execute'),
+                      ('example.test', '-option', *positions[2:], '--execute'),
+                      ('example.test', 'SYNTH', 'bad:user', password, command, '--execute'),
+                      ('example.test', 'SYNTH', 'user', 'bad@password', command, '--execute'),
+                      ('example.test', 'SYNTH', 'user', password, 'bad\ncommand', '--execute'),
+                      ('--generate', str(f.repo / 'mixed-psexec'), *positions),
+                      ('--generate', str(f.repo / 'mixed-psexec-execute'), '--execute')):
             before = len(f.records())
             self.assertNotEqual(self.leaf(f, PSEXEC, args).returncode, 0)
             self.assertEqual(len(f.records()), before)
+        self.responses(f, **{'psexec.py': {'stdout': password, 'stderr': password},
+                             'impacket-psexec': {'stdout': password, 'stderr': password}})
+        result = self.leaf(f, PSEXEC, (*positions, '--execute'))
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn(password, result.stdout + result.stderr)
+        # Backend sees the literal command even when it resembles a mode flag.
+        self.responses(f)
+        self.assertEqual(self.leaf(f, PSEXEC, (*positions[:-1], '--help', '--execute')).returncode, 0)
+        self.assertEqual(f.records()[-1][-1], '--help')
+        complex_password = 'synthetic:pass/with\\space and punctuation!'
+        self.assertEqual(self.leaf(f, PSEXEC, (positions[0], positions[1], positions[2],
+                                              complex_password, command, '--execute')).returncode, 0)
+        self.assertEqual(f.records()[-1][1], 'SYNTH/synthetic-user:' + complex_password + '@example.test')
+        (f.bin / 'psexec.py').rename(f.bin / 'psexec.py.retained')
+        self.responses(f, **{'impacket-psexec': {'rc': 2}})
+        self.assertEqual(self.leaf(f, PSEXEC, (*positions, '--execute')).returncode, 2)
+        self.assertEqual(f.records()[-1][0], 'impacket-psexec')
+        (f.bin / 'impacket-psexec').rename(f.bin / 'impacket-psexec.retained')
+        before = len(f.records())
+        self.assertEqual(self.leaf(f, PSEXEC, (*positions, '--execute')).returncode, 1)
+        self.assertEqual(len(f.records()), before)
         # Raw harness receipts deliberately include synthetic argv; product output
         # must not. Do not claim OS argv secrecy or redact evidence to fake it.
         self.assert_product_privacy(f, password)
