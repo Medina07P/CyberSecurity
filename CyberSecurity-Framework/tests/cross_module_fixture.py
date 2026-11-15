@@ -35,6 +35,28 @@ WEB_SOURCE_FILES = (
 )
 PURE_SOURCE_FILES = ('00_Config/lib/http_fields.py', '00_Config/lib/http_request.bash')
 
+# Existing code only. Future helpers enter this tuple/RO manifest only when
+# actually created in their authorized task, never as placeholder sources.
+LOCAL_SOURCE_FILES = (
+    'cyber_framework.sh', '00_Config/lib/consent/__init__.py',
+    '00_Config/lib/enumeration_services.bash', '00_Config/lib/enumeration_runtime.bash',
+    '00_Config/lib/enumeration_evidence.py', '00_Config/lib/enumeration_menu.bash',
+    '00_Config/lib/scanner_runtime.bash', '00_Config/lib/scans.bash',
+    '00_Config/lib/web_target.bash', '00_Config/lib/session.bash',
+    '00_Config/lib/params.bash', '00_Config/lib/prompt.bash',
+    '00_Config/lib/postexploitation_menu.bash', '00_Config/lib/postexploitation_runtime.bash',
+    '00_Config/lib/module_intro.bash', '00_Config/lib/dangerous.txt',
+    '04_Enumeration/smb/enum_smb.sh',
+    '06_PostExploitation/lateral_movement/ps_exec.sh',
+    '06_PostExploitation/privilege_escalation/linpeas.sh',
+    '06_PostExploitation/run_all_post.sh', '04_Enumeration/run_all_enum.sh',
+    '13_Labs/hackthebox/htb_setup.sh', '13_Labs/tryhackme/thm_setup.sh',
+    '13_Labs/active_directory/ad_setup.sh', '13_Labs/web_apps/web_setup.sh',
+    '13_Labs/cloud/cloud_setup.sh', '13_Labs/main.sh',
+    '13_Labs/setup_lab.sh', '13_Labs/run_all_labs.sh',
+    '02_Recon/scripts/ping_sweep.sh',
+)
+
 
 def _new_text(path, value):
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
@@ -74,7 +96,7 @@ class CrossModuleFixture:
         import __main__ as controller
         import automation_case_scope as scope
         from automation_suite_selection import case_disposable_allowed
-        from cross_module_selection import group_cases, group_grants, WEB_CASES
+        from cross_module_selection import group_cases, group_grants, WEB_CASES, LOCAL_PURE
         names = group_cases(group)
         if (getattr(controller, '__file__', None) !=
                 '/source/CyberSecurity-Framework/tests/automation_sandbox_inside.py' or
@@ -89,6 +111,10 @@ class CrossModuleFixture:
         self.source_files = SOURCE_FILES
         if group == '--cross-web':
             self.source_files = PURE_SOURCE_FILES if pure else WEB_SOURCE_FILES
+        if group == '--cross-local':
+            if scope._SCOPE[3] == LOCAL_PURE:
+                raise ValueError('Pure local parser needs no mutable business fixture')
+            self.source_files = LOCAL_SOURCE_FILES
         self.repo = Path(mkdtemp(prefix=group[2:] + '-', dir=scope.fixture_parent()))
         self.framework = self.repo / 'CyberSecurity-Framework'
         self.home = self.repo / 'home'
@@ -105,6 +131,15 @@ class CrossModuleFixture:
             destination = self.framework / relative
             destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             copy_regular(Path('/source') / name, destination, 0o500)
+        if group == '--cross-local':
+            # Keep an explicit immutable-by-convention byte/mode reference before
+            # any legacy generator can replace its confined scratch source.
+            reference = self.repo / 'source-reference'
+            reference.mkdir(mode=0o700)
+            for relative in self.source_files:
+                destination = reference / relative
+                destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                copy_regular(self.framework / relative, destination, 0o400)
         config = self.framework / '00_Config'
         _new_text(config / 'scope.yaml', 'targets: {domains: [example.test]}\n')
         _new_text(config / 'targets.txt', 'example.test|443|https|Synthetic|B\n')
@@ -122,6 +157,21 @@ class CrossModuleFixture:
         self._invocations = 0
         self._ss_configurations = 0
         self._curl_configurations = 0
+        if group == '--cross-local':
+            name = 'CyberSecurity-Framework/tests/cross_local_backend_double.py'
+            if name not in manifest:
+                raise ValueError('Missing mandatory local transport double')
+            for backend in ('smbclient', 'nmap', 'rpcclient', 'enum4linux', 'psexec.py',
+                            'impacket-psexec', 'curl', 'wget', 'sudo', 'ping', 'host',
+                            'ip', 'nano', 'editor', 'record-dispatch', 'clear',
+                            'whatweb', 'ffuf', 'gobuster', 'nc', 'openvpn', 'pkill'):
+                copy_regular(Path('/source') / name, self.bin / backend, 0o500)
+            self.env.update(CROSS_LOCAL_LOG=str(self.log), CROSS_LOCAL_ROOT=str(self.repo),
+                            EDITOR=str(self.bin / 'editor'))
+            temporary = self.repo / 'tmp'
+            temporary.mkdir(mode=0o700)
+            self.env['TMPDIR'] = str(temporary)
+            return
         if group == '--cross-web':
             if not pure:
                 temporary = self.repo / 'tmp'
@@ -219,11 +269,14 @@ class CrossModuleFixture:
                          path.read_bytes() if path.is_file() and not path.is_symlink() else None))
         return rows
 
-    def _run(self, argv, stdin):
+    def _run(self, argv, stdin, cwd=None):
         self._invocations += 1
         root = self.output / str(self._invocations)
         root.mkdir(mode=0o700)  # EEXIST blocks before launch; retain prior artifacts.
         _private_json(root / 'argv.json', list(argv))
+        if self.group == '--cross-local':
+            _private_json(root / 'context.json', {'cwd': str(cwd or self.framework),
+                                                'path': self.env['PATH'], 'home': str(self.home)})
         _private_json(root / 'started.json', {'state': 'STARTING', 'timeout': 15})
         receipt = {'argv': list(argv), 'state': 'INTERRUPTED', 'returncode': None}
         try:
@@ -232,7 +285,7 @@ class CrossModuleFixture:
                 os.fchmod(stdout.fileno(), 0o600)
                 os.fchmod(stderr.fileno(), 0o600)
                 result = subprocess.run(argv, input=stdin, text=True, stdout=stdout, stderr=stderr,
-                                        cwd=self.framework, env=self.env, timeout=15, close_fds=True)
+                                        cwd=cwd or self.framework, env=self.env, timeout=15, close_fds=True)
             receipt.update(state='DONE', returncode=result.returncode)
         except subprocess.TimeoutExpired:
             receipt.update(state='TIMEOUT', timeout=15, error_type='TimeoutExpired')
@@ -258,7 +311,7 @@ class CrossModuleFixture:
                           str(self.framework / relative), *args], stdin)
 
     def run_menu(self, name, stdin):
-        if name not in ('scanners_menu', 'postexploitation_menu'):
+        if name not in ('scanners_menu', 'postexploitation_menu', 'enumeration_menu'):
             raise ValueError('Unknown fixed consent menu')
         # Consume the real manager consent classifier as source, without sourcing
         # its initialization/main. Display policy is also real; only clear/pause
@@ -303,3 +356,18 @@ class CrossModuleFixture:
             with path.open('x') as stream:
                 stream.write('#!/bin/bash\nrecord-dispatch ' + repr(relative) + ' "$@"\n')
         self.stub('nmap')
+
+    def record_local_coordinator_leaves(self):
+        if self.group != '--cross-local':
+            raise ValueError('Local coordinator recorders require exact local selection')
+        leaves = tuple(relative for relative in COORDINATOR_LEAVES
+                       if relative.startswith('06_PostExploitation/')) + (
+            '06_PostExploitation/lateral_movement/ps_exec.sh',
+            '06_PostExploitation/cleanup/logs_cleaner.sh',)
+        for relative in leaves:
+            path = self.framework / relative
+            if path.exists():
+                # Original /source stays RO; explicit source-reference also kept.
+                path.rename(path.with_name(path.name + '.retained-source'))
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            _new_text(path, '#!/bin/bash\nrecord-dispatch ' + repr(relative) + ' "$@"\n')

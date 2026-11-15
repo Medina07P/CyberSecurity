@@ -17,7 +17,7 @@ class SandboxBoundaryTests(unittest.TestCase):
         names = group_cases('--cross-consent')
         self.assertEqual(len(names), 9)
         self.assertEqual(len(set(names)), 9)
-        for selector in ('--cross-local', '--cross-unknown', '--suite', '', '--unsafe'):
+        for selector in ('--cross-unreviewed', '--cross-unknown', '--suite', '', '--unsafe'):
             with self.assertRaises(ValueError):
                 group_cases(selector)
             with self.assertRaises(ValueError):
@@ -41,24 +41,45 @@ class SandboxBoundaryTests(unittest.TestCase):
                 validate_cases('--cross-web', [mock.Mock(id=lambda n=n: n) for n in changed])
         with self.assertRaises(ValueError):
             validate_cases('--cross-consent', [mock.Mock(id=lambda n=n: n) for n in web])
+        from cross_module_selection import LOCAL_CASES, LOCAL_PURE
+        local = group_cases('--cross-local')
+        self.assertEqual(local, LOCAL_CASES)
+        self.assertEqual(len(local), 12)
+        self.assertEqual(len(set(local)), 12)
+        self.assertEqual(group_grants('--cross-local'), frozenset(local) - {LOCAL_PURE})
+        validate_cases('--cross-local', [mock.Mock(id=lambda n=n: n) for n in local])
+        for changed in ((), local[:-1], local + local[:1], local[:-1] + web[:1],
+                        local[:-1] + ('test_cross_local.LocalMenuTests.test_changed',)):
+            with self.assertRaises(ValueError):
+                validate_cases('--cross-local', [mock.Mock(id=lambda n=n: n) for n in changed])
+        for selector in ('--cross-web', '--cross-consent'):
+            with self.assertRaises(ValueError):
+                validate_cases(selector, [mock.Mock(id=lambda n=n: n) for n in local])
         # Mutating data cannot broaden either fixed Python map or add a group.
         import copy
         import cross_module_selection as cross_selection
         from automation_sandbox_prepare import load_json
         data = load_json(Path(cross_selection.__file__).with_name('cross_module_cases.json'),
                          {'version', 'grant', 'scope', 'required_observer', 'disposable_states', 'groups'}, version=2)
-        for mutation in ('pure-grant', 'consent-grant', 'unknown-group', 'unknown-id'):
+        for mutation in ('pure-grant', 'consent-grant', 'unknown-group', 'unknown-id',
+                         'local-pure-grant', 'local-prefix-grant', 'local-web-grant'):
             changed = copy.deepcopy(data)
             if mutation == 'pure-grant':
                 changed['groups']['--cross-web']['grant_ids'].append(web[0])
             elif mutation == 'consent-grant':
                 changed['groups']['--cross-web']['grant_ids'].append(names[0])
             elif mutation == 'unknown-group':
-                changed['groups']['--cross-local'] = changed['groups']['--cross-web']
+                changed['groups']['--cross-unreviewed'] = changed['groups']['--cross-web']
+            elif mutation == 'local-pure-grant':
+                changed['groups']['--cross-local']['grant_ids'].append(LOCAL_PURE)
+            elif mutation == 'local-prefix-grant':
+                changed['groups']['--cross-local']['grant_ids'].append('test_cross_local.*')
+            elif mutation == 'local-web-grant':
+                changed['groups']['--cross-local']['grant_ids'].append(web[2])
             else:
                 changed['groups']['--cross-web']['case_ids'].append('arbitrary.case')
             with mock.patch.object(cross_selection, 'load_json', return_value=changed):
-                for selector in ('--cross-web', '--cross-consent'):
+                for selector in ('--cross-web', '--cross-consent', '--cross-local'):
                     with self.assertRaises(ValueError):
                         group_cases(selector)
 
@@ -75,6 +96,10 @@ class SandboxBoundaryTests(unittest.TestCase):
         self.assertEqual(len(group_grants('--cross-web')), 5)
         self.assertTrue(set(old).isdisjoint(web))
         self.assertTrue(set(group_cases('--cross-consent')).isdisjoint(web))
+        from cross_module_selection import LOCAL_PURE
+        local = group_cases('--cross-local')
+        self.assertEqual(len(group_grants('--cross-local')), 11)
+        self.assertTrue(set(local).isdisjoint(set(old) | set(web) | set(group_cases('--cross-consent'))))
         controller = mock.Mock(__file__=inside.SELF)
         controller.validated_diagnostic_context.return_value = True
         for selector in ('--suite', '--races', '--cross-consent', '--cross-web', '--cross-local', None):
@@ -88,6 +113,10 @@ class SandboxBoundaryTests(unittest.TestCase):
                 for name in web[2:]:
                     self.assertEqual(selection.case_disposable_allowed(name), selector == '--cross-web')
                 self.assertFalse(selection.case_disposable_allowed(web[2] + '_changed'))
+                for name in local:
+                    self.assertEqual(selection.case_disposable_allowed(name),
+                                     selector == '--cross-local' and name != LOCAL_PURE)
+                self.assertFalse(selection.case_disposable_allowed(local[0] + '_changed'))
         with mock.patch.dict('sys.modules', {'__main__': None}):
             self.assertFalse(selection.case_disposable_allowed(cross))
             self.assertFalse(selection.case_disposable_allowed(old[0]))
@@ -107,6 +136,19 @@ class SandboxBoundaryTests(unittest.TestCase):
                 mock.patch.object(worker.os, 'fork') as fork, \
                 mock.patch.object(worker, '_prctl') as prctl:
             for name, granted in ((old[0], True), (cross + '_changed', False), (cross, False)):
+                case = mock.Mock()
+                case.id.return_value = name
+                with self.assertRaises(worker.WorkerBlocked):
+                    worker.run_case(case, granted, 1)
+            fork.assert_not_called()
+            prctl.assert_not_called()
+
+        controller.validated_selection.return_value = '--cross-local'
+        with mock.patch.dict('sys.modules', {'__main__': controller}), \
+                mock.patch.object(worker.os, 'fork') as fork, \
+                mock.patch.object(worker, '_prctl') as prctl:
+            for name, granted in ((old[0], True), (cross, True), (web[0], False),
+                                  (LOCAL_PURE, True), (local[0], False), (local[0] + '_changed', False)):
                 case = mock.Mock()
                 case.id.return_value = name
                 with self.assertRaises(worker.WorkerBlocked):
@@ -168,6 +210,18 @@ class SandboxBoundaryTests(unittest.TestCase):
                 mock.patch('automation_suite_selection.case_disposable_allowed', return_value=False):
             with self.assertRaises(ValueError):
                 scope.configure_worker(root, pinned, 'unknown-local-id', False, 3)
+        from cross_module_selection import LOCAL_PURE
+        controller.validated_selection.return_value = '--cross-local'
+        for name, permitted in ((LOCAL_PURE, False), (group_cases('--cross-local')[0], True)):
+            with mock.patch.dict('sys.modules', {'__main__': controller}), \
+                    mock.patch.object(scope, '_SCOPE', None), \
+                    mock.patch('automation_suite_selection.case_disposable_allowed', return_value=permitted), \
+                    mock.patch.object(Path, 'stat', return_value=info), \
+                    mock.patch.object(Path, 'resolve', autospec=True, side_effect=lambda p, **kw: p):
+                scope.configure_worker(root, pinned, name, permitted, 3)
+                self.assertEqual(scope.destructive_path(root / 'new'), permitted)
+                for path in (root, '/source/file', '/evidence/file', '/work/fixtures/case-other/file'):
+                    self.assertFalse(scope.destructive_path(path))
 
     def test_suite_excludes_cross_modules(self):
         import automation_suite_selection as selection
@@ -179,12 +233,13 @@ class SandboxBoundaryTests(unittest.TestCase):
         with mock.patch.object(inside, '_VALIDATED', False), \
                 mock.patch.object(inside, '_SELECTION', '--cross-consent'):
             self.assertIsNone(inside.validated_selection())
-        from cross_module_fixture import SOURCE_FILES, COORDINATOR_LEAVES, WEB_SOURCE_FILES, PURE_SOURCE_FILES
+        from cross_module_fixture import SOURCE_FILES, COORDINATOR_LEAVES, WEB_SOURCE_FILES, PURE_SOURCE_FILES, LOCAL_SOURCE_FILES
         from automation_test_guard import check_event
         self.assertTrue(set(SOURCE_FILES).isdisjoint(COORDINATOR_LEAVES))
         # Diagnostic calls only, not actual opens. Every eager copy must remain
         # acceptable under the unchanged guard; data-shaped paths remain denied.
-        for relative in SOURCE_FILES + WEB_SOURCE_FILES + PURE_SOURCE_FILES + ('tests/cross_web_curl_double.py',):
+        for relative in SOURCE_FILES + WEB_SOURCE_FILES + PURE_SOURCE_FILES + LOCAL_SOURCE_FILES + (
+                'tests/cross_web_curl_double.py', 'tests/cross_local_backend_double.py'):
             path = '/source/CyberSecurity-Framework/' + relative
             check_event('/source', 'open', (path, 'r', 0))
             with self.assertRaises(PermissionError):

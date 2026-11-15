@@ -29,6 +29,35 @@
     "test_cross_consent.ConsentTests.test_menu_cancel_and_coordinator_exclusions"
   ]
   },
+  "--cross-local": {
+    "case_ids": [
+      "test_cross_local.GenerationTests.test_generation_is_exclusive_and_inert",
+      "test_cross_local.GenerationTests.test_generated_launcher_requires_root_and_mode",
+      "test_cross_local.StableToolTests.test_smb_keeps_all_methods_without_source_mutation",
+      "test_cross_local.StableToolTests.test_psexec_preserves_argv_and_secret_privacy",
+      "test_cross_local.StableToolTests.test_linpeas_requires_explicit_source_and_sudo",
+      "test_cross_local.StableToolTests.test_linpeas_failures_preserve_artifacts",
+      "test_cross_local.LabTests.test_five_templates_preserve_existing_notes",
+      "test_cross_local.LabTests.test_lab_roots_names_and_menu_cwd",
+      "test_cross_local.LabTests.test_lab_links_and_partial_failure",
+      "test_cross_local.ReconTests.test_ping_target_parser",
+      "test_cross_local.ReconTests.test_ping_cli_records_only_selected_targets",
+      "test_cross_local.LocalMenuTests.test_modes_marks_and_coordinator_omissions"
+    ],
+    "grant_ids": [
+      "test_cross_local.GenerationTests.test_generation_is_exclusive_and_inert",
+      "test_cross_local.GenerationTests.test_generated_launcher_requires_root_and_mode",
+      "test_cross_local.StableToolTests.test_smb_keeps_all_methods_without_source_mutation",
+      "test_cross_local.StableToolTests.test_psexec_preserves_argv_and_secret_privacy",
+      "test_cross_local.StableToolTests.test_linpeas_requires_explicit_source_and_sudo",
+      "test_cross_local.StableToolTests.test_linpeas_failures_preserve_artifacts",
+      "test_cross_local.LabTests.test_five_templates_preserve_existing_notes",
+      "test_cross_local.LabTests.test_lab_roots_names_and_menu_cwd",
+      "test_cross_local.LabTests.test_lab_links_and_partial_failure",
+      "test_cross_local.ReconTests.test_ping_cli_records_only_selected_targets",
+      "test_cross_local.LocalMenuTests.test_modes_marks_and_coordinator_omissions"
+    ]
+  },
   "--cross-web": {
     "case_ids": [
       "test_cross_web.WebTests.test_pair_composes_locations_and_literals",
