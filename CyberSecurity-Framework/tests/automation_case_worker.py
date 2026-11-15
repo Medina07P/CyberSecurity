@@ -314,7 +314,7 @@ def run_case(case, permitted, index):
     if permitted != case_disposable_allowed(case.id()) or type(permitted) is not bool:
         raise WorkerBlocked('Case permission does not match closed inventory')
     selector = getattr(controller, 'validated_selection', lambda: None)()
-    if selector in ('--cross-consent', '--cross-web'):
+    if selector in ('--cross-consent', '--cross-web', '--cross-local'):
         from cross_module_selection import group_cases
         if case.id() not in group_cases(selector):
             raise WorkerBlocked('Cross case identity outside validated selection')
