@@ -103,6 +103,74 @@ _prompt_validate() {
 
 # ─── Lectura de los datos ──────────────────────────────────
 
+# Literal input boundary: no echo for secrets; no whitespace trimming/splitting.
+# The destination is a caller-local variable (Bash dynamic scope).
+_prompt_read_literal() {
+    if [[ "$1" == CONTRASENA ]]; then
+        local read_rc
+        IFS= read -r -s "$2"
+        read_rc=$?
+        printf '\n' >&2
+        return "$read_rc"
+    fi
+    IFS= read -r "$2"
+}
+
+# Closed SMB/PSExec full-list adapter. Selecting an entry never grants execution.
+# stdout is exclusively argv (one literal field per line), like prompt_for_slots.
+_prompt_stable_tool() {
+    local script="$1" rel="$2" choice value line pos name kind type target def
+    local -a out=() slotlines=()
+    printf '\n1. Preview sin operación (predeterminado)\n2. Ejecutar con posiciones explícitas\n3. Generar lanzador NUEVO\n0. Cancelar\nModo [1]: ' >&2
+    IFS= read -r choice || return 2
+    case "$choice" in
+        ''|1) printf '%s\n' --preview; return 0 ;;
+        0|'!') return 1 ;;
+        3)
+            printf 'Destino NUEVO fuera del framework (0 o ! cancela): ' >&2
+            _prompt_read_literal FICHERO value || return 2
+            [[ "$value" != 0 && "$value" != '!' ]] || return 1
+            _prompt_universal_ok "$value" || return 1
+            printf '%s\n' --generate "$value"
+            return 0 ;;
+        2) : ;;
+        *) printf 'Modo no válido.\n' >&2; return 1 ;;
+    esac
+    target=$(session_target)
+    mapfile -t slotlines < <(params_slots "$script")
+    case "$rel:${#slotlines[@]}" in
+        04_Enumeration/smb/enum_smb.sh:2|06_PostExploitation/lateral_movement/ps_exec.sh:5) : ;;
+        *) printf 'Contrato de posiciones no válido.\n' >&2; return 1 ;;
+    esac
+    for line in "${slotlines[@]}"; do
+        IFS='|' read -r pos name kind type <<< "$line"
+        # The session target is OFFERED explicitly; never substituted invisibly.
+        def=''
+        [[ "$pos" == 1 ]] && def="$target"
+        if [[ -n "$def" ]]; then
+            printf '➜ %s [%s] (0 o ! cancela): ' "$(_prompt_label "$name" "$type")" "$def" >&2
+        else
+            printf '➜ %s (0 o ! cancela): ' "$(_prompt_label "$name" "$type")" >&2
+        fi
+        value=''
+        _prompt_read_literal "$type" value || return 2
+        [[ "$value" != 0 && "$value" != '!' ]] || return 1
+        [[ "$pos" != 1 || -n "$value" ]] || value="$def"
+        if [[ -z "$value" && "$kind" == opcional ]]; then
+            continue
+        fi
+        # Password/command may begin with '-' and contain literal spaces. This
+        # exception is ONLY for this closed adapter; leaf validation stays final.
+        if [[ "$type" == CONTRASENA || "$name" == COMANDO ]]; then
+            [[ -n "$value" && ! "$value" =~ [[:cntrl:]] ]] || return 1
+        else
+            _prompt_validate "$type" "$value" || return 1
+        fi
+        out+=("$value")
+    done
+    printf '%s\n' "${out[@]}" --execute
+}
+
 # prompt_for_slots <script> <ruta-relativa>
 #   stdout: valores, uno por línea
 #   return: 0 ok | 1 cancelado por el usuario | 2 fin de entrada
@@ -111,7 +179,11 @@ prompt_for_slots() {
     local mode usage example target def value prompt attempt
     local pos name kind type line
 
-    mode=$(params_mode "$script")
+    mode=$(params_mode "$script" "$rel")
+    if [[ "$mode" == stable ]]; then
+        _prompt_stable_tool "$script" "$rel"
+        return $?
+    fi
     [[ "$mode" == "none" ]] && return 0
 
     usage=$(params_usage "$script" 2>/dev/null) || usage=""

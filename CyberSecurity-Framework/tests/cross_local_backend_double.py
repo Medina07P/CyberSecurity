@@ -4,6 +4,7 @@
 Fresh argv receipts/programmed responses; sudo only runs a selected synthetic run
 script via /bin/bash without elevation. Record BEFORE parsing/writing/launching.
 """
+import argparse
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,26 @@ def main():
         stream.flush()
     program = json.loads(os.environ.get('CROSS_LOCAL_RESPONSES', '{}'))
     response = program.get(name, {})
+    if name in ('psexec.py', 'impacket-psexec'):
+        # Synthetic parser boundary, NOT a real backend/import. Match the relevant
+        # Impacket argparse grammar read as source: target, command nargs='*',
+        # help/debug/Kerberos/connection/copy options. Raw argv above is not proof
+        # that an option-looking command survived parsing; record parsed meaning.
+        parser = argparse.ArgumentParser(add_help=True)
+        parser.add_argument('target')
+        parser.add_argument('command', nargs='*', default=' ')
+        parser.add_argument('-debug', action='store_true')
+        parser.add_argument('-k', action='store_true')
+        parser.add_argument('-target-ip')
+        parser.add_argument('-c')
+        parsed = parser.parse_args(argv)
+        with Path(os.environ['CROSS_LOCAL_PARSE_LOG']).open('a') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(json.dumps({'backend': name, 'target': parsed.target,
+                                     'command': parsed.command, 'debug': parsed.debug,
+                                     'k': parsed.k, 'target_ip': parsed.target_ip,
+                                     'copy': parsed.c}) + '\n')
+            stream.flush()
     if name in ('curl', 'wget'):
         option = '-o' if name == 'curl' else '-O'
         if option in argv:

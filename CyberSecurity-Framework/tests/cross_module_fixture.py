@@ -169,6 +169,7 @@ class CrossModuleFixture:
                             'whatweb', 'ffuf', 'gobuster', 'nc', 'openvpn', 'pkill'):
                 copy_regular(Path('/source') / name, self.bin / backend, 0o500)
             self.env.update(CROSS_LOCAL_LOG=str(self.log), CROSS_LOCAL_ROOT=str(self.repo),
+                            CROSS_LOCAL_PARSE_LOG=str(self.output / 'psexec-parser.jsonl'),
                             EDITOR=str(self.bin / 'editor'))
             temporary = self.repo / 'tmp'
             temporary.mkdir(mode=0o700)
@@ -312,21 +313,16 @@ class CrossModuleFixture:
         return self._run(['/bin/bash', '--noprofile', '--norc',
                           str(self.framework / relative), *args], stdin)
 
-    def run_menu(self, name, stdin, real_list=False):
-        if name not in ('scanners_menu', 'postexploitation_menu', 'enumeration_menu'):
-            raise ValueError('Unknown fixed consent menu')
-        # Consume the real manager consent classifier as source, without sourcing
-        # its initialization/main. Display policy is also real; clear/pause and
-        # execution transports are doubled. Local real_list uses actual listing
-        # policy on new scratch entries, never protected source-folder bodies.
+    def psexec_parsed(self):
+        if self.group != '--cross-local':
+            raise ValueError('PSExec parser receipts require exact local selection')
+        path = self.output / 'psexec-parser.jsonl'
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def _manager_functions(self, names):
         source = (self.framework / 'cyber_framework.sh').read_text()
         policies = ''
-        if real_list and self.group != '--cross-local':
-            raise ValueError('Real list policy is local-contract-only')
-        functions = ('ask_confirm', 'script_arguments_summary')
-        if real_list:
-            functions += ('run_module_scripts',)
-        for function in functions:
+        for function in names:
             header = '\n' + function + '() {\n'
             if source.count(header) != 1:
                 raise ValueError('Manager policy source shape changed')
@@ -334,6 +330,57 @@ class CrossModuleFixture:
             if not closing:
                 raise ValueError('Manager policy closing brace missing')
             policies += function + '() {\n' + body + '\n}\n'
+        return policies
+
+    def _read_observer(self):
+        # Observe the actual shell input call boundary, not terminal syscalls.
+        # Record flags/IFS/variable NAME only; never record entered secret values.
+        return ('read() { case "${@: -1}" in value|pass) '
+                'record-dispatch __read-policy__ "$IFS" "$@" ;; esac; '
+                'builtin read "$@"; }\n')
+
+    def run_full_list(self, relative, stdin, through_list=False):
+        if self.group != '--cross-local' or relative not in (
+                '04_Enumeration/smb/enum_smb.sh',
+                '06_PostExploitation/lateral_movement/ps_exec.sh'):
+            raise ValueError('Full-list dispatch requires exact local public leaf')
+        module = relative.split('/')[0]
+        policies = self._manager_functions(('ask_confirm', 'script_arguments_summary',
+                                            'execute_script', 'run_module_scripts'))
+        boundary = '        ./"$rel_path" "${argv[@]}"'
+        if policies.count(boundary) != 1:
+            raise ValueError('Manager process boundary source changed')
+        # ONLY replace the final external Bash-process transport. The actual
+        # list, params, prompt, consent, argv reconstruction and summary run.
+        policies = policies.replace(boundary, '        record-dispatch "$script_path" "${argv[@]}"')
+        driver = self.output / ('full-list-' + str(self._invocations) + '.sh')
+        _new_text(driver,
+                  'source "$1/00_Config/lib/params.bash"\n'
+                  'source "$1/00_Config/lib/prompt.bash"\n'
+                  'source "$1/00_Config/lib/module_intro.bash"\n'
+                  'clear_screen() { :; }; pause() { :; }\n' + policies +
+                  self._read_observer() +
+                  'record-dispatch __params-policy__ "$(params_mode "$3" "$3")" "$(params_slot_count "$3")"\n'
+                   'if _prompt_validate TEXTO --execute; then exit 93; fi\n' +
+                  ('run_module_scripts "$2" "$2"\n' if through_list else 'execute_script "$3" "$2"\n'))
+        return self._run(['/bin/bash', '--noprofile', '--norc', str(driver),
+                          str(self.framework), module, relative], stdin)
+
+    def run_menu(self, name, stdin, real_list=False, observe_reads=False):
+        if name not in ('scanners_menu', 'postexploitation_menu', 'enumeration_menu'):
+            raise ValueError('Unknown fixed consent menu')
+        # Consume the real manager consent classifier as source, without sourcing
+        # its initialization/main. Display policy is also real; clear/pause and
+        # execution transports are doubled. Local real_list uses actual listing
+        # policy on new scratch entries, never protected source-folder bodies.
+        if real_list and self.group != '--cross-local':
+            raise ValueError('Real list policy is local-contract-only')
+        if observe_reads and self.group != '--cross-local':
+            raise ValueError('Read policy observer is local-contract-only')
+        functions = ('ask_confirm', 'script_arguments_summary')
+        if real_list:
+            functions += ('run_module_scripts',)
+        policies = self._manager_functions(functions)
         driver = self.output / ('menu-' + str(self._invocations) + '.sh')
         with driver.open('x') as stream:
             stream.write('source "$1/00_Config/lib/params.bash"\n'
@@ -346,7 +393,8 @@ class CrossModuleFixture:
                          'execute_script() { local -a original=("$@"); local script_path="$1"; shift 2; '
                          '[[ "${1:-}" != --prepared ]] || shift; '
                          'script_arguments_summary "$script_path" "$@"; record-dispatch "${original[@]}"; }\n'
-                         + ('' if real_list else 'run_module_scripts() { record-dispatch "$@"; }\n') + name + '\n')
+                          + ('' if real_list else 'run_module_scripts() { record-dispatch "$@"; }\n') +
+                          (self._read_observer() if observe_reads else '') + name + '\n')
         return self._run(['/bin/bash', '--noprofile', '--norc', str(driver), str(self.framework)], stdin)
 
     def record_coordinator_leaves(self):

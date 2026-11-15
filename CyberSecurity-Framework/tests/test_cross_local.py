@@ -299,7 +299,11 @@ class StableToolTests(LocalCase):
                 result = self.leaf(f, PSEXEC, (*positions, '--execute'))
                 self.assertEqual(result.returncode, rc, result.stdout + result.stderr)
                 self.assertEqual(f.records()[before:], [[f.records()[-1][0],
-                    'SYNTH/synthetic-user:' + password + '@example.test', command]])
+                    'SYNTH/synthetic-user:' + password + '@example.test', '--', command]])
+                self.assertEqual(f.psexec_parsed()[-1], {
+                    'backend': f.records()[-1][0],
+                    'target': 'SYNTH/synthetic-user:' + password + '@example.test',
+                    'command': [command], 'debug': False, 'k': False, 'target_ip': None, 'copy': None})
                 self.assertNotIn(password, result.stdout + result.stderr)
         self.assertFalse((f.framework / 'forbidden-local').exists())
         for args in ((*positions[:-1], '--execute'), (*positions, '--unknown'),
@@ -319,10 +323,28 @@ class StableToolTests(LocalCase):
         result = self.leaf(f, PSEXEC, (*positions, '--execute'))
         self.assertEqual(result.returncode, 0)
         self.assertNotIn(password, result.stdout + result.stderr)
-        # Backend sees the literal command even when it resembles a mode flag.
+        # Backend parser, not merely raw argv, must see a literal remote command.
         self.responses(f)
-        self.assertEqual(self.leaf(f, PSEXEC, (*positions[:-1], '--help', '--execute')).returncode, 0)
-        self.assertEqual(f.records()[-1][-1], '--help')
+        target = 'SYNTH/synthetic-user:' + password + '@example.test'
+        for option_command in ('--help', '-debug', '-k', '-target-ip'):
+            with self.subTest(backend_command=option_command):
+                count = len(f.psexec_parsed())
+                # Mutant/oracle: the former unseparated transport cannot retain
+                # this command. Help returns0 without parsing a command; debug/k
+                # change backend flags; target-ip lacks its required value.
+                mutant = f._run([str(f.bin / 'psexec.py'), target, option_command], '')
+                mutant_rows = f.psexec_parsed()[count:]
+                self.assertFalse(mutant_rows and mutant_rows[-1]['command'] == [option_command])
+                if option_command == '--help': self.assertEqual(mutant.returncode, 0)
+                if option_command == '-target-ip': self.assertEqual(mutant.returncode, 2)
+                if option_command == '-debug': self.assertTrue(mutant_rows[-1]['debug'])
+                if option_command == '-k': self.assertTrue(mutant_rows[-1]['k'])
+                result = self.leaf(f, PSEXEC, (*positions[:-1], option_command, '--execute'))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(f.records()[-1], ['psexec.py', target, '--', option_command])
+                self.assertEqual(f.psexec_parsed()[-1], {
+                    'backend': 'psexec.py', 'target': target, 'command': [option_command],
+                    'debug': False, 'k': False, 'target_ip': None, 'copy': None})
         complex_password = 'synthetic:pass/with\\space and punctuation!'
         self.assertEqual(self.leaf(f, PSEXEC, (positions[0], positions[1], positions[2],
                                               complex_password, command, '--execute')).returncode, 0)
@@ -331,6 +353,7 @@ class StableToolTests(LocalCase):
         self.responses(f, **{'impacket-psexec': {'rc': 2}})
         self.assertEqual(self.leaf(f, PSEXEC, (*positions, '--execute')).returncode, 2)
         self.assertEqual(f.records()[-1][0], 'impacket-psexec')
+        self.assertEqual(f.psexec_parsed()[-1]['command'], [command])
         (f.bin / 'impacket-psexec').rename(f.bin / 'impacket-psexec.retained')
         before = len(f.records())
         self.assertEqual(self.leaf(f, PSEXEC, (*positions, '--execute')).returncode, 1)
@@ -589,10 +612,96 @@ class LocalMenuTests(LocalCase):
                 offset = len(f.records())
                 self.assertEqual(f.run_menu(menu, text).returncode, 0)
                 self.assertEqual(f.records()[offset:], [])
-        for text in ('2\n0\n0\n', '2\n'):
+        # Task2 consumers are exercised BEFORE pending Task3 checks, using the
+        # real manager list/execute_script and real params/prompt. Only the final
+        # external-process boundary is replaced; raw receipts retain argv.
+        password = '  synthetic\\menu-password :/  '
+        command = 'printf "two words"; $(not-local) & | > literal'
+        for relative in (SMB, PSEXEC):
+            module, leaf = relative.split('/', 1)
+            entries = ORIGINAL_ENTRIES[module]
+            order = sorted(e for e in entries if e.startswith('run_all_')) + sorted(
+                e for e in entries if not e.startswith('run_all_'))
+            index = str(order.index(leaf) + 1) + '\n'
+            generate = str(listing.repo / ('new launcher-' + module + '.sh'))
+            positions = (['example.test', 'stable_prefix'] if relative == SMB else
+                         ['example.test', 'SYNTH', 'user', password, command])
+            for mode_input, expected, secret in (
+                    ('s\n1\n0\n', ['--preview'], False),
+                    ('s\n\n0\n', ['--preview'], False),
+                    ('s\n3\n' + generate + '\n0\n', ['--generate', generate], False),
+                    ('s\n2\n' + '\n'.join(positions) + '\n0\n', [*positions, '--execute'], relative == PSEXEC),
+                    ('s\n0\n0\n', [], False), ('s\n!\n0\n', [], False),
+                    ('s\n', [], False), ('s\n3\n', [], False),
+                    ('s\n3\n!\n0\n', [], False), ('s\n2\n', [], False),
+                    ('s\n2\n0\n0\n', [], False), ('n\n0\n', [], False), ('', [], False)):
+                with self.subTest(full_list=relative, mode=mode_input):
+                    offset = len(listing.records())
+                    # Execute/generate also traverse the actual inventory entry;
+                    # remaining modes call that same extracted execute_script
+                    # consumer directly, without broad manager initialization.
+                    through_list = expected and expected[0] != '--preview'
+                    result = listing.run_full_list(relative, (index if through_list else '') + mode_input,
+                                                   through_list=bool(through_list))
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    rows = listing.records()[offset:]
+                    self.assertIn(['record-dispatch', '__params-policy__', 'stable',
+                                   '2' if relative == SMB else '5'], rows)
+                    dispatch = [r for r in rows if len(r) > 1 and r[1] in (SMB, PSEXEC)]
+                    self.assertEqual(dispatch, [['record-dispatch', relative, *expected]] if expected else [])
+                    self.assertFalse(any(r[0] in ('smbclient', 'psexec.py', 'impacket-psexec') for r in rows))
+                    self.assertNotIn(password, result.stdout + result.stderr)
+                    if secret:
+                        reads = [r for r in rows if len(r) > 3 and r[1] == '__read-policy__' and r[-1] == 'value']
+                        self.assertEqual(len(reads), 5)
+                        secret_read = reads[3]
+                        self.assertEqual(secret_read[2], '')  # actual IFS at input boundary
+                        flags = ''.join(x[1:] for x in secret_read[3:-1] if x.startswith('-'))
+                        self.assertIn('s', flags)
+                        self.assertIn('r', flags)
+            # EOF/cancel at the secret boundary, not just at the first prompt.
+            if relative == PSEXEC:
+                for tail in ('', '0\n0\n', '!\n0\n'):
+                    with self.subTest(secret_cancel=tail):
+                        offset = len(listing.records())
+                        result = listing.run_full_list(relative, 's\n2\nexample.test\nSYNTH\nuser\n' + tail)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertFalse(any(len(r) > 1 and r[1] == PSEXEC for r in listing.records()[offset:]))
+            self.assertFalse(Path(generate).exists(), 'full-list transport must not generate/execute its dispatch')
+        self.unchanged_sources(listing)
+        self.assert_product_privacy(listing, password)
+        # Real guided menus and their actual secret read boundary, not a PTY
+        # simulation. Pipe-output checks alone do NOT establish terminal echo.
+        f.set_session('example.test')
+        result = f.run_menu('enumeration_menu', '4\nexample.test\ns\n0\n')
+        dispatch = [row for row in f.records() if row[0] == 'record-dispatch']
+        self.assertTrue(any(SMB in row and '--execute' in row for row in dispatch), result.stdout + result.stderr)
+        offset = len(f.records())
+        result = f.run_menu('postexploitation_menu', '6\n3\nexample.test\nSYNTH\nuser\n' + password + '\n' + command + '\n0\n', observe_reads=True)
+        self.assertNotIn(password, result.stdout + result.stderr)
+        rows = f.records()[offset:]
+        self.assertIn(['record-dispatch', PSEXEC, '06_PostExploitation', '--prepared',
+                       'example.test', 'SYNTH', 'user', password, command, '--execute'], rows)
+        reads = [r for r in rows if len(r) > 3 and r[1] == '__read-policy__' and r[-1] == 'pass']
+        self.assertEqual(len(reads), 1)
+        self.assertEqual(reads[0][2], '')
+        flags = ''.join(x[1:] for x in reads[0][3:-1] if x.startswith('-'))
+        self.assertIn('s', flags)
+        self.assertIn('r', flags)
+        self.assert_product_privacy(f, password)
+        for menu, choice, module in (('enumeration_menu', '11\n0\n', '04_Enumeration'),
+                                      ('postexploitation_menu', '9\n0\n', '06_PostExploitation')):
             offset = len(f.records())
-            f.run_menu('postexploitation_menu', text)
-            self.assertFalse(any(LINPEAS in row for row in f.records()[offset:]))
+            f.run_menu(menu, choice)
+            self.assertTrue(any(row[0] == 'record-dispatch' and module in row for row in f.records()[offset:]))
+        self.assertNotIn('se reemplaza por', (f.framework / SMB).read_text())
+        # Pending Task3 assertions remain substantive and independently reached;
+        # a failed subtest must not hide the later Task2 or Task3 contracts.
+        for text in ('2\n0\n0\n', '2\n'):
+            with self.subTest(pending_linpeas_initial_cancel=text):
+                offset = len(f.records())
+                f.run_menu('postexploitation_menu', text)
+                self.assertFalse(any(LINPEAS in row for row in f.records()[offset:]))
         selected = new_text(f.repo / 'menu-selected.sh', '#!/bin/bash\necho selected\n', 0o700)
         # Pin the upcoming public menu contract: option2 asks source choice
         # (1 local, 2 download, 0 cancel); execute_script is ONLY transport.
@@ -600,40 +709,35 @@ class LocalMenuTests(LocalCase):
                 ('2\n1\n' + str(selected) + '\n0\n',
                  ['--binary', str(selected), '--execute', '--allow-sudo']),
                 ('2\n2\n0\n', ['--download', '--execute', '--allow-sudo'])):
-            offset = len(f.records())
-            result = f.run_menu('postexploitation_menu', choice)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            linpeas = [row for row in f.records()[offset:] if LINPEAS in row]
-            self.assertEqual(linpeas, [['record-dispatch', LINPEAS, '06_PostExploitation', '--prepared', *expected]])
-            self.assertFalse(any(row[0] in ('curl', 'wget', 'sudo') for row in f.records()[offset:]))
+            with self.subTest(pending_linpeas_source=expected):
+                offset = len(f.records())
+                result = f.run_menu('postexploitation_menu', choice)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                linpeas = [row for row in f.records()[offset:] if LINPEAS in row]
+                self.assertEqual(linpeas, [['record-dispatch', LINPEAS, '06_PostExploitation', '--prepared', *expected]])
+                self.assertFalse(any(row[0] in ('curl', 'wget', 'sudo') for row in f.records()[offset:]))
         for choice in ('2\n1\n0\n0\n', '2\n1\n', '2\n0\n0\n', '2\n'):
-            offset = len(f.records())
-            self.assertEqual(f.run_menu('postexploitation_menu', choice).returncode, 0)
-            self.assertFalse(any(LINPEAS in row for row in f.records()[offset:]))
-        for menu, choice, module in (('enumeration_menu', '11\n0\n', '04_Enumeration'),
-                                     ('postexploitation_menu', '9\n0\n', '06_PostExploitation')):
-            offset = len(f.records())
-            f.run_menu(menu, choice)
-            self.assertTrue(any(row[0] == 'record-dispatch' and module in row for row in f.records()[offset:]))
-        # Real menu choice/policy with transport-only recorders.
-        f.set_session('example.test')
-        result = f.run_menu('enumeration_menu', '4\nexample.test\ns\n0\n')
-        dispatch = [row for row in f.records() if row[0] == 'record-dispatch']
-        self.assertTrue(any(SMB in row and '--execute' in row for row in dispatch), result.stdout + result.stderr)
-        password = 'synthetic-menu-password'
-        result = f.run_menu('postexploitation_menu', '6\n3\nexample.test\nSYNTH\nuser\n' + password + '\nwhoami\n0\n')
-        self.assertNotIn(password, result.stdout + result.stderr)
-        self.assertTrue(any(PSEXEC in row and '--execute' in row for row in f.records()))
+            with self.subTest(pending_linpeas_cancel=choice):
+                offset = len(f.records())
+                self.assertEqual(f.run_menu('postexploitation_menu', choice).returncode, 0)
+                self.assertFalse(any(LINPEAS in row for row in f.records()[offset:]))
         dangerous = (f.framework / '00_Config/lib/dangerous.txt').read_text().splitlines()
-        self.assertIn(LINPEAS, dangerous)
+        with self.subTest(pending_linpeas_dangerous=True):
+            self.assertIn(LINPEAS, dangerous)
         policy = new_text(f.output / 'real-params-policy.sh',
             'ROOT="$1"\nsource "$ROOT/00_Config/lib/params.bash"\n'
-            'shift\nfor relative in "$@"; do\n'
+            'shift\nif [[ "${1:-}" == --dangerous ]]; then\n'
+            '  params_is_dangerous "$2"; exit $?\nfi\n'
+            'for relative in "$@"; do\n'
             '  params_is_generator "$ROOT/$relative" && exit 31\n'
-            'done\nparams_is_dangerous "06_PostExploitation/privilege_escalation/linpeas.sh"\n')
-        result = f._run(['/bin/bash', str(policy), str(f.framework), *KINDS.values()], '')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn('se reemplaza por', (f.framework / SMB).read_text())
+            'done\nexit 0\n')
+        for relative in KINDS.values():
+            with self.subTest(generator_mark=relative):
+                result = f._run(['/bin/bash', str(policy), str(f.framework), relative], '')
+                self.assertEqual(result.returncode, 0, result.stderr)
+        with self.subTest(pending_linpeas_sensitive_classifier=True):
+            result = f._run(['/bin/bash', str(policy), str(f.framework), '--dangerous', LINPEAS], '')
+            self.assertEqual(result.returncode, 0, result.stderr)
         for p, captured in reference_bytes.items():
             self.assertEqual((f.repo / 'source-reference' / p).read_bytes(), captured)
         self.assertEqual({p: observe_source(f.repo / 'source-reference' / p) for p in f.source_files}, references)
@@ -644,16 +748,21 @@ class LocalMenuTests(LocalCase):
         self.assertEqual(fingerprint((f.framework / LINPEAS).with_name('linpeas.sh.retained-source')), live_linpeas)
         offset = len(f.records())
         result = self.leaf(f, '06_PostExploitation/run_all_post.sh', ('example.test',))
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertFalse(any(LINPEAS in row or PSEXEC in row for row in f.records()[offset:]))
-        self.assertRegex(result.stdout.lower(), r'linpeas[^\n]*(?:selecci[oó]n|seleccionar)[^\n]*(?:requerida|requiere|expl[ií]cita)')
+        with self.subTest(pending_post_rc=True):
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        with self.subTest(pending_post_sensitive_omissions=True):
+            self.assertFalse(any(LINPEAS in row or PSEXEC in row for row in f.records()[offset:]))
+        with self.subTest(pending_post_linpeas_reason=True):
+            self.assertRegex(result.stdout.lower(), r'linpeas[^\n]*(?:selecci[oó]n|seleccionar)[^\n]*(?:requerida|requiere|expl[ií]cita)')
         counts = re.search(r'Ejecutadas:\s*(\d+)\s*\|\s*Fallidas:\s*(\d+)\s*\|\s*Omitidas:\s*(\d+)', result.stdout)
-        self.assertIsNotNone(counts, result.stdout)
         # Five ordinary child recorders:3 privilege checks +2 credentials; loot
         # file collector adds one, screenshot omitted without its backend.
-        self.assertEqual(tuple(map(int, counts.groups())), (6, 0, 2))
+        with self.subTest(pending_post_counts=True):
+            self.assertIsNotNone(counts, result.stdout)
+            self.assertEqual(tuple(map(int, counts.groups())), (6, 0, 2))
         dispatched = [row for row in f.records()[offset:] if row[0] == 'record-dispatch']
-        self.assertEqual(len(dispatched), 6)
+        with self.subTest(pending_post_dispatches=True):
+            self.assertEqual(len(dispatched), 6)
         source = (f.framework / 'cyber_framework.sh').read_text()
         self.assertIn('script_arguments_summary', source)
         self.assertIn('ps_exec.sh', source)
