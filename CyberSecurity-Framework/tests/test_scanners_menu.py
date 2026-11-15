@@ -69,7 +69,9 @@ elif name == 'masscan':
     formats = [x for x in args if x in ('-oJ', '-oG', '-oL')]
     if len(formats) != 1:
         sys.exit('masscan solo admite un formato de salida')
-    Path(args[args.index(formats[0])+1]).write_text('[]\n')
+    print('Starting masscan 1.3.2\rrate:  0.00-kpps, 100.00% done, waiting 9-secs, found=0       \rrate:  0.00-kpps, 100.00% done, waiting 8-secs, found=0       ', file=sys.stderr)
+    hit = '{ "ip": "192.0.2.1", "ports": [ {"port": 80, "proto": "tcp", "status": "open"} ] },\n'
+    Path(args[args.index(formats[0])+1]).write_text('[\n'+hit+']\n' if os.environ.get('MASSCAN_HIT') else '')
 '''
 
 
@@ -102,7 +104,7 @@ class ScannersTest(unittest.TestCase):
                         SESSION_FILE=str(self.root/'session'),
                         SESSION_SCOPE_FILE=str(self.fw/'00_Config/scope.yaml'),
                         SESSION_TARGETS_FILE=str(self.fw/'00_Config/targets.txt'))
-        for key in ('FAIL_TOOL', 'WARN_TOOL', 'PORT_LINES', 'FAKE_UID'):
+        for key in ('FAIL_TOOL', 'WARN_TOOL', 'PORT_LINES', 'FAKE_UID', 'MASSCAN_HIT', 'MASSCAN_RATE'):
             self.env.pop(key, None)
 
     def run_script(self, name, args=None, **env):
@@ -282,6 +284,48 @@ class ScannersTest(unittest.TestCase):
                 result = self.run_script(name, args)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(self.invocations(), [])
+
+    def test_masscan_rejects_loopback_and_local_ranges_before_running(self):
+        for target in ('127.0.0.1', '127.0.0.0/8', '0.0.0.0/8'):
+            with self.subTest(target=target):
+                result = self.run_script('masscan', [target, '80'])
+                self.assertEqual(result.returncode, 1)
+                self.assertIn('misma máquina', result.stderr)
+                self.assertIn('nmap -sT', result.stderr)
+        self.assertEqual(self.invocations(), [])
+
+    def test_masscan_rate_default_custom_and_invalid(self):
+        self.run_script('masscan')
+        self.assertIn('--rate=1000', self.invocations()[-1])
+        self.run_script('masscan', ['192.0.2.1', '80', '250'])
+        self.assertIn('--rate=250', self.invocations()[-1])
+        self.run_script('masscan', ['192.0.2.1', '80'], MASSCAN_RATE='500')
+        self.assertIn('--rate=500', self.invocations()[-1])
+        before = len(self.invocations())
+        for bad in ('0', '100001', 'rapido', '-5', '1e3'):
+            with self.subTest(rate=bad):
+                result = self.run_script('masscan', ['192.0.2.1', '80', bad])
+                self.assertEqual(result.returncode, 1)
+        self.assertEqual(len(self.invocations()), before)
+
+    def test_masscan_zero_results_is_explicit_and_not_proof_of_closed(self):
+        result = self.run_script('masscan')
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertIn('SIN PUERTOS ABIERTOS DETECTADOS', result.stdout)
+        self.assertIn('NO prueba', result.stdout)
+
+    def test_masscan_reports_open_port_count(self):
+        result = self.run_script('masscan', MASSCAN_HIT='1')
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertIn('1 puerto(s) abierto(s)', result.stdout)
+        self.assertNotIn('SIN PUERTOS', result.stdout)
+
+    def test_masscan_log_drops_progress_bar_but_keeps_banner(self):
+        self.run_script('masscan')
+        log = (self.root/'scans/masscan/errores.log').read_text()
+        self.assertIn('Starting masscan', log)
+        self.assertNotIn('rate:', log)
+        self.assertNotIn('\r', log)
 
     def test_log_preserves_previous_run_and_stderr_warning_is_not_failure(self):
         log = self.root/'scans/nuclei/errores.log'; log.parent.mkdir(parents=True)
