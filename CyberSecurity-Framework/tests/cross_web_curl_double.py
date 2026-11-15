@@ -29,7 +29,7 @@ def decode_options(args):
             else:
                 values[arg] = value
             i += 2
-        elif arg in ('-skS', '-sk', '-skL', '-s', '-S', '-k', '--disable', '--'):
+        elif arg in ('-skS', '-sk', '-skL', '-s', '-S', '-k', '--disable', '--', '--globoff'):
             i += 1
         elif '://' in arg:
             urls.append(arg)

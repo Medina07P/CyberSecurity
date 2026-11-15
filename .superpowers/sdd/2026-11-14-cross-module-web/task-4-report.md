@@ -251,3 +251,78 @@ completo. Solo ese run podrá acreditar GREEN; el RED retenido no lo sustituye.
 No hay cierre global ni claim de credencial válida/compatibilidad operacional.
 Sin subagentes, red, configuración del operador, instalaciones, limpieza,
 eliminación de artefactos, push, merge o reset.
+
+## WHOLE WEB single fix wave — INITIAL TESTS FIRST, base467020f
+
+**Estado: tests/doble escritos; producción intencionadamente sin corregir;
+runtime NOT RUN.** Esta fase no afirma RED observado de I1/I2, GREEN ni cierre.
+Se leyó completo `final-static-review.md` antes de modificar archivos.
+Los findings se conservan literalmente con estos títulos del review:
+
+> Important I1 — curl URL globbing can multiply transfers behind one receipt/TSV row
+
+> Important I2 — a literal manual body beginning with `@` is still a file reference
+
+> Minor M1 — source-level login exit-code contract remains misleading
+
+I1 señala que comillas del shell no desactivan expansión curl `{one,two}`/`[1-3]`,
+por lo que una invocación puede ocultar varios envíos bajo una fila. I2 señala
+que `--data-binary "$cuerpo"` adopta un cuerpo con `@` inicial como fichero,
+no como texto crudo. M1 pide alinear cabecera rc0 del login con candidato
+heurístico o cancelación, sin cambiar clasificación/gates. M1 y producción
+I1/I2 quedan para reanudación explícita tras revisión y RED autorizado.
+
+### Cambios exactos y oráculos independientes
+
+- `tests/cross_web_curl_double.py`: única modificación, aceptar `--globoff`
+  como opción sin valor. No implementa expansión de URL, simulación de varias
+  peticiones ni defensa ficticia de negocio. Recibos raw/terminal, body base64,
+  errores, semántica `--data-binary @file` y lectura de fichero se conservan.
+- `test_cross_web.WebTests.test_login_req_transmits_each_candidate`: conserva
+  todos los oráculos previos. Añade dos subtests I1 separados (capturada/manual):
+  path `/login/{one,two}/[1-3]`, query `view={a,b}&range=[4-6]`, URL completa
+  esperada literal por modo (HTTPS8443 capturada/HTTP8080 manual), exactamente
+  dos invocaciones/recibos y los dos candidatos sintéticos ya existentes.
+  Compara password lógico capturado o cuerpo crudo manual y exige `--globoff`
+  en argv real del recibo. El doble no convierte ausencia del flag en múltiples
+  respuestas: la aserción explícita expone esa ausencia sin red real.
+- Dentro del mismo ID, un subtest I2 **independiente de I1** crea exclusivamente
+  `readable-synthetic-body.txt` nuevo bajo su fixture y un diccionario sintético
+  de una línea con esa ruta. Plantilla manual `@{password}` exige literalmente
+  `@` + ruta, no los contenidos conocidos del fichero. Revisa conteo1, estadoDONE,
+  URL/métodoPATCH/cabeceras, fichero conservado y body exacto/base64 UTF-8 distinto
+  del contenido. Sin exigir una representación de transporte de producción
+  concreta ni añadir modo de adopción de ficheros. En fuente actual se espera
+  exponer la lectura del fichero por el doble existente, no un fallo artificial.
+- `test_cross_web.WebTests.test_rate_has_no_scheme_probe`: un subtest I1 exige
+  la misma sintaxis path/query literal con URL HTTPS8443 completa, exactamente
+  dos invocaciones/recibos, `wrong-1`/`wrong-2`, usuario capturado intacto y
+  `--globoff` en argv. Al ser subtest, su fallo no omite el resto del método.
+
+Los subtests nuevos son escenarios sintéticos en IDs/grants existentes, no
+nuevos casos de discovery, técnicas ni candidatos de producto. No cambia
+`WEB_CASES`,7IDs/5grants, runtime, fixture, manifiestos, selección, baselines,
+fuentes productivas o configuración del operador. El arreglo WM1 previo y todos
+los artefactos/recibos/runs se conservan. SQLmap y empaquetado11 intactos.
+
+### Checks estáticos realizados
+
+- `git status --short` inicial vacío; `git rev-parse --short HEAD` → `467020f`.
+- Lectura del review completo, doble y secciones de test; solo fuente/datos.
+- `python3 -I -B -c` con stdlib `ast,json,pathlib,subprocess`: AST de ambos
+  archivos; comparación con `git show 467020f:<ruta>` de mismos7IDs/orden;
+  **cada statement AST original de cada método conservado en orden**, sin
+  debilitar oráculos antiguos; igualdad exacta del doble salvo añadir opción
+  `--globoff`; inventario JSON7IDs/5grants; allowlist exacta del diff de esos dos
+  archivos antes del informe. rc0, sin importar/ejecutar AST o repo; subprocess
+  solo para lecturas Git.
+- `git diff --check` y revisión textual del diff antes del commit: sin incidencias
+  (rc0). No Bash de producto alterado ni necesario para esta fase.
+
+**No se ejecutó** repo import/helper/test/probe/launcher/producto/doble/curl/rm/
+backend, tampoco dentro de sandbox. Sin red/GUI/sudo/install/download, subagentes,
+cleanup/eliminación/archivo de artefactos, push/merge/reset o datos del operador.
+Falta revisión estática independiente del nuevo SHA y comando exacto autorizado
+del controlador para observar RED I1/I2. Solo después se reanudará el arreglo
+mínimo de producción y M1, seguido de nueva revisión/gate y GREEN completo.
+No se anticipan conteos de fallos ni se reutiliza un GREEN previo para esta ola.
