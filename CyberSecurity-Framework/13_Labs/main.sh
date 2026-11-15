@@ -6,7 +6,6 @@
 
 # ─── Configuración ──────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR" || exit 1
 source "$SCRIPT_DIR/../00_Config/lib/module_intro.bash"
 
 # Colores para mejor visualización
@@ -68,17 +67,17 @@ show_stats() {
     echo -e "${YELLOW}━━━ Estadísticas Rápidas ━━━${NC}"
     
     # Contar máquinas HTB
-    HTB_COUNT=$(find hackthebox/machines -maxdepth 1 -type d 2>/dev/null | wc -l)
+    HTB_COUNT=$(find "$SCRIPT_DIR/hackthebox/machines" -maxdepth 1 -type d 2>/dev/null | wc -l)
     HTB_COUNT=$((HTB_COUNT - 1)) # Restar el directorio base
     echo -e "  🎯 HTB Máquinas: ${WHITE}$HTB_COUNT${NC}"
     
     # Contar salas THM
-    THM_COUNT=$(find tryhackme/rooms -maxdepth 1 -type d 2>/dev/null | wc -l)
+    THM_COUNT=$(find "$SCRIPT_DIR/tryhackme/rooms" -maxdepth 1 -type d 2>/dev/null | wc -l)
     THM_COUNT=$((THM_COUNT - 1))
     echo -e "  🎯 THM Salas: ${WHITE}$THM_COUNT${NC}"
     
     # Contar dominios AD
-    AD_COUNT=$(find active_directory/machines -maxdepth 1 -type d 2>/dev/null | wc -l)
+    AD_COUNT=$(find "$SCRIPT_DIR/active_directory/machines" -maxdepth 1 -type d 2>/dev/null | wc -l)
     AD_COUNT=$((AD_COUNT - 1))
     echo -e "  🎯 AD Dominios: ${WHITE}$AD_COUNT${NC}"
     
@@ -134,7 +133,7 @@ htb_menu() {
             echo -ne "${YELLOW}Nombre de la máquina: ${NC}"
             read -r machine
             if [[ -n "$machine" ]]; then
-                cd hackthebox && ./htb_setup.sh "$machine"
+                "$SCRIPT_DIR/hackthebox/htb_setup.sh" "$machine"
                 echo -e "\n${GREEN}✅ Máquina configurada correctamente${NC}"
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
@@ -143,7 +142,7 @@ htb_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Máquinas configuradas:${NC}"
-            ls -la hackthebox/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            ls -la "$SCRIPT_DIR/hackthebox/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             htb_menu
@@ -151,8 +150,8 @@ htb_menu() {
         3)
             echo -ne "${YELLOW}Nombre de la máquina: ${NC}"
             read -r machine
-            if [[ -f "hackthebox/machines/$machine/notes/README.md" ]]; then
-                ${EDITOR:-nano} "hackthebox/machines/$machine/notes/README.md"
+            if [[ -f "$SCRIPT_DIR/hackthebox/machines/$machine/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/hackthebox/machines/$machine/notes/README.md"
             else
                 echo -e "${RED}❌ Máquina no encontrada${NC}"
                 sleep 2
@@ -160,8 +159,8 @@ htb_menu() {
             htb_menu
             ;;
         4)
-            if [[ -f "hackthebox/htb_notes.md" ]]; then
-                ${EDITOR:-nano} "hackthebox/htb_notes.md"
+            if [[ -f "$SCRIPT_DIR/hackthebox/htb_notes.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/hackthebox/htb_notes.md"
             else
                 echo -e "${RED}❌ Archivo de notas no encontrado${NC}"
                 sleep 2
@@ -198,7 +197,7 @@ thm_menu() {
             echo -ne "${YELLOW}Nombre de la sala: ${NC}"
             read -r room
             if [[ -n "$room" ]]; then
-                cd tryhackme && ./thm_setup.sh "$room"
+                "$SCRIPT_DIR/tryhackme/thm_setup.sh" "$room"
                 echo -e "\n${GREEN}✅ Sala configurada correctamente${NC}"
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
@@ -207,7 +206,7 @@ thm_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Salas configuradas:${NC}"
-            ls -la tryhackme/rooms/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            ls -la "$SCRIPT_DIR/tryhackme/rooms/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             thm_menu
@@ -215,8 +214,8 @@ thm_menu() {
         3)
             echo -ne "${YELLOW}Nombre de la sala: ${NC}"
             read -r room
-            if [[ -f "tryhackme/rooms/$room/notes/README.md" ]]; then
-                ${EDITOR:-nano} "tryhackme/rooms/$room/notes/README.md"
+            if [[ -f "$SCRIPT_DIR/tryhackme/rooms/$room/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/tryhackme/rooms/$room/notes/README.md"
             else
                 echo -e "${RED}❌ Sala no encontrada${NC}"
                 sleep 2
@@ -224,8 +223,8 @@ thm_menu() {
             thm_menu
             ;;
         4)
-            if [[ -f "tryhackme/thm_notes.md" ]]; then
-                ${EDITOR:-nano} "tryhackme/thm_notes.md"
+            if [[ -f "$SCRIPT_DIR/tryhackme/thm_notes.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/tryhackme/thm_notes.md"
             else
                 echo -e "${RED}❌ Archivo de notas no encontrado${NC}"
                 sleep 2
@@ -262,7 +261,7 @@ ad_menu() {
             echo -ne "${YELLOW}Nombre del dominio (ej: domain.local): ${NC}"
             read -r domain
             if [[ -n "$domain" ]]; then
-                cd active_directory && ./ad_setup.sh "$domain"
+                "$SCRIPT_DIR/active_directory/ad_setup.sh" "$domain"
                 echo -e "\n${GREEN}✅ Dominio configurado correctamente${NC}"
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
@@ -271,7 +270,7 @@ ad_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Dominios configurados:${NC}"
-            ls -la active_directory/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            ls -la "$SCRIPT_DIR/active_directory/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             ad_menu
@@ -279,8 +278,8 @@ ad_menu() {
         3)
             echo -ne "${YELLOW}Nombre del dominio: ${NC}"
             read -r domain
-            if [[ -f "active_directory/machines/$domain/notes/README.md" ]]; then
-                ${EDITOR:-nano} "active_directory/machines/$domain/notes/README.md"
+            if [[ -f "$SCRIPT_DIR/active_directory/machines/$domain/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/active_directory/machines/$domain/notes/README.md"
             else
                 echo -e "${RED}❌ Dominio no encontrado${NC}"
                 sleep 2
@@ -288,8 +287,8 @@ ad_menu() {
             ad_menu
             ;;
         4)
-            if [[ -f "active_directory/ad_attack_notes.md" ]]; then
-                ${EDITOR:-nano} "active_directory/ad_attack_notes.md"
+            if [[ -f "$SCRIPT_DIR/active_directory/ad_attack_notes.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/active_directory/ad_attack_notes.md"
             else
                 echo -e "${RED}❌ Archivo de notas no encontrado${NC}"
                 sleep 2
@@ -326,7 +325,7 @@ web_menu() {
             echo -ne "${YELLOW}Nombre de la aplicación: ${NC}"
             read -r app
             if [[ -n "$app" ]]; then
-                cd web_apps && ./web_setup.sh "$app"
+                "$SCRIPT_DIR/web_apps/web_setup.sh" "$app"
                 echo -e "\n${GREEN}✅ Aplicación configurada correctamente${NC}"
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
@@ -335,7 +334,7 @@ web_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Aplicaciones configuradas:${NC}"
-            ls -la web_apps/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            ls -la "$SCRIPT_DIR/web_apps/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             web_menu
@@ -343,8 +342,8 @@ web_menu() {
         3)
             echo -ne "${YELLOW}Nombre de la aplicación: ${NC}"
             read -r app
-            if [[ -f "web_apps/machines/$app/notes/README.md" ]]; then
-                ${EDITOR:-nano} "web_apps/machines/$app/notes/README.md"
+            if [[ -f "$SCRIPT_DIR/web_apps/machines/$app/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/web_apps/machines/$app/notes/README.md"
             else
                 echo -e "${RED}❌ Aplicación no encontrada${NC}"
                 sleep 2
@@ -352,8 +351,8 @@ web_menu() {
             web_menu
             ;;
         4)
-            if [[ -f "web_apps/web_notes.md" ]]; then
-                ${EDITOR:-nano} "web_apps/web_notes.md"
+            if [[ -f "$SCRIPT_DIR/web_apps/web_notes.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/web_apps/web_notes.md"
             else
                 echo -e "${RED}❌ Archivo de notas no encontrado${NC}"
                 sleep 2
@@ -390,7 +389,7 @@ cloud_menu() {
             echo -ne "${YELLOW}Nombre del laboratorio: ${NC}"
             read -r lab
             if [[ -n "$lab" ]]; then
-                cd cloud && ./cloud_setup.sh "$lab"
+                "$SCRIPT_DIR/cloud/cloud_setup.sh" "$lab"
                 echo -e "\n${GREEN}✅ Laboratorio configurado correctamente${NC}"
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
@@ -399,7 +398,7 @@ cloud_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Laboratorios configurados:${NC}"
-            ls -la cloud/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            ls -la "$SCRIPT_DIR/cloud/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             cloud_menu
@@ -407,8 +406,8 @@ cloud_menu() {
         3)
             echo -ne "${YELLOW}Nombre del laboratorio: ${NC}"
             read -r lab
-            if [[ -f "cloud/machines/$lab/notes/README.md" ]]; then
-                ${EDITOR:-nano} "cloud/machines/$lab/notes/README.md"
+            if [[ -f "$SCRIPT_DIR/cloud/machines/$lab/notes/README.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/cloud/machines/$lab/notes/README.md"
             else
                 echo -e "${RED}❌ Laboratorio no encontrado${NC}"
                 sleep 2
@@ -416,8 +415,8 @@ cloud_menu() {
             cloud_menu
             ;;
         4)
-            if [[ -f "cloud/cloud_notes.md" ]]; then
-                ${EDITOR:-nano} "cloud/cloud_notes.md"
+            if [[ -f "$SCRIPT_DIR/cloud/cloud_notes.md" ]]; then
+                ${EDITOR:-nano} "$SCRIPT_DIR/cloud/cloud_notes.md"
             else
                 echo -e "${RED}❌ Archivo de notas no encontrado${NC}"
                 sleep 2
@@ -674,14 +673,14 @@ delete_menu() {
     case $option in
         1)
             echo -e "\n${YELLOW}Máquinas HTB disponibles:${NC}"
-            ls -la hackthebox/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            ls -la "$SCRIPT_DIR/hackthebox/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
             echo -ne "\n${YELLOW}Nombre de la máquina a eliminar: ${NC}"
             read -r machine
-            if [[ -n "$machine" && -d "hackthebox/machines/$machine" ]]; then
+            if [[ -n "$machine" && -d "$SCRIPT_DIR/hackthebox/machines/$machine" ]]; then
                 echo -ne "${RED}¿Estás seguro? (s/N): ${NC}"
                 read -r confirm
                 if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
-                    rm -rf "hackthebox/machines/$machine"
+                    rm -rf "$SCRIPT_DIR/hackthebox/machines/$machine"
                     echo -e "${GREEN}✅ Máquina eliminada${NC}"
                 else
                     echo -e "${YELLOW}Operación cancelada${NC}"
@@ -695,14 +694,14 @@ delete_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Salas THM disponibles:${NC}"
-            ls -la tryhackme/rooms/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            ls -la "$SCRIPT_DIR/tryhackme/rooms/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
             echo -ne "\n${YELLOW}Nombre de la sala a eliminar: ${NC}"
             read -r room
-            if [[ -n "$room" && -d "tryhackme/rooms/$room" ]]; then
+            if [[ -n "$room" && -d "$SCRIPT_DIR/tryhackme/rooms/$room" ]]; then
                 echo -ne "${RED}¿Estás seguro? (s/N): ${NC}"
                 read -r confirm
                 if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
-                    rm -rf "tryhackme/rooms/$room"
+                    rm -rf "$SCRIPT_DIR/tryhackme/rooms/$room"
                     echo -e "${GREEN}✅ Sala eliminada${NC}"
                 else
                     echo -e "${YELLOW}Operación cancelada${NC}"
@@ -716,14 +715,14 @@ delete_menu() {
             ;;
         3)
             echo -e "\n${YELLOW}Dominios AD disponibles:${NC}"
-            ls -la active_directory/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            ls -la "$SCRIPT_DIR/active_directory/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
             echo -ne "\n${YELLOW}Nombre del dominio a eliminar: ${NC}"
             read -r domain
-            if [[ -n "$domain" && -d "active_directory/machines/$domain" ]]; then
+            if [[ -n "$domain" && -d "$SCRIPT_DIR/active_directory/machines/$domain" ]]; then
                 echo -ne "${RED}¿Estás seguro? (s/N): ${NC}"
                 read -r confirm
                 if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
-                    rm -rf "active_directory/machines/$domain"
+                    rm -rf "$SCRIPT_DIR/active_directory/machines/$domain"
                     echo -e "${GREEN}✅ Dominio eliminado${NC}"
                 else
                     echo -e "${YELLOW}Operación cancelada${NC}"
@@ -737,14 +736,14 @@ delete_menu() {
             ;;
         4)
             echo -e "\n${YELLOW}Aplicaciones web disponibles:${NC}"
-            ls -la web_apps/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            ls -la "$SCRIPT_DIR/web_apps/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
             echo -ne "\n${YELLOW}Nombre de la aplicación a eliminar: ${NC}"
             read -r app
-            if [[ -n "$app" && -d "web_apps/machines/$app" ]]; then
+            if [[ -n "$app" && -d "$SCRIPT_DIR/web_apps/machines/$app" ]]; then
                 echo -ne "${RED}¿Estás seguro? (s/N): ${NC}"
                 read -r confirm
                 if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
-                    rm -rf "web_apps/machines/$app"
+                    rm -rf "$SCRIPT_DIR/web_apps/machines/$app"
                     echo -e "${GREEN}✅ Aplicación eliminada${NC}"
                 else
                     echo -e "${YELLOW}Operación cancelada${NC}"
@@ -758,14 +757,14 @@ delete_menu() {
             ;;
         5)
             echo -e "\n${YELLOW}Laboratorios cloud disponibles:${NC}"
-            ls -la cloud/machines/ 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            ls -la "$SCRIPT_DIR/cloud/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
             echo -ne "\n${YELLOW}Nombre del laboratorio a eliminar: ${NC}"
             read -r lab
-            if [[ -n "$lab" && -d "cloud/machines/$lab" ]]; then
+            if [[ -n "$lab" && -d "$SCRIPT_DIR/cloud/machines/$lab" ]]; then
                 echo -ne "${RED}¿Estás seguro? (s/N): ${NC}"
                 read -r confirm
                 if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
-                    rm -rf "cloud/machines/$lab"
+                    rm -rf "$SCRIPT_DIR/cloud/machines/$lab"
                     echo -e "${GREEN}✅ Laboratorio eliminado${NC}"
                 else
                     echo -e "${YELLOW}Operación cancelada${NC}"
@@ -872,7 +871,7 @@ main() {
             6) tools_menu ;;
             7) 
                 clear_screen
-                ./run_all_labs.sh
+                "$SCRIPT_DIR/run_all_labs.sh"
                 echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
                 ;;
@@ -894,7 +893,7 @@ main() {
 # ─── Ejecutar ──────────────────────────────────────────────
 
 # Verificar que estamos en el directorio correcto
-if [[ ! -f "setup_lab.sh" ]]; then
+if [[ ! -f "$SCRIPT_DIR/setup_lab.sh" ]]; then
     echo -e "${RED}❌ Error: No se encuentra setup_lab.sh${NC}"
     echo -e "${YELLOW}Ejecuta este script desde el directorio 13_Labs${NC}"
     exit 1

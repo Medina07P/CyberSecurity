@@ -5,6 +5,8 @@
 # Uso: ./run_all_labs.sh
 # ============================================================
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
 echo "════════════════════════════════════════════════════════"
 echo " LABORATORIOS DISPONIBLES"
 echo "════════════════════════════════════════════════════════"
@@ -12,27 +14,27 @@ echo "════════════════════════�
 echo ""
 echo "📁 HACKTHEBOX"
 echo "────────────────────────────────────────"
-ls hackthebox/machines/ 2>/dev/null || echo "  Sin máquinas configuradas"
+ls "$SCRIPT_DIR/hackthebox/machines/" 2>/dev/null || echo "  Sin máquinas configuradas"
 
 echo ""
 echo "📁 TRYHACKME"
 echo "────────────────────────────────────────"
-ls tryhackme/rooms/ 2>/dev/null || echo "  Sin salas configuradas"
+ls "$SCRIPT_DIR/tryhackme/rooms/" 2>/dev/null || echo "  Sin salas configuradas"
 
 echo ""
 echo "📁 ACTIVE DIRECTORY"
 echo "────────────────────────────────────────"
-ls active_directory/machines/ 2>/dev/null || echo "  Sin dominios configurados"
+ls "$SCRIPT_DIR/active_directory/machines/" 2>/dev/null || echo "  Sin dominios configurados"
 
 echo ""
 echo "📁 WEB APPS"
 echo "────────────────────────────────────────"
-ls web_apps/machines/ 2>/dev/null || echo "  Sin aplicaciones configuradas"
+ls "$SCRIPT_DIR/web_apps/machines/" 2>/dev/null || echo "  Sin aplicaciones configuradas"
 
 echo ""
 echo "📁 CLOUD"
 echo "────────────────────────────────────────"
-ls cloud/machines/ 2>/dev/null || echo "  Sin laboratorios configurados"
+ls "$SCRIPT_DIR/cloud/machines/" 2>/dev/null || echo "  Sin laboratorios configurados"
 
 echo ""
 echo "════════════════════════════════════════════════════════"
