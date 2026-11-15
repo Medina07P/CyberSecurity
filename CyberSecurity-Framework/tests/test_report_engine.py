@@ -878,5 +878,37 @@ class TargetIsolationTests(unittest.TestCase):
         self.assertIn("fuente", asset)
 
 
+class ClientReconciliationTests(unittest.TestCase):
+    """El cliente debe reconciliar con el técnico y no repetir líneas."""
+    def mk(self, key, titulo, sev, conf):
+        return Finding(rule="r", key=key, titulo=titulo, categoria="web", severidad=sev,
+                       confianza=conf, activo="h", tecnica="x", descripcion="d",
+                       impacto_cliente="i", recomendacion="rec " + titulo, esfuerzo="medio",
+                       cve=None, cvss=None, evidencia=[], referencias=[])
+
+    def render(self):
+        from lib.engine import Collected
+        fs = [self.mk("a", "Login", "alta", "confirmado"), self.mk("b", "Login", "alta", "confirmado"),
+              self.mk("c", "SQLi", "media", "candidato"), self.mk("d", "SSH", "media", "observacion")]
+        fs += [self.mk(f"r{i}", "Recurso", "info", "observacion") for i in range(50)]
+        out = Path(tmp()); write_reports(Collected(fs, {}, [], [], ["h"], True), {}, out, ["cliente"])
+        return (out / "informe_cliente.md").read_text(), (out / "informe_cliente.html").read_text()
+
+    def test_media_not_lost_and_table_reconciles(self):
+        md, ht = self.render()
+        self.assertIn("| Media | 0 | 1 | 1 |", md)
+        self.assertIn("| Info | 0 | 0 | 50 |", md)
+        self.assertIn("<td>1</td><td>1</td>", ht)
+        self.assertIn("Pendientes de validación", md)
+        self.assertIn("SQLi (validar primero)", md)
+
+    def test_repeated_entries_are_grouped(self):
+        md, ht = self.render()
+        self.assertEqual(md.count("### Login"), 1)
+        self.assertIn("### Login (×2)", md)
+        self.assertEqual(md.count("Recurso (×50)"), 1)
+        self.assertEqual(ht.count("Recurso (×50)"), 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
