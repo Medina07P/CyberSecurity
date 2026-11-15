@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "status": "STATIC FILE DATA ONLY; RUNTIME NOT RUN; INDEPENDENT REVIEW REQUIRED",
+  "authority": "User approved exactly /usr/bin/ls and /usr/bin/rmdir plus closed dependencies in additive Task1 fixwave steering",
+  "method": "Standalone python3 -I -B standard-library bytes/metadata ELF64 parse; no repository imports, helpers, ldd, readelf or utility execution",
+  "observation_note": "All canonical files opened via no-follow directory descriptors and O_NOFOLLOW|O_NONBLOCK; root-owned regular, no group/other write or setid; named/fd identity before/after equal. Executable bits required for the two ordinary executables, not for shared libraries. File size <=32MiB; closure depth<=64/count<1024. No RPATH/RUNPATH observed.",
+  "initial_attempt": "Static reader initially required executable bits on shared libraries too and exited AssertionError before producing closure. Corrected only the standalone provenance reader to require exec bits for ls/rmdir, not libraries. No runtime or repository resolver was executed/relaxed.",
+  "files": [
+    {
+      "source": "/usr/bin/ls", "destinations": ["/usr/bin/ls"],
+      "sha256": "69236e4221b44dd6fbf0f3bf15f4ec618078fccb05322e3a9d6f5f790d0a91bb",
+      "dev": 2049, "ino": 916736, "uid": 0, "gid": 0, "mode": "0100755", "size": 166792,
+      "mtime_ns": 1772143193000000000, "ctime_ns": 1780712526902175449,
+      "identity_before_after_equal": true,
+      "interpreter": "/lib64/ld-linux-x86-64.so.2", "needed": ["libselinux.so.1", "libc.so.6"], "rpaths": []
+    },
+    {
+      "source": "/usr/bin/rmdir", "destinations": ["/usr/bin/rmdir"],
+      "sha256": "2e7a88d94e062186bf8f4b39a96d011a5e10ae278d2f5b62ec17c70e53b2c7e8",
+      "dev": 2049, "ino": 965617, "uid": 0, "gid": 0, "mode": "0100755", "size": 43464,
+      "mtime_ns": 1772143193000000000, "ctime_ns": 1780712526910179450,
+      "identity_before_after_equal": true,
+      "interpreter": "/lib64/ld-linux-x86-64.so.2", "needed": ["libc.so.6"], "rpaths": []
+    },
+    {
+      "source": "/usr/lib/x86_64-linux-gnu/libselinux.so.1", "destinations": ["/usr/lib/x86_64-linux-gnu/libselinux.so.1"],
+      "sha256": "1f4eaaf3cd08ecd9d542175c5f0f410e76467026986f89ec22820ef929677d5b",
+      "dev": 2049, "ino": 916020, "uid": 0, "gid": 0, "mode": "0100644", "size": 194792,
+      "mtime_ns": 1770760883000000000, "ctime_ns": 1780712416775139407,
+      "identity_before_after_equal": true,
+      "interpreter": null, "needed": ["libpcre2-8.so.0", "libc.so.6", "ld-linux-x86-64.so.2"], "rpaths": []
+    },
+    {
+      "source": "/usr/lib/x86_64-linux-gnu/libpcre2-8.so.0.14.0", "destinations": ["/usr/lib/x86_64-linux-gnu/libpcre2-8.so.0"],
+      "sha256": "bcdcd67b8241f7e9d3683f7775527d3aebc191d0bcdc283e12714e07ca7bf884",
+      "dev": 2049, "ino": 919899, "uid": 0, "gid": 0, "mode": "0100644", "size": 711216,
+      "mtime_ns": 1777316446000000000, "ctime_ns": 1780712416342923407,
+      "identity_before_after_equal": true,
+      "interpreter": null, "needed": ["libc.so.6"], "rpaths": []
+    },
+    {
+      "source": "/usr/lib/x86_64-linux-gnu/libc.so.6", "destinations": ["/usr/lib/x86_64-linux-gnu/libc.so.6"],
+      "sha256": "d43c8fe19b66c7f8685119c3723d01329e8b4e93323a6494b5d0780e944b3ee5",
+      "dev": 2049, "ino": 923341, "uid": 0, "gid": 0, "mode": "0100755", "size": 2022664,
+      "mtime_ns": 1778106331000000000, "ctime_ns": 1780712368258893374,
+      "identity_before_after_equal": true,
+      "interpreter": "/lib64/ld-linux-x86-64.so.2", "needed": ["ld-linux-x86-64.so.2"], "rpaths": []
+    },
+    {
+      "source": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2", "destinations": ["/lib64/ld-linux-x86-64.so.2", "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"],
+      "sha256": "e86468e559f821b104c633ade3ead2e4c790b0b65644014f6bc3a87b5594dc01",
+      "dev": 2049, "ino": 923338, "uid": 0, "gid": 0, "mode": "0100755", "size": 230200,
+      "mtime_ns": 1778106331000000000, "ctime_ns": 1780712368254891374,
+      "identity_before_after_equal": true,
+      "interpreter": null, "needed": [], "rpaths": []
+    }
+  ]
+}

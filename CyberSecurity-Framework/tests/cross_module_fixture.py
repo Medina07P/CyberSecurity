@@ -310,15 +310,21 @@ class CrossModuleFixture:
         return self._run(['/bin/bash', '--noprofile', '--norc',
                           str(self.framework / relative), *args], stdin)
 
-    def run_menu(self, name, stdin):
+    def run_menu(self, name, stdin, real_list=False):
         if name not in ('scanners_menu', 'postexploitation_menu', 'enumeration_menu'):
             raise ValueError('Unknown fixed consent menu')
         # Consume the real manager consent classifier as source, without sourcing
-        # its initialization/main. Display policy is also real; only clear/pause
-        # and execution/list transports are doubled.
+        # its initialization/main. Display policy is also real; clear/pause and
+        # execution transports are doubled. Local real_list uses actual listing
+        # policy on new scratch entries, never protected source-folder bodies.
         source = (self.framework / 'cyber_framework.sh').read_text()
         policies = ''
-        for function in ('ask_confirm', 'script_arguments_summary'):
+        if real_list and self.group != '--cross-local':
+            raise ValueError('Real list policy is local-contract-only')
+        functions = ('ask_confirm', 'script_arguments_summary')
+        if real_list:
+            functions += ('run_module_scripts',)
+        for function in functions:
             header = '\n' + function + '() {\n'
             if source.count(header) != 1:
                 raise ValueError('Manager policy source shape changed')
@@ -331,13 +337,14 @@ class CrossModuleFixture:
             stream.write('source "$1/00_Config/lib/params.bash"\n'
                          'source "$1/00_Config/lib/prompt.bash"\n'
                          'source "$1/00_Config/lib/session.bash"\n'
+                         + ('source "$1/00_Config/lib/module_intro.bash"\n' if real_list else '') +
                          'source "$1/00_Config/lib/' + name + '.bash"\n'
                          'clear_screen() { :; }; pause() { :; }\n'
                          + policies +
                          'execute_script() { local -a original=("$@"); local script_path="$1"; shift 2; '
                          '[[ "${1:-}" != --prepared ]] || shift; '
                          'script_arguments_summary "$script_path" "$@"; record-dispatch "${original[@]}"; }\n'
-                         'run_module_scripts() { record-dispatch "$@"; }\n' + name + '\n')
+                         + ('' if real_list else 'run_module_scripts() { record-dispatch "$@"; }\n') + name + '\n')
         return self._run(['/bin/bash', '--noprofile', '--norc', str(driver), str(self.framework)], stdin)
 
     def record_coordinator_leaves(self):
@@ -361,7 +368,9 @@ class CrossModuleFixture:
         if self.group != '--cross-local':
             raise ValueError('Local coordinator recorders require exact local selection')
         leaves = tuple(relative for relative in COORDINATOR_LEAVES
-                       if relative.startswith('06_PostExploitation/')) + (
+                       if relative.startswith('06_PostExploitation/') and
+                       relative != '06_PostExploitation/privilege_escalation/linpeas.sh') + (
+            '06_PostExploitation/privilege_escalation/linpeas.sh',
             '06_PostExploitation/lateral_movement/ps_exec.sh',
             '06_PostExploitation/cleanup/logs_cleaner.sh',)
         for relative in leaves:
@@ -371,3 +380,20 @@ class CrossModuleFixture:
                 path.rename(path.with_name(path.name + '.retained-source'))
             path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             _new_text(path, '#!/bin/bash\nrecord-dispatch ' + repr(relative) + ' "$@"\n')
+
+    def install_local_inventory(self, inventory):
+        if self.group != '--cross-local':
+            raise ValueError('Local listing requires local worker')
+        from automation_sandbox_prepare import source_names
+        manifest = set(source_names())
+        for module, entries in inventory.items():
+            if module not in ('04_Enumeration', '06_PostExploitation'):
+                raise ValueError('Unknown inventory module')
+            for entry in entries:
+                relative = module + '/' + entry
+                if 'CyberSecurity-Framework/' + relative not in manifest:
+                    raise ValueError('Original entry absent from staged source inventory')
+                path = self.framework / relative
+                if not path.exists():
+                    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    _new_text(path, '#!/bin/bash\nrecord-dispatch ' + repr(relative) + ' "$@"\n')

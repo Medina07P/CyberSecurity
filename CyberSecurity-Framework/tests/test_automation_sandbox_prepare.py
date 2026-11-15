@@ -64,11 +64,12 @@ class Preparation(unittest.TestCase):
         self.assertEqual(prepare.CROSS_RUNTIME, (
             ('/usr/bin/mawk', '/usr/bin/awk'), ('/usr/bin/cut', '/usr/bin/cut'),
             ('/usr/bin/seq', '/usr/bin/seq'), ('/usr/bin/sleep', '/usr/bin/sleep'),
-            ('/usr/bin/tee', '/usr/bin/tee'), ('/usr/bin/rm', '/usr/bin/rm')))
+            ('/usr/bin/tee', '/usr/bin/tee'), ('/usr/bin/rm', '/usr/bin/rm'),
+            ('/usr/bin/ls', '/usr/bin/ls'), ('/usr/bin/rmdir', '/usr/bin/rmdir')))
         from unittest import mock
         good = mock.Mock(st_uid=0, st_mode=0o100755, st_dev=1, st_ino=2,
                          st_size=100, st_mtime_ns=3, st_ctime_ns=4)
-        for name in ('mawk', 'rm'):
+        for name in ('mawk', 'rm', 'ls', 'rmdir'):
             good.st_uid, good.st_mode = 0, 0o100755
             with patch.object(prepare, '_open_regular', return_value=(41, 42, name)), \
                     patch.object(prepare.os, 'close'), \
@@ -80,6 +81,18 @@ class Preparation(unittest.TestCase):
                     good.st_uid, good.st_mode = uid, mode
                     with self.subTest(name=name, uid=uid, mode=mode), self.assertRaises(IsolationBlocked):
                         prepare._ordinary_runtime_identity(Path('/usr/bin/' + name))
+            good.st_uid, good.st_mode = 0, 0o100755
+            changed = mock.Mock(st_uid=0, st_mode=0o100755, st_dev=1, st_ino=999,
+                                st_size=100, st_mtime_ns=3, st_ctime_ns=4)
+            with patch.object(prepare, '_open_regular', return_value=(41, 42, name)), \
+                    patch.object(prepare.os, 'close'), \
+                    patch.object(prepare.os, 'fstat', return_value=good), \
+                    patch.object(prepare.os, 'stat', return_value=changed), \
+                    self.assertRaises(IsolationBlocked):
+                prepare._ordinary_runtime_identity(Path('/usr/bin/' + name))
+            with patch.object(prepare, '_open_regular', side_effect=IsolationBlocked('nofollow refusal')), \
+                    self.assertRaises(IsolationBlocked):
+                prepare._ordinary_runtime_identity(Path('/usr/bin/' + name))
 
     def test_exact_stdlib_alias_materialized_regular(self):
         from automation_sandbox_prepare import _python_files

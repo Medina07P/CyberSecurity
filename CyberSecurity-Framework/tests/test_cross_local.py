@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import stat
 import sys
@@ -33,6 +34,26 @@ SECTIONS = {
     'cloud': ('Proveedor', 'Recursos', 'Credenciales', 'Hallazgos', 'Explotación'),
 }
 
+# Independent cc79715 path inventory, NOT derived from current menu or fixture
+# copy allowlist. Only names are inspected; protected loot bodies stay unread.
+ORIGINAL_ENTRIES = {
+    '04_Enumeration': (
+        'api/enum_api.sh', 'database/enum_mysql.sh', 'database/enum_postgres.sh',
+        'database/enum_redis.sh', 'ftp/enum_ftp.sh', 'ftp/ftp_anonymous.sh',
+        'ldap/enum_ldap.sh', 'ldap/ldap_anonymous.sh', 'run_all_enum.sh',
+        'show_results.sh', 'smb/enum_smb.sh', 'smb/enum_smb_advanced.sh',
+        'ssh/enum_ssh.sh', 'web/deepseeenum_web.sh', 'web/enum_web.sh', 'web/enum_web_advanced.sh'),
+    '06_PostExploitation': (
+        'cleanup/logs_cleaner.sh', 'credential_access/history_parser.sh',
+        'credential_access/linux_creds.sh', 'lateral_movement/port_forward.sh',
+        'lateral_movement/ps_exec.sh', 'lateral_movement/ssh_jump.sh',
+        'loot/file_collector.sh', 'loot/screenshot_collector.sh',
+        'persistence/cron_persistence.sh', 'persistence/ssh_backdoor.sh',
+        'privilege_escalation/capabilities_check.sh', 'privilege_escalation/cron_check.sh',
+        'privilege_escalation/linpeas.sh', 'privilege_escalation/suid_check.sh',
+        'run_all_post.sh', 'show_results.sh'),
+}
+
 
 def load_helper(path, name):
     # Called INSIDE methods, never discovery; missing source is an explicit ERROR
@@ -56,6 +77,48 @@ def fingerprint(path):
     return hashlib.sha256(path.read_bytes()).hexdigest(), stat.S_IMODE(path.stat().st_mode)
 
 
+def observe_source(path):
+    """No-follow observation; missing/unreadable/special objects are evidence."""
+    row = {'exists': None, 'type': None, 'mode': None, 'sha256': None, 'errors': []}
+    fd = directory = None
+    try:
+        if not path.is_absolute() or '..' in path.parts:
+            raise ValueError('Source observation requires absolute normalized path')
+        directory = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        for component in path.parts[1:-1]:
+            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        info = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
+        row.update(exists=True, mode=stat.S_IMODE(info.st_mode), type=(
+            'regular' if stat.S_ISREG(info.st_mode) else 'link' if stat.S_ISLNK(info.st_mode)
+            else 'directory' if stat.S_ISDIR(info.st_mode) else 'special'))
+        if row['type'] == 'regular':
+            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+            opened = os.fstat(fd)
+            if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                raise OSError('source identity/type changed during observation')
+            digest = hashlib.sha256()
+            while chunk := os.read(fd, 65536): digest.update(chunk)
+            final = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
+            if (final.st_dev, final.st_ino, final.st_mode, final.st_size, final.st_mtime_ns) != (
+                    opened.st_dev, opened.st_ino, opened.st_mode, opened.st_size, opened.st_mtime_ns):
+                raise OSError('source identity/metadata changed while hashing')
+            row['sha256'] = digest.hexdigest()
+    except FileNotFoundError as exc:
+        row['exists'] = False if row['exists'] is None else row['exists']
+        row['errors'].append({'type': type(exc).__name__, 'errno': exc.errno})
+    except OSError as exc:
+        row['errors'].append({'type': type(exc).__name__, 'errno': exc.errno})
+    finally:
+        for descriptor in (fd, directory):
+            if descriptor is not None:
+                try: os.close(descriptor)
+                except OSError as exc:
+                    row['errors'].append({'type': type(exc).__name__, 'errno': exc.errno, 'phase': 'close'})
+    return row
+
+
 class LocalCase(unittest.TestCase):
     def fixture(self):
         from cross_module_fixture import CrossModuleFixture
@@ -69,15 +132,42 @@ class LocalCase(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(live.stat().st_mode), 0o500, relative)
 
     def leaf(self, f, relative, args=(), stdin='', cwd=None):
-        before = {p: fingerprint(f.framework / p) for p in f.source_files}
+        before = {p: observe_source(f.framework / p) for p in f.source_files}
+        new_text(f.output / ('sources-before-' + str(f._invocations + 1) + '.json'),
+                 json.dumps(before, sort_keys=True))
+        launch_error = None
         try:
             return f._run(['/bin/bash', '--noprofile', '--norc', str(f.framework / relative), *args], stdin, cwd)
+        except BaseException as exc:
+            launch_error = exc
+            raise
         finally:
-            after = {p: fingerprint(f.framework / p) for p in f.source_files}
-            # Receipts survive even if an assertion/legacy rewrite fails.
-            new_text(f.output / ('sources-' + str(f._invocations) + '.json'),
-                     json.dumps({'before': before, 'after': after}, sort_keys=True))
-            self.assertEqual(before, after, 'public source changed during invocation')
+            try:
+                after = {p: observe_source(f.framework / p) for p in f.source_files}
+                new_text(f.output / ('sources-' + str(f._invocations) + '.json'),
+                         json.dumps({'before': before, 'after': after,
+                                     'launch_error': type(launch_error).__name__ if launch_error else None}, sort_keys=True))
+                # Persist observations FIRST. Never mask the original launch
+                # exception with a source-integrity assertion/receipt failure.
+                if launch_error is None:
+                    self.assertEqual(before, after, 'public source changed during invocation')
+                    for row in after.values():
+                        self.assertEqual(row['type'], 'regular')
+                        self.assertEqual(row['errors'], [])
+            except BaseException as observation_error:
+                if launch_error is None:
+                    raise
+                launch_error.add_note('Source receipt/integrity observation failed: ' + repr(observation_error))
+
+    def assert_product_privacy(self, f, password, roots=None):
+        # Harness stdout/argv/backend receipts deliberately remain raw, outside
+        # these product roots. Never exempt canonical repo-level product scans.
+        roots = (f.framework, f.repo / 'scans', f.home) if roots is None else roots
+        for root in roots:
+            if not root.exists(): continue
+            for path in root.rglob('*'):
+                if path.is_file() and not path.is_symlink():
+                    self.assertNotIn(password.encode(), path.read_bytes(), str(path))
 
     def responses(self, f, **responses):
         f.env['CROSS_LOCAL_RESPONSES'] = json.dumps(responses)
@@ -198,9 +288,14 @@ class StableToolTests(LocalCase):
             self.assertEqual(len(f.records()), before)
         # Raw harness receipts deliberately include synthetic argv; product output
         # must not. Do not claim OS argv secrecy or redact evidence to fake it.
-        for path in f.framework.rglob('*'):
-            if path.is_file() and path not in [f.framework / p for p in f.source_files]:
-                self.assertNotIn(password.encode(), path.read_bytes(), str(path))
+        self.assert_product_privacy(f, password)
+        # Mutant oracle: a product leak at the canonical sibling scans root MUST
+        # be rejected. Preserve the new sentinel; do not redact raw harness logs.
+        oracle_root = f.repo / 'scans/privacy-oracle'
+        leak = new_text(oracle_root / 'synthetic-leak.log', 'password=' + password)
+        with self.assertRaises(AssertionError):
+            self.assert_product_privacy(f, password, (oracle_root,))
+        self.assertEqual(leak.read_text(), 'password=' + password)
         self.unchanged_sources(f)
 
     def test_linpeas_requires_explicit_source_and_sudo(self):
@@ -404,6 +499,42 @@ class ReconTests(LocalCase):
 class LocalMenuTests(LocalCase):
     def test_modes_marks_and_coordinator_omissions(self):
         f = self.fixture()
+        references = {p: observe_source(f.repo / 'source-reference' / p) for p in f.source_files}
+        reference_bytes = {p: (Path('/source/CyberSecurity-Framework') / p).read_bytes() for p in f.source_files}
+        for p, original in reference_bytes.items():
+            self.assertEqual((f.repo / 'source-reference' / p).read_bytes(), original)
+        # Observation oracle lives in this existing granted ID: retain every new
+        # object and receipt; no repair/deletion to manufacture an intact source.
+        observer_root = f.repo / 'source-observer-oracle'
+        observer_root.mkdir(mode=0o700)
+        regular = new_text(observer_root / 'regular', 'observer sentinel', 0o640)
+        (observer_root / 'dangling').symlink_to(observer_root / 'missing')
+        (observer_root / 'directory').mkdir(mode=0o700)
+        observations = {name: observe_source(observer_root / name)
+                        for name in ('regular', 'dangling', 'directory', 'missing')}
+        new_text(f.output / 'source-observer-oracle.json', json.dumps(observations, sort_keys=True))
+        self.assertEqual(observations['regular']['sha256'], hashlib.sha256(regular.read_bytes()).hexdigest())
+        self.assertEqual(observations['regular']['mode'], 0o640)
+        self.assertEqual(observations['dangling']['type'], 'link')
+        self.assertIsNone(observations['dangling']['sha256'])
+        self.assertEqual(observations['directory']['type'], 'directory')
+        self.assertFalse(observations['missing']['exists'])
+        self.assertTrue(observations['missing']['errors'])
+        from automation_sandbox_prepare import source_names
+        staged_names = set(source_names())
+        for module, entries in ORIGINAL_ENTRIES.items():
+            for entry in entries:
+                self.assertIn('CyberSecurity-Framework/' + module + '/' + entry, staged_names)
+        # Independent pinned names + actual manager listing policy. Create ONLY
+        # missing inert scratch leaves, never read protected source-folder bodies.
+        listing = self.fixture()
+        listing.install_local_inventory(ORIGINAL_ENTRIES)
+        for menu, choice, module in (('enumeration_menu', '11\n0\n0\n', '04_Enumeration'),
+                                     ('postexploitation_menu', '9\n0\n0\n', '06_PostExploitation')):
+            result = listing.run_menu(menu, choice, real_list=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for entry in ORIGINAL_ENTRIES[module]: self.assertIn(entry, result.stdout)
+            self.assertEqual(listing.records(), [])
         for menu in ('enumeration_menu', 'postexploitation_menu'):
             for text in ('0\n', ''):
                 offset = len(f.records())
@@ -412,6 +543,23 @@ class LocalMenuTests(LocalCase):
         for text in ('2\n0\n0\n', '2\n'):
             offset = len(f.records())
             f.run_menu('postexploitation_menu', text)
+            self.assertFalse(any(LINPEAS in row for row in f.records()[offset:]))
+        selected = new_text(f.repo / 'menu-selected.sh', '#!/bin/bash\necho selected\n', 0o700)
+        # Pin the upcoming public menu contract: option2 asks source choice
+        # (1 local, 2 download, 0 cancel); execute_script is ONLY transport.
+        for choice, expected in (
+                ('2\n1\n' + str(selected) + '\n0\n',
+                 ['--binary', str(selected), '--execute', '--allow-sudo']),
+                ('2\n2\n0\n', ['--download', '--execute', '--allow-sudo'])):
+            offset = len(f.records())
+            result = f.run_menu('postexploitation_menu', choice)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            linpeas = [row for row in f.records()[offset:] if LINPEAS in row]
+            self.assertEqual(linpeas, [['record-dispatch', LINPEAS, '06_PostExploitation', '--prepared', *expected]])
+            self.assertFalse(any(row[0] in ('curl', 'wget', 'sudo') for row in f.records()[offset:]))
+        for choice in ('2\n1\n0\n0\n', '2\n1\n', '2\n0\n0\n', '2\n'):
+            offset = len(f.records())
+            self.assertEqual(f.run_menu('postexploitation_menu', choice).returncode, 0)
             self.assertFalse(any(LINPEAS in row for row in f.records()[offset:]))
         for menu, choice, module in (('enumeration_menu', '11\n0\n', '04_Enumeration'),
                                      ('postexploitation_menu', '9\n0\n', '06_PostExploitation')):
@@ -436,13 +584,30 @@ class LocalMenuTests(LocalCase):
             'done\nparams_is_dangerous "06_PostExploitation/privilege_escalation/linpeas.sh"\n')
         result = f._run(['/bin/bash', str(policy), str(f.framework), *KINDS.values()], '')
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('se reemplaza por', (f.framework / SMB).read_text())
+        for p, captured in reference_bytes.items():
+            self.assertEqual((f.repo / 'source-reference' / p).read_bytes(), captured)
+        self.assertEqual({p: observe_source(f.repo / 'source-reference' / p) for p in f.source_files}, references)
         # Retain real source copies; coordinators may only hit these recorders,
         # including protected data-folder leaves that are NEVER read/copied.
+        live_linpeas = fingerprint(f.framework / LINPEAS)
         f.record_local_coordinator_leaves()
+        self.assertEqual(fingerprint((f.framework / LINPEAS).with_name('linpeas.sh.retained-source')), live_linpeas)
         offset = len(f.records())
-        self.leaf(f, '06_PostExploitation/run_all_post.sh', ('example.test',))
+        result = self.leaf(f, '06_PostExploitation/run_all_post.sh', ('example.test',))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(any(LINPEAS in row or PSEXEC in row for row in f.records()[offset:]))
+        self.assertRegex(result.stdout.lower(), r'linpeas[^\n]*(?:selecci[oó]n|seleccionar)[^\n]*(?:requerida|requiere|expl[ií]cita)')
+        counts = re.search(r'Ejecutadas:\s*(\d+)\s*\|\s*Fallidas:\s*(\d+)\s*\|\s*Omitidas:\s*(\d+)', result.stdout)
+        self.assertIsNotNone(counts, result.stdout)
+        # Five ordinary child recorders:3 privilege checks +2 credentials; loot
+        # file collector adds one, screenshot omitted without its backend.
+        self.assertEqual(tuple(map(int, counts.groups())), (6, 0, 2))
+        dispatched = [row for row in f.records()[offset:] if row[0] == 'record-dispatch']
+        self.assertEqual(len(dispatched), 6)
         source = (f.framework / 'cyber_framework.sh').read_text()
         self.assertIn('script_arguments_summary', source)
         self.assertIn('ps_exec.sh', source)
-        self.assertNotIn('se reemplaza por', (f.repo / 'source-reference' / SMB).read_text())
+        for p, captured in reference_bytes.items():
+            self.assertEqual((f.repo / 'source-reference' / p).read_bytes(), captured)
+        self.assertEqual({p: observe_source(f.repo / 'source-reference' / p) for p in f.source_files}, references)
