@@ -84,3 +84,23 @@ scanner_run() {
     fi
     return 0
 }
+
+# scanner_nuclei_summary <fichero> → resumen explícito del resultado de Nuclei.
+# Con 0 líneas dice «SIN HALLAZGOS» en vez de dejar un archivo vacío mudo.
+# Solo se llama tras una ejecución con código 0; un fallo ya es NO DETERMINADO.
+scanner_nuclei_summary() {
+    local file="$1" n
+    if [[ ! -e "$file" ]]; then
+        echo "⚠️  Nuclei terminó sin crear $file. Resultado NO DETERMINADO."
+        return 1
+    fi
+    n=$(grep -c . "$file")
+    if (( n == 0 )); then
+        echo "🟢 SIN HALLAZGOS: Nuclei terminó sin errores y 0 plantillas coincidieron."
+        echo "   Esto no prueba ausencia de vulnerabilidades: solo cubre las plantillas"
+        echo "   y severidades de esta ejecución. Nuclei no detecta fallos de lógica propios."
+    else
+        echo "🔴 HALLAZGOS: $n coincidencia(s). Revisa $file"
+    fi
+    return 0
+}

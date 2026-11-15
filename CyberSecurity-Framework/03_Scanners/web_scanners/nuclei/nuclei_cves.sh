@@ -13,4 +13,6 @@ SLUG=$(scans_slug "$URL")
 echo "🔬 CVEs HTTP en $URL; severidad $SEVERITY; máximo 10 peticiones/s"
 scanner_run "$OUTPUT_DIR/errores.log" nuclei -u "$URL" -tags cve -type http \
     -severity "$SEVERITY" -nc -rl 10 -c 2 -duc -ni -o "$OUTPUT_DIR/cves_${SLUG}.txt" || exit 1
-echo "✅ Ejecución completada. Resultados: $OUTPUT_DIR/cves_${SLUG}.txt"
+echo "✅ Ejecución completada."
+scanner_nuclei_summary "$OUTPUT_DIR/cves_${SLUG}.txt" || exit 1
+echo "📁 Resultados: $OUTPUT_DIR/cves_${SLUG}.txt"

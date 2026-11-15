@@ -13,5 +13,6 @@ echo "🔬 Nuclei: $URL; HTTP, severidades critical/high/medium, máximo 10 peti
 scanner_run "$OUTPUT_DIR/errores.log" nuclei -u "$URL" -severity critical,high,medium \
     -type http -rl 10 -c 2 -duc -ni -nc -o "$OUTPUT_DIR/nuclei_${SLUG}.txt" || exit 1
 # El segundo pase duplicaba muchas plantillas CVE; existe una entrada CVE dedicada.
-echo "✅ Ejecución completada. Un archivo vacío no prueba ausencia de vulnerabilidades."
+echo "✅ Ejecución completada."
+scanner_nuclei_summary "$OUTPUT_DIR/nuclei_${SLUG}.txt" || exit 1
 echo "📁 Resultados: $OUTPUT_DIR/nuclei_${SLUG}.txt"

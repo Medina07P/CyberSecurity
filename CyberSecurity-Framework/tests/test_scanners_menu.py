@@ -311,6 +311,21 @@ class ScannersTest(unittest.TestCase):
             self.assertEqual(call[call.index('-h')+1], url)
             self.assertEqual('-ssl' in call, ssl)
 
+    def test_nuclei_states_explicitly_when_nothing_was_found(self):
+        for leaf in ('nuclei', 'cves'):
+            result = self.run_script(leaf)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            self.assertIn('SIN HALLAZGOS', result.stdout)
+            self.assertIn('no prueba ausencia', result.stdout)
+            self.assertNotIn('HALLAZGOS: ', result.stdout.replace('SIN HALLAZGOS', ''))
+
+    def test_nuclei_states_finding_count_when_something_matched(self):
+        for leaf in ('nuclei', 'cves'):
+            result = self.run_script(leaf, NUCLEI_HIT='1')
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            self.assertIn('HALLAZGOS: 1 coincidencia', result.stdout)
+            self.assertNotIn('SIN HALLAZGOS', result.stdout)
+
     def test_cve_output_is_consumed_by_report_engine(self):
         shutil.copytree(FW/'11_Reports/lib', self.fw/'11_Reports/lib')
         result = self.run_script('cves', NUCLEI_HIT='1')
