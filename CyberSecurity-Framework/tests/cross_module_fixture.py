@@ -66,6 +66,11 @@ def _new_text(path, value):
         stream.write(value)
 
 
+# Synthetic session value for the full-list driver ONLY. It is written into the
+# fixture's new scratch 00_Config, never into operator configuration/data.
+FULL_LIST_TARGET = 'session-target.example'
+
+
 # Exact synthetic dispatch destinations, NOT copied/read child sources. Genuine
 # originals stay in the staged RO /source manifest; coordinators use new inerts.
 COORDINATOR_LEAVES = (
@@ -257,6 +262,20 @@ class CrossModuleFixture:
         with (self.framework / '00_Config/.session').open('x') as stream:
             stream.write(target + '\n')
 
+    def set_full_list_session(self):
+        """Minimum synthetic session shim for the full-list driver: value only."""
+        if self.group != '--cross-local':
+            raise ValueError('Full-list session shim requires local worker')
+        if '\n' in FULL_LIST_TARGET or not FULL_LIST_TARGET:
+            raise ValueError('Full-list session shim value is not a plain single line')
+        path = self.framework / '00_Config/.session'
+        if path.exists():
+            if path.read_text() != FULL_LIST_TARGET + '\n':
+                raise ValueError('Full-list session shim already holds another target')
+            return FULL_LIST_TARGET
+        _new_text(path, FULL_LIST_TARGET + '\n')
+        return FULL_LIST_TARGET
+
     def records(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
 
@@ -353,10 +372,16 @@ class CrossModuleFixture:
         # ONLY replace the final external Bash-process transport. The actual
         # list, params, prompt, consent, argv reconstruction and summary run.
         policies = policies.replace(boundary, '        record-dispatch "$script_path" "${argv[@]}"')
+        # The real manager sources session.bash; the driver must too, so the
+        # displayed default target is exercised from a synthetic session value.
+        self.set_full_list_session()
         driver = self.output / ('full-list-' + str(self._invocations) + '.sh')
         _new_text(driver,
                   'source "$1/00_Config/lib/params.bash"\n'
+                  'source "$1/00_Config/lib/session.bash"\n'
                   'source "$1/00_Config/lib/prompt.bash"\n'
+                  'declare -F session_target >/dev/null 2>&1 || exit 94\n'
+                  '[[ -n "$(session_target)" ]] || exit 95\n'
                   'source "$1/00_Config/lib/module_intro.bash"\n'
                   'clear_screen() { :; }; pause() { :; }\n' + policies +
                   self._read_observer() +

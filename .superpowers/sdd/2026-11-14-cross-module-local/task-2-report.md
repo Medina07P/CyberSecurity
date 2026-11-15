@@ -531,3 +531,88 @@ confirmed by the authorized runtime.
 - Full local12 stays pending Task3–5; the new subtests keep pending failures
   visible instead of hiding them. No re-review, controller authorization,
   GREEN, Task9/global closure, push or merge follows from this appendix.
+
+## Task2 fixwave2 — M1/M2/M3 (STATIC / NOT RUN)
+
+Base/HEAD `958f00d`. Only the three Minor observations of
+`task-2-static-rereview-1.md` were addressed; nothing else was touched.
+
+### Exact changes
+
+**M1 — synthetic session in the full-list driver.** `cross_module_fixture.py`
+adds `FULL_LIST_TARGET = 'session-target.example'` and
+`set_full_list_session()`, which writes that value into the fixture's own new
+scratch `00_Config/.session` (exclusive `_new_text`, 0600) and rejects an
+existing file with a different value. No operator config, credentials or scope
+is read. `run_full_list()` calls it; the driver now sources `session.bash`
+explicitly and is fail-closed (`exit 94` if `session_target` is undefined,
+`exit 95` if it reads empty) before any policy runs. `test_cross_local.py`
+asserts, for both leaves, that the prompt shows `[session-target.example]` and
+that leaving the first field empty dispatches that value as `argv[1]`.
+
+**M2 — closed consumers never reach the echoing generic secret read.**
+Policy chosen: **strictly lexical canonicalization AND explicit refusal**.
+- `params.bash`: `_params_stable_identity` strips ONE leading `./` and collapses
+  repeated `//` (pure Bash, no realpath/symlink/`..` resolution);
+  `params_mode` matches `stable` only on that form. `params_is_stable_identity`
+  recognizes the same two closed consumers under any other prefix (absolute or
+  foreign) so the caller can refuse rather than degrade.
+- `prompt.bash`: if `mode != stable` but the identity is one of those two
+  consumers, it prints a stderr notice and returns 1 (contract: cancelled);
+  `execute_script` maps that to "Cancelado", rc0 and zero dispatch. No generic
+  validator relaxation, no silent fallback, no new `params_mode` value.
+- Why both: canonicalization alone would still route `/<abs>/…/ps_exec.sh` to
+  the generic loop (echo + trim); refusal alone would discard the unambiguous
+  `./` and `//` spellings. The only remaining generic route is an identity
+  without the module component (bare basename), which the manager never emits.
+
+**M3 — parse receipts by offset + explicit label.** `test_cross_local.py` no
+longer uses `psexec_parsed()[-1]`: each dispatch captures
+`len(psexec_parsed())`/`len(records())` first and asserts the whole new slice is
+exactly one expected row (`backend`, `target`, `command`, flags), so a stale row
+cannot satisfy it. The old-shape mutant oracle is untouched and still
+discriminating (`--help`/`-target-ip` write no parse row; `-debug`/`-k` flip
+flags).
+
+### Static verification (commands + results)
+
+- `bash -n` with captured stderr on `00_Config/lib/params.bash`,
+  `00_Config/lib/prompt.bash`, `04_Enumeration/smb/enum_smb.sh`,
+  `06_PostExploitation/lateral_movement/ps_exec.sh`: 4× rc0, stderr empty.
+- stdlib `ast.parse` (no import) of `tests/cross_module_fixture.py` and
+  `tests/test_cross_local.py`: OK (22 / 21 functions).
+- `git diff --check` empty; `git status --porcelain -uall` lists only the four
+  intended files. `git diff -U0` shows no added/renamed `class`/`def test_`, so
+  the 12 case IDs / 11 grants / 1 pure selection, the source manifest and the
+  cases JSON are unchanged; Linpeas, Labs and CIDR sources untouched; the I1–I3
+  hunks are intact.
+
+### Runtime NOT RUN
+
+Nothing was imported, sourced or executed: no case worker, launcher, fixture,
+double, backend, test, suite or probe, not even in sandbox. The new assertions
+on session display/adoption, refusal routing and offset slices are
+**unverified at runtime**; no PTY/terminal, kernel or backend guarantee is
+claimed.
+
+### Residual risks / superseded notes
+
+- An absolute or otherwise non-canonical identity no longer degrades silently to
+  preview: it is refused with a notice (previous bullet superseded). A bare
+  basename still reaches the generic prompt; the manager never produces it.
+- `params_mode` keeps the fourth value `stable` that AGENTS.md does not list
+  (Task6), and `tests/run_tests.sh` would classify the two leaves as `stable`
+  if it ever iterated relative paths.
+- The adapter still cancels instead of re-prompting; `0`/`!` remain cancel
+  tokens, so those literal secrets stay unusable from this route.
+- The synthetic parser oracle remains a grammar subset; other backend versions,
+  OS argv exposure and non-universal redaction stand.
+
+SHA-256 / mode of the files changed by fixwave2:
+
+| Framework-relative source | SHA-256 | mode |
+|---|---|---|
+|00_Config/lib/params.bash|ece553fe91a0695c4f97b58fe160b17411aa03d3508fb8ec6c1c03e1bea5000b|775|
+|00_Config/lib/prompt.bash|cca403984d972fc2180dfb216d23990e2c103f2792c8c500e4b3a4fbd58bb8ba|775|
+|tests/cross_module_fixture.py|e2dd5df4ac0917a939d312a03ad5e4e9839d2b69099adeef1b9966a5974665d8|664|
+|tests/test_cross_local.py|aab1ea55d3c54a32f779cdce7ba8e80e7f26629920e88cc0e3d10f06423ee2f8|664|

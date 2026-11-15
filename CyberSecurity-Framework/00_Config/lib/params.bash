@@ -111,11 +111,39 @@ params_slot_count() {
 
 # ─── Modo de invocación ────────────────────────────────────
 
+# _params_stable_identity <ruta> → forma léxica mínima: quita UN './' inicial y
+# colapsa '//' repetidas. Nunca resuelve enlaces, '..' ni prefijos absolutos.
+_params_stable_identity() {
+    local value="$1" rest
+    value="${value#./}"
+    while [[ "$value" == *//* ]]; do
+        rest="${value#*//}"
+        value="${value%%//*}/$rest"
+    done
+    printf '%s\n' "$value"
+}
+
+# params_is_stable_identity <ruta> → 0 si ES uno de los dos consumidores
+# cerrados, en forma canónica o bajo cualquier prefijo (absoluto o ajeno).
+# No autoriza a ningún otro script: solo reconoce esas dos identidades.
+params_is_stable_identity() {
+    case "$(_params_stable_identity "$1")" in
+        04_Enumeration/smb/enum_smb.sh|06_PostExploitation/lateral_movement/ps_exec.sh)
+            return 0 ;;
+        */04_Enumeration/smb/enum_smb.sh|*/06_PostExploitation/lateral_movement/ps_exec.sh)
+            return 0 ;;
+    esac
+    return 1
+}
+
 # params_mode <script> [ruta-relativa] → none | manual | slots | stable
 params_mode() {
     local rest first name up slots
-    # Closed public consumers only. Do not relax generic slots/manual parsing.
-    case "${2:-$1}" in
+    # Closed public consumers only. The relative identity accepts just its
+    # canonical lexical form (one leading './' or duplicate '/' tolerated);
+    # any other form is refused by the caller, never silently degraded to the
+    # generic slot prompt. Generic slots/manual parsing is NOT relaxed.
+    case "$(_params_stable_identity "${2:-$1}")" in
         04_Enumeration/smb/enum_smb.sh|06_PostExploitation/lateral_movement/ps_exec.sh)
             printf 'stable\n'; return ;;
     esac
