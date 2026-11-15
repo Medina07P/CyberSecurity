@@ -47,7 +47,7 @@ LOCAL_SOURCE_FILES = (
     '00_Config/lib/web_target.bash', '00_Config/lib/session.bash',
     '00_Config/lib/params.bash', '00_Config/lib/prompt.bash',
     '00_Config/lib/postexploitation_menu.bash', '00_Config/lib/postexploitation_runtime.bash',
-    '00_Config/lib/module_intro.bash', '00_Config/lib/dangerous.txt',
+    '00_Config/lib/labs_runtime.py', '00_Config/lib/module_intro.bash', '00_Config/lib/dangerous.txt',
     '04_Enumeration/smb/enum_smb.sh',
     '06_PostExploitation/lateral_movement/ps_exec.sh',
     '06_PostExploitation/privilege_escalation/linpeas.sh',
