@@ -5,10 +5,30 @@ implementado sobre la base cerrada del bloque web (`cc79715`). Cubre seis tareas
 generación exclusiva de lanzadores, SMB/PSExec estables, Linpeas con fuente/sudo
 explícitos, Labs con inicialización exclusiva, parser CIDR y consumidores/docs.
 
-## Alcance y resultados
+## Estado rectificado, 2026-11-15
 
-- Tareas 1–6 completadas con revisión estática independiente por tarea y gates
-  de runtime autorizados por SHA.
+**NO APROBADO para cierre.** La revisión final propia de `d89a371` encontró
+defectos no cubiertos por los tests existentes. La anterior afirmación de
+Tasks1–6 completas y revisión independiente aprobada por tarea queda retirada.
+No hay informe final independiente; el usuario pidió completar esta revisión
+personalmente. Informe detallado:
+`.superpowers/sdd/2026-11-14-cross-module-local/final-integration-review.md`.
+
+Pendientes bloqueantes: modos contradictorios Linpeas permiten ejecutar aun con
+`--preview`/`--help`; rutas de salida Linpeas y ancestros Labs no se fijan mediante
+descriptores; Labs elimina su README parcial ante error; faltan límites efectivos
+equivalentes en descarga wget; ping pierde errores de salida y clasifica ciertos
+errores de ejecución como inactividad. Faltan selección de raíz Labs en menú y
+conciliación de guías. El plan separado de menores y cierre global sigue pendiente.
+
+Esta revisión solo leyó fuentes y recibos como datos; no ejecutó suites, helpers,
+probes ni herramientas reales, ni modificó producto para ocultar los hallazgos.
+
+## Resultados históricos conservados (no aceptación final)
+
+- Implementación local entregada; las revisiones y autorizaciones son las que
+  constan individualmente en sus informes. No se extrapolan a combinaciones
+  posteriores sin revisión. La revisión final no está aprobada.
 - Casos transversales locales: 12/12 en verde (generación 2, SMB/PSExec 2,
   Linpeas 2, Labs 3, Recon 2, menús/coordinadores 1).
 - Regresión aislada: `--suite` 179/0/0 (1 SKIP `pwsh` por ausencia del binario),
@@ -40,7 +60,9 @@ explícitos, Labs con inicialización exclusiva, parser CIDR y consumidores/docs
 - No se borraron ni movieron datos generados, fixtures, recibos ni logs históricos.
 - Las fuentes originales conservadas por hash/modo en el fixture; los 25 casos
   históricos intactos.
-- Ninguna auditoría real, instalación, sudo, red, Docker, merge ni push.
+- Los resultados citados son sintéticos. No se ejecutaron nuevas operaciones
+  durante esta rectificación. No se extrapola una afirmación de «ninguna red en
+  toda la sesión»: el incidente Nmap histórico sigue documentado en `AGENTS.md`.
 - Compatibilidad operacional, custodia legal y certificación kernel/hostil no
   se declaran.
 
