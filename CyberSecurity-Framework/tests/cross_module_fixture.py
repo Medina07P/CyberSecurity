@@ -39,6 +39,7 @@ PURE_SOURCE_FILES = ('00_Config/lib/http_fields.py', '00_Config/lib/http_request
 # actually created in their authorized task, never as placeholder sources.
 LOCAL_SOURCE_FILES = (
     'cyber_framework.sh', '00_Config/lib/consent/__init__.py',
+    '00_Config/lib/consent/generate.py',
     '00_Config/lib/enumeration_services.bash', '00_Config/lib/enumeration_runtime.bash',
     '00_Config/lib/enumeration_evidence.py', '00_Config/lib/enumeration_menu.bash',
     '00_Config/lib/scanner_runtime.bash', '00_Config/lib/scans.bash',
