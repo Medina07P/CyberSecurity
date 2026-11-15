@@ -45,20 +45,30 @@ echo "────────────────────────�
 mkdir -p "$OUTPUT_DIR"
 
 FOUND=0
+BACKEND_ERROR=0
 for IP in "${IPS[@]}"; do
-    if ping -c 1 -W 1 "$IP" &>/dev/null; then
+    ping -c 1 -W 1 "$IP" >/dev/null 2>&1
+    PING_RC=$?
+    if [[ "$PING_RC" -eq 0 ]]; then
         echo "  ✅ $IP - Activo"
         echo "$IP|$(date)|ping" >> "$OUTPUT"
         FOUND=$((FOUND + 1))
         # Resolver hostname
         HOST=$(host "$IP" 2>/dev/null | head -1 | awk '{print $NF}')
         [[ -n "$HOST" ]] && echo "    ↳ $HOST"
+    elif [[ "$PING_RC" -eq 2 ]]; then
+        echo "  ⚠️  $IP - Error de backend ping (rc=$PING_RC)"
+        BACKEND_ERROR=1
     else
         echo "  ❌ $IP - Inactivo"
     fi
 done
 
 echo "────────────────────────────────────────"
+if [[ "$BACKEND_ERROR" -ne 0 ]]; then
+    echo "❌ Error de backend durante el barrido"
+    exit 1
+fi
 if [[ "$FOUND" -gt 0 ]]; then
     echo "✅ $FOUND hosts activos encontrados"
     echo "📁 Resultados guardados en: $OUTPUT"
