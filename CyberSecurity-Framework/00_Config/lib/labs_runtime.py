@@ -62,6 +62,7 @@ def _mkdir_nofollow(path, mode):
     except FileNotFoundError:
         try:
             os.mkdir(path, mode)
+            os.chmod(path, mode)
             return True
         except FileExistsError:
             st = os.lstat(path)
@@ -132,6 +133,7 @@ def initialize_lab(kind, name, output_root=None):
     try:
         fd = os.open(str(readme), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         created_readme = True
+        os.fchmod(fd, 0o600)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
                 stream.write(content)

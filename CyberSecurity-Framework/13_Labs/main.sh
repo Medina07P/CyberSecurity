@@ -134,7 +134,12 @@ htb_menu() {
             read -r machine
             if [[ -n "$machine" ]]; then
                 "$SCRIPT_DIR/hackthebox/htb_setup.sh" "$machine"
-                echo -e "\n${GREEN}✅ Máquina configurada correctamente${NC}"
+                rc=$?
+                if (( rc == 0 )); then
+                    echo -e "\n${GREEN}✅ Máquina configurada correctamente${NC}"
+                else
+                    echo -e "\n${RED}❌ Error al configurar la máquina${NC}"
+                fi
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
             fi
@@ -142,7 +147,9 @@ htb_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Máquinas configuradas:${NC}"
-            ls -la "$SCRIPT_DIR/hackthebox/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/hackthebox/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             htb_menu
@@ -198,7 +205,12 @@ thm_menu() {
             read -r room
             if [[ -n "$room" ]]; then
                 "$SCRIPT_DIR/tryhackme/thm_setup.sh" "$room"
-                echo -e "\n${GREEN}✅ Sala configurada correctamente${NC}"
+                rc=$?
+                if (( rc == 0 )); then
+                    echo -e "\n${GREEN}✅ Sala configurada correctamente${NC}"
+                else
+                    echo -e "\n${RED}❌ Error al configurar la sala${NC}"
+                fi
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
             fi
@@ -206,7 +218,9 @@ thm_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Salas configuradas:${NC}"
-            ls -la "$SCRIPT_DIR/tryhackme/rooms/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/tryhackme/rooms/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             thm_menu
@@ -262,7 +276,12 @@ ad_menu() {
             read -r domain
             if [[ -n "$domain" ]]; then
                 "$SCRIPT_DIR/active_directory/ad_setup.sh" "$domain"
-                echo -e "\n${GREEN}✅ Dominio configurado correctamente${NC}"
+                rc=$?
+                if (( rc == 0 )); then
+                    echo -e "\n${GREEN}✅ Dominio configurado correctamente${NC}"
+                else
+                    echo -e "\n${RED}❌ Error al configurar el dominio${NC}"
+                fi
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
             fi
@@ -270,7 +289,9 @@ ad_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Dominios configurados:${NC}"
-            ls -la "$SCRIPT_DIR/active_directory/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/active_directory/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             ad_menu
@@ -326,7 +347,12 @@ web_menu() {
             read -r app
             if [[ -n "$app" ]]; then
                 "$SCRIPT_DIR/web_apps/web_setup.sh" "$app"
-                echo -e "\n${GREEN}✅ Aplicación configurada correctamente${NC}"
+                rc=$?
+                if (( rc == 0 )); then
+                    echo -e "\n${GREEN}✅ Aplicación configurada correctamente${NC}"
+                else
+                    echo -e "\n${RED}❌ Error al configurar la aplicación${NC}"
+                fi
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
             fi
@@ -334,7 +360,9 @@ web_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Aplicaciones configuradas:${NC}"
-            ls -la "$SCRIPT_DIR/web_apps/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/web_apps/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             web_menu
@@ -390,7 +418,12 @@ cloud_menu() {
             read -r lab
             if [[ -n "$lab" ]]; then
                 "$SCRIPT_DIR/cloud/cloud_setup.sh" "$lab"
-                echo -e "\n${GREEN}✅ Laboratorio configurado correctamente${NC}"
+                rc=$?
+                if (( rc == 0 )); then
+                    echo -e "\n${GREEN}✅ Laboratorio configurado correctamente${NC}"
+                else
+                    echo -e "\n${RED}❌ Error al configurar el laboratorio${NC}"
+                fi
                 echo -e "${YELLOW}Presiona Enter para continuar...${NC}"
                 read -r
             fi
@@ -398,7 +431,9 @@ cloud_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Laboratorios configurados:${NC}"
-            ls -la "$SCRIPT_DIR/cloud/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/cloud/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -e "\n${YELLOW}Presiona Enter para continuar...${NC}"
             read -r
             cloud_menu
@@ -673,7 +708,9 @@ delete_menu() {
     case $option in
         1)
             echo -e "\n${YELLOW}Máquinas HTB disponibles:${NC}"
-            ls -la "$SCRIPT_DIR/hackthebox/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/hackthebox/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -ne "\n${YELLOW}Nombre de la máquina a eliminar: ${NC}"
             read -r machine
             if [[ -n "$machine" && -d "$SCRIPT_DIR/hackthebox/machines/$machine" ]]; then
@@ -694,7 +731,9 @@ delete_menu() {
             ;;
         2)
             echo -e "\n${YELLOW}Salas THM disponibles:${NC}"
-            ls -la "$SCRIPT_DIR/tryhackme/rooms/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/tryhackme/rooms/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -ne "\n${YELLOW}Nombre de la sala a eliminar: ${NC}"
             read -r room
             if [[ -n "$room" && -d "$SCRIPT_DIR/tryhackme/rooms/$room" ]]; then
@@ -715,7 +754,9 @@ delete_menu() {
             ;;
         3)
             echo -e "\n${YELLOW}Dominios AD disponibles:${NC}"
-            ls -la "$SCRIPT_DIR/active_directory/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/active_directory/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -ne "\n${YELLOW}Nombre del dominio a eliminar: ${NC}"
             read -r domain
             if [[ -n "$domain" && -d "$SCRIPT_DIR/active_directory/machines/$domain" ]]; then
@@ -736,7 +777,9 @@ delete_menu() {
             ;;
         4)
             echo -e "\n${YELLOW}Aplicaciones web disponibles:${NC}"
-            ls -la "$SCRIPT_DIR/web_apps/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/web_apps/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -ne "\n${YELLOW}Nombre de la aplicación a eliminar: ${NC}"
             read -r app
             if [[ -n "$app" && -d "$SCRIPT_DIR/web_apps/machines/$app" ]]; then
@@ -757,7 +800,9 @@ delete_menu() {
             ;;
         5)
             echo -e "\n${YELLOW}Laboratorios cloud disponibles:${NC}"
-            ls -la "$SCRIPT_DIR/cloud/machines/" 2>/dev/null | grep "^d" | awk '{print "  📁 " $9}'
+            dir="$SCRIPT_DIR/cloud/machines/"
+            for entry in "$dir"/*/; do [[ -d "$entry" ]] || continue; printf '  📁 %s\n' "$(basename "$entry")"; done
+            compgen -G "$dir/*/" >/dev/null 2>&1 || printf '  (ninguno)\n'
             echo -ne "\n${YELLOW}Nombre del laboratorio a eliminar: ${NC}"
             read -r lab
             if [[ -n "$lab" && -d "$SCRIPT_DIR/cloud/machines/$lab" ]]; then
@@ -860,7 +905,10 @@ main() {
     
     while true; do
         main_menu
-        read -r choice
+        if ! IFS= read -r choice; then
+            echo
+            break
+        fi
         
         case $choice in
             1) htb_menu ;;
