@@ -70,6 +70,7 @@ def new_text(path, value, mode=0o600):
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
     with os.fdopen(fd, 'w') as stream:
         stream.write(value)
+    os.chmod(path, mode)
     return path
 
 
