@@ -70,6 +70,7 @@
     "CyberSecurity-Framework/00_Config/lib/scans.bash",
     "CyberSecurity-Framework/00_Config/lib/session.bash",
     "CyberSecurity-Framework/00_Config/lib/web_target.bash",
+    "CyberSecurity-Framework/00_Config/lib/recon_targets.py",
     "CyberSecurity-Framework/00_Config/lib/labs_runtime.py",
     "CyberSecurity-Framework/00_Config/lib/wireless_menu.bash",
     "CyberSecurity-Framework/00_Config/run_all_config.sh",
