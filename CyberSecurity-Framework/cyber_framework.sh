@@ -510,8 +510,28 @@ run_module_scripts() {
                     esac
                 fi
                 [[ -n "$esquema_var" && -n "$esquema_val" ]] && export "$esquema_var=$esquema_val"
+
+                # web_login_bruteforce.sh no tiene slot para el tope de
+                # intentos (BRUTE_MAX): es por entorno, igual que el esquema
+                # de arriba. Se pide una vez, solo para esta ejecución, y no
+                # se guarda ni se reutiliza en la siguiente selección. Enter
+                # deja el valor por defecto del script (200); no hay tope
+                # duro que el menú deba respetar.
+                local max_val=""
+                if [[ "${scripts[$idx]}" == */web/web_login_bruteforce.sh ]]; then
+                    echo ""
+                    echo -ne "${BOLD}${WHITE}Número de intentos (Enter = por defecto del script): ${NC}"
+                    IFS= read -r max_val
+                    if [[ -n "$max_val" ]] && ! [[ "$max_val" =~ ^[0-9]+$ && "$max_val" -ge 1 ]]; then
+                        echo -e "${RED}❌ Tiene que ser un entero > 0: '${max_val}'; se continúa con el valor por defecto.${NC}"
+                        max_val=""
+                    fi
+                fi
+                [[ -n "$max_val" ]] && export BRUTE_MAX="$max_val"
+
                 execute_script "${scripts[$idx]}" "$module_dir"
                 [[ -n "$esquema_var" ]] && unset "$esquema_var"
+                [[ -n "$max_val" ]] && unset BRUTE_MAX
             fi
         else
             echo -e "${RED}❌ Opción inválida${NC}"
