@@ -529,9 +529,53 @@ run_module_scripts() {
                 fi
                 [[ -n "$max_val" ]] && export BRUTE_MAX="$max_val"
 
-                execute_script "${scripts[$idx]}" "$module_dir"
+                # Tipo de diccionario: tampoco tiene slot (es BRUTE_DICC_TIPO,
+                # por entorno). En combo el usuario lo trae cada línea
+                # (usuario:contraseña), así que el slot [usuario] genérico no
+                # tiene sentido y no se pregunta; se recogen fichero y
+                # diccionario a mano y se llama --prepared con solo esos dos.
+                # En claves sigue el camino genérico de siempre (pide
+                # fichero, diccionario y el [usuario] fijo opcional).
+                local dicc_tipo="" dicc_prepared=0 dicc_fichero="" dicc_diccionario="" dicc_cancelado=0
+                if [[ "${scripts[$idx]}" == */web/web_login_bruteforce.sh ]]; then
+                    echo ""
+                    echo -e "${BOLD}${WHITE}Tipo de diccionario:${NC}"
+                    echo "   1) claves — una contraseña por línea, mismo usuario en todos los intentos"
+                    echo "   2) combo  — una credencial por línea, usuario:contraseña (ej. prueba@gmail.com:123456)"
+                    echo -ne "${BOLD}${WHITE}Elige [1-2] (Enter = 1): ${NC}"
+                    IFS= read -r dicc_tipo
+                    case "$dicc_tipo" in
+                        ""|1) dicc_tipo="claves" ;;
+                        2) dicc_tipo="combo" ;;
+                        *)
+                            echo -e "${RED}❌ Opción no válida: '${dicc_tipo}'; se continúa con «claves».${NC}"
+                            dicc_tipo="claves"
+                            ;;
+                    esac
+                    if [[ "$dicc_tipo" == "combo" ]]; then
+                        dicc_prepared=1
+                        export BRUTE_DICC_TIPO=combo
+                        echo -ne "${BOLD}${WHITE}Ruta de la petición capturada .req (o «manual»): ${NC}"
+                        IFS= read -r dicc_fichero
+                        echo -ne "${BOLD}${WHITE}Ruta del diccionario combinado (usuario:contraseña): ${NC}"
+                        IFS= read -r dicc_diccionario
+                        if [[ -z "$dicc_fichero" || -z "$dicc_diccionario" ]]; then
+                            echo -e "${YELLOW}Cancelado: falta el fichero o el diccionario.${NC}"
+                            dicc_cancelado=1
+                        fi
+                    fi
+                fi
+
+                if (( dicc_cancelado )); then
+                    :
+                elif (( dicc_prepared )); then
+                    execute_script "${scripts[$idx]}" "$module_dir" --prepared "$dicc_fichero" "$dicc_diccionario"
+                else
+                    execute_script "${scripts[$idx]}" "$module_dir"
+                fi
                 [[ -n "$esquema_var" ]] && unset "$esquema_var"
                 [[ -n "$max_val" ]] && unset BRUTE_MAX
+                [[ -n "$dicc_tipo" ]] && unset BRUTE_DICC_TIPO
             fi
         else
             echo -e "${RED}❌ Opción inválida${NC}"
