@@ -7,9 +7,18 @@ import re
 
 MARK = "[REDACTADO]"
 
-_KEYED = re.compile(
-    r"(?i)((?:password|passwd|pwd|api[_-]?key|apikey|token|secret|\bpass)"
-    r"[\"']?[ \t]*[=:][ \t]*[\"']?)[^\s\"',&;]+")
+_KEYS = (r"(?:aws_)?secret[_-]?(?:access[_-]?)?key|access[_-]?key|private[_-]?key"
+         r"|password|passwd|pwd|api[_-]?key|apikey|token|secret|\bpass")
+_VALUE = r"(?:\"[^\"\r\n]{0,4096}\"|'[^'\r\n]{0,4096}'|[^\s\"',&;]+)"
+_KEYED = re.compile(r"(?i)((?:" + _KEYS + r")[\"']?[ \t]*[=:][ \t]*)" + _VALUE)
+_CLI_LONG = re.compile(
+    r"(?i)(--(?:password|passwd|pass|pwd|token|secret|api-?key)(?:[ \t]+|=))" + _VALUE)
+_CLI_P = re.compile(r"(?<![\w-])(-p[ \t]+)(?![TUtu]?:?[0-9][0-9,\-]*(?:\s|$))" + _VALUE)
+_COOKIE = re.compile(r"(?i)\b((?:Set-)?Cookie[ \t]*:[ \t]*)[^\r\n]+")
+_AUTH = re.compile(r"(?i)\b(Authorization[ \t]*:[ \t]*)[^\r\n]+")
+_AWS = re.compile(r"\b(?:AKIA|ASIA|AGPA|AIDA|AROA)[A-Z0-9]{16}\b")
+_PEM_BEGIN = re.compile(r"-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----")
+_PEM_END = re.compile(r"-----END [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----")
 _BEARER = re.compile(r"(?i)\b(Bearer|Basic)[ \t]+[A-Za-z0-9._~+/=-]+")
 _CRYPT = re.compile(r"\$(?:1|5|6|2[abxy]|y)\$[^\s:]+")
 _GH = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})")
@@ -21,7 +30,29 @@ def _hex(m):
     return MARK if len(m.group(0)) in (32, 40, 64) else m.group(0)
 
 
+def _pem(text: str) -> str:
+    out, pos = [], 0
+    while True:
+        m = _PEM_BEGIN.search(text, pos)
+        if not m:
+            break
+        out.append(text[pos:m.start()])
+        out.append(MARK)
+        e = _PEM_END.search(text, m.end())
+        if not e:  # sin cierre: se redacta hasta el final del texto
+            return "".join(out)
+        pos = e.end()
+    out.append(text[pos:])
+    return "".join(out)
+
+
 def redact(text: str) -> str:
+    text = _pem(text)
+    text = _COOKIE.sub(lambda m: m.group(1) + MARK, text)
+    text = _AUTH.sub(lambda m: m.group(1) + MARK, text)
+    text = _AWS.sub(MARK, text)
+    text = _CLI_LONG.sub(lambda m: m.group(1) + MARK, text)
+    text = _CLI_P.sub(lambda m: m.group(1) + MARK, text)
     text = _CRYPT.sub(MARK, text)
     text = _GH.sub(MARK, text)
     text = _BEARER.sub(lambda m: m.group(1) + " " + MARK, text)

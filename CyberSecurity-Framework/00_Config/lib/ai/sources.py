@@ -1,4 +1,5 @@
 """Descubrimiento de fuentes indexables del framework (solo lectura, ya redactadas)."""
+import fnmatch
 import os
 import stat
 from dataclasses import dataclass
@@ -19,7 +20,11 @@ BRUTEFORCE_MARKERS = ("brute", "hydra", "crack")
 # Rutas (relativas al framework) que pueden contener credenciales.
 CREDENTIAL_DIRS = ("10_Evidence/credentials", "06_PostExploitation/loot",
                    "00_Config/credentials")
-CREDENTIAL_NAMES = frozenset({".session", "api-keys.yaml", "api_key", "api_keys.yaml"})
+CREDENTIAL_NAMES = frozenset({".session", "api-keys.yaml", "api_key", "api_keys.yaml",
+                              ".env", "shadow"})
+# Material secreto por nombre (sin distinguir mayúsculas), con cualquier sufijo.
+CREDENTIAL_GLOBS = ("id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*", "*.pem", "*.pem.*",
+                    "*.key", "*.key.*", ".env.*", "*.kdbx", "*.p12", "*.pfx", "shadow.*")
 
 SKIP_DIRS = frozenset({".git", "__pycache__", "node_modules", "tests", ".superpowers"})
 TEXT_SUFFIXES = frozenset({".md", ".txt", ".log", ".json", ".xml", ".csv", ".tsv",
@@ -42,6 +47,16 @@ class Document:
 def _is_brute(tool: str) -> bool:
     t = tool.lower()
     return t in BRUTEFORCE_TOOL_DIRS or any(m in t for m in BRUTEFORCE_MARKERS)
+
+
+def _brute_path(parts) -> bool:
+    """Deny-list por CUALQUIER componente de ruta (directorios y nombre de fichero)."""
+    *dirs, fn = parts
+    if any(_is_brute(d) for d in dirs):
+        return True
+    low = fn.lower()
+    stem = low.split(".")[0]
+    return any(stem == t or stem.startswith(t + "_") for t in BRUTEFORCE_TOOL_DIRS)
 
 
 def _read(path: str, limit: int) -> Optional[str]:
@@ -76,7 +91,9 @@ def discover(framework_root: Path, *, include_credentials: bool = False,
     seen = set()
 
     def credential(rel_fw: str, name: str) -> bool:
-        return name in CREDENTIAL_NAMES or any(
+        low = name.lower()
+        return name in CREDENTIAL_NAMES or low in CREDENTIAL_NAMES or any(
+            fnmatch.fnmatchcase(low, g) for g in CREDENTIAL_GLOBS) or any(
             rel_fw == d or rel_fw.startswith(d + "/") for d in CREDENTIAL_DIRS)
 
     def emit(p: Path, kind: str, target: Optional[str], cred: bool):
@@ -92,6 +109,8 @@ def discover(framework_root: Path, *, include_credentials: bool = False,
     # 1) Framework: documentación, informes generados y (si se pide) credenciales.
     for p in _walk(fw):
         rel = _rel(p, fw)
+        if _brute_path(rel.split("/")):
+            continue
         cred = credential(rel, p.name)
         if rel.startswith(REPORTS_REL + "/"):
             parts = rel.split("/")
@@ -107,6 +126,8 @@ def discover(framework_root: Path, *, include_credentials: bool = False,
     docs = repo / "docs"
     if docs.is_dir() and not docs.is_symlink():
         for p in _walk(docs):
+            if _brute_path(p.relative_to(docs).parts):
+                continue
             d = emit(p, "doc", None, False)
             if d and d.path not in seen:
                 seen.add(d.path)
@@ -117,7 +138,7 @@ def discover(framework_root: Path, *, include_credentials: bool = False,
     if scans.is_dir() and not scans.is_symlink():
         for p in _walk(scans):
             rel = p.relative_to(scans).parts
-            if len(rel) < 2 or _is_brute(rel[0]):
+            if len(rel) < 2 or _brute_path(rel):
                 continue
             tool = rel[0]
             stem = p.stem
