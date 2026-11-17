@@ -162,6 +162,30 @@ class IndexTests(unittest.TestCase):
             self.assertFalse(aindex.Index.load(Path(d) / "o" / "i.json").stale(fw))
             self.assertTrue(aindex.Index.build([]).stale(fw))
 
+    def test_data_dir_not_in_fingerprint_or_stale(self):
+        from ai import sources
+        with tempfile.TemporaryDirectory() as d:
+            fw = Path(d) / "fw"
+            (fw / "12_Knowledge_Base").mkdir(parents=True)
+            (fw / "12_Knowledge_Base" / "a.md").write_text("# A\nhola\n")
+            base = aindex.fingerprint(fw)
+            idx = aindex.Index.build(sources.discover(fw), fingerprint=base)
+            self.assertFalse(idx.stale(fw))
+            # Escribir dentro de 09_Automation/ai/data no cambia fingerprint ni stale.
+            data = fw / "09_Automation" / "ai" / "data"
+            (data / "summaries").mkdir(parents=True)
+            (data / "index.json").write_text('{"x": 1}')
+            (data / "summaries" / "t.md").write_text("# R\nnmap puerto abierto\n")
+            self.assertEqual(aindex.fingerprint(fw), base)
+            self.assertFalse(idx.stale(fw))
+            # Un dir de datos explícito con otra ruta se omite al pasar `exclude`.
+            other = fw / "datos"
+            other.mkdir()
+            (other / "i.json").write_text("{}")
+            self.assertNotEqual(aindex.fingerprint(fw), base)        # sin exclude cambia
+            self.assertEqual(aindex.fingerprint(fw, exclude=other), base)
+            self.assertFalse(idx.stale(fw, exclude=other))
+
     def test_chunk_cap_for_huge_document(self):
         text = "\n".join("linea %d de relleno" % i for i in range(120000))
         self.assertGreater(len(text), 2_000_000)

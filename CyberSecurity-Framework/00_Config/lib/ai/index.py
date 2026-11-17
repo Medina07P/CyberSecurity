@@ -87,8 +87,12 @@ def _chunk_doc(d, chunk_lines: int) -> List[Chunk]:
     return out
 
 
-def fingerprint(framework_root: Path) -> str:
-    """Hash de (ruta, mtime_ns, tamaño) de las fuentes candidatas; sin leer cuerpos."""
+def fingerprint(framework_root: Path, exclude=None) -> str:
+    """Hash de (ruta, mtime_ns, tamaño) de las fuentes candidatas; sin leer cuerpos.
+
+    El directorio de datos del asistente (fijo ``09_Automation/ai/data`` y el
+    ``exclude`` explícito) se omite para que el índice no se invalide por sí mismo.
+    """
     fw = Path(framework_root)
     h = hashlib.sha256()
     entries = []
@@ -101,6 +105,8 @@ def fingerprint(framework_root: Path) -> str:
             except OSError:
                 continue
             if os.path.islink(p) or not os.path.isfile(p):
+                continue
+            if _sources.is_data_path(fw, p, exclude):
                 continue
             entries.append((str(p), st.st_mtime_ns, st.st_size))
     for e in sorted(entries):
@@ -153,10 +159,10 @@ class Index:
         scored.sort()
         return [self.chunks[i] for _, _, _, i in scored[:k]]
 
-    def stale(self, framework_root: Path) -> bool:
+    def stale(self, framework_root: Path, exclude=None) -> bool:
         if not self.fingerprint:
             return True
-        return fingerprint(framework_root) != self.fingerprint
+        return fingerprint(framework_root, exclude) != self.fingerprint
 
     def save(self, path: Path) -> None:
         path = Path(path)

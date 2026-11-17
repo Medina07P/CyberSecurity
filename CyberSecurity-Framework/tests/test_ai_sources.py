@@ -226,6 +226,28 @@ class RedactExtraTests(unittest.TestCase):
 
 
 class DiscoverExtraTests(Base):
+    def test_assistant_data_dir_not_discovered(self):
+        # Exclusión fija 09_Automation/ai/data por secuencia de componentes,
+        # aunque no se pase `exclude`: el índice no debe ingerirse a sí mismo.
+        w(self.fw / "09_Automation/ai/data/index.json", '{"chunks": []}')
+        w(self.fw / "09_Automation/ai/data/summaries/127.0.0.1.md", "# R\nnmap puerto")
+        w(self.fw / "09_Automation/README.md", "modulo 09")
+        w(self.fw / "09_Automation/ai/USE.md", "guia del asistente")
+        d = self.docs()
+        self.assertIn("09_Automation/README.md", d)
+        self.assertIn("09_Automation/ai/USE.md", d)
+        self.assertFalse(any(p.startswith("09_Automation/ai/data/") for p in d))
+
+    def test_explicit_exclude_dir_inside_tree(self):
+        # Un AI_DATA_DIR dentro del árbol, con ruta distinta de la fija, también
+        # se excluye al pasarlo como `exclude`.
+        w(self.fw / "datos_ia/index.json", "{}")
+        w(self.fw / "09_Automation/README.md", "x")
+        self.assertIn("datos_ia/index.json", self.docs())        # sin exclude sí entra
+        d = self.docs(exclude=self.fw / "datos_ia")
+        self.assertNotIn("datos_ia/index.json", d)
+        self.assertIn("09_Automation/README.md", d)
+
     def test_denylist_any_component_both_walks(self):
         w(self.repo / "scans/x/hydra/a.txt", "x")
         w(self.repo / "scans/x/Medusa/a.txt", "x")

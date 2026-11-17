@@ -244,6 +244,38 @@ class SubcommandTests(CliBase):
         self.assertEqual(p.returncode, 2)
         self.assertIn("Uso", p.stderr)
 
+    def test_default_in_tree_data_dir_not_self_indexed(self):
+        # Sin AI_DATA_DIR el directorio de datos cae dentro del framework
+        # (09_Automation/ai/data). No debe indexarse a sí mismo: el caché vale
+        # entre lanzamientos y el índice/resúmenes nunca se citan como fuente.
+        env = self._env()
+        env.pop("AI_DATA_DIR", None)
+        self._write_config("http://127.0.0.1:1")      # sin modelo: ruta determinista
+        data = self.fw / "09_Automation" / "ai" / "data"
+
+        def launch():
+            return subprocess.run(
+                [sys.executable, str(SCRIPT)], input="que es nmap\n0\n",
+                env=env, capture_output=True, text=True, timeout=40)
+
+        p1 = launch()
+        self.assertEqual(p1.returncode, 0, p1.stderr)
+        self.assertTrue((data / "index.json").is_file())
+        self.assertIn("Preparando el índice", p1.stdout)
+        # Un resumen guardado tampoco invalida ni contamina el índice.
+        (data / "summaries").mkdir(exist_ok=True)
+        (data / "summaries" / ("%s.md" % SLUG)).write_text(
+            "# Resumen\nnmap puerto abierto\n", encoding="utf-8")
+        p2 = launch()
+        self.assertEqual(p2.returncode, 0, p2.stderr)
+        self.assertNotIn("Preparando el índice", p2.stdout)   # caché reutilizado
+        both = p1.stdout + p2.stdout
+        self.assertNotIn("09_Automation/ai/data", both)
+        self.assertNotIn("index.json", both)
+        self.assertNotIn("summaries", both)
+        # Y sigue respondiendo con fragmentos citados (ruta:líneas).
+        self.assertRegex(both, r"\.md:\d+-\d+")
+
     def test_never_writes_outside_data_dir(self):
         def snapshot():
             acc = {}
