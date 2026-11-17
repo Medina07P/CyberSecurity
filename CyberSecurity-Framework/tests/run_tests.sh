@@ -698,6 +698,21 @@ eq "run_all_scanners: no anuncia 'sin puertos web' cuando el sondeo falló" \
 rm -f "$FW/../scans/nmap/errores.log"
 rm -rf "$WSTUB2"
 
+echo "=== run_all_scanners: encadena ZAP ==="
+ZRSTUB="$(mktemp -d)"
+for t in masscan nikto nuclei; do printf '#!/bin/bash\nexit 0\n' > "$ZRSTUB/$t"; chmod +x "$ZRSTUB/$t"; done
+cat > "$ZRSTUB/nmap" <<'EOS'
+#!/bin/bash
+case "$*" in
+    *"-p 80,443,8080,8443"*) echo "80/tcp open http"; exit 0 ;;
+    *) exit 0 ;;
+esac
+EOS
+chmod +x "$ZRSTUB/nmap"
+ZOUT=$(PATH="$ZRSTUB:$PATH" bash "$FW/03_Scanners/run_all_scanners.sh" prueba.example 2>&1)
+eq "run_all_scanners: intenta ZAP en el puerto web descubierto" "$(printf '%s' "$ZOUT" | grep -ci 'zaproxy')" "1"
+rm -rf "$FW/../scans/zap" "$ZRSTUB"
+
 # ──────────────────────────────────────────────────────────
 section "ffuf: contar hallazgos, no la url de la configuración"
 source "$FW/00_Config/lib/scans.bash" 2>/dev/null
