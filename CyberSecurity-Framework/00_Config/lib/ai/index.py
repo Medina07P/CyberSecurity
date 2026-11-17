@@ -56,8 +56,16 @@ def _blocks(lo: int, hi: int, n: int):
         yield s, min(s + n, hi)
 
 
+def _lines(text: str) -> List[str]:
+    """Líneas como las cuenta un editor: solo ``\\n`` separa (``\\r`` final se quita)."""
+    parts = text.split("\n")
+    if parts and parts[-1] == "":
+        parts.pop()
+    return [p[:-1] if p.endswith("\r") else p for p in parts]
+
+
 def _chunk_doc(d, chunk_lines: int) -> List[Chunk]:
-    lines = d.text.splitlines()
+    lines = _lines(d.text)
     n = max(1, chunk_lines)
     spans = []
     if d.path.lower().endswith(".md"):
@@ -177,8 +185,21 @@ class Index:
                 data = json.load(f)
             if not isinstance(data, dict) or data.get("version") != VERSION:
                 return None
-            chunks = [Chunk(p, int(a), int(b), t, k, g) for p, a, b, t, k, g in data["chunks"]]
+            raw = data["chunks"]
+            if not isinstance(raw, list):
+                return None
+            chunks = []
+            for row in raw:
+                if not isinstance(row, list) or len(row) != 6:
+                    return None
+                p, a, b, t, k, g = row
+                if (not isinstance(p, str) or not isinstance(t, str)
+                        or type(a) is not int or type(b) is not int
+                        or k not in _sources.KINDS
+                        or not (g is None or isinstance(g, str))):
+                    return None
+                chunks.append(Chunk(p, a, b, t, k, g))
             fp = data.get("fingerprint")
             return cls(chunks, fp if isinstance(fp, str) else None)
-        except (OSError, ValueError, TypeError, KeyError):
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
             return None

@@ -100,6 +100,42 @@ class IndexTests(unittest.TestCase):
             p.write_text("[1]")
             self.assertIsNone(aindex.Index.load(p))
 
+    def test_load_wrong_types_returns_none(self):
+        v = aindex.VERSION
+        cases = [
+            '{"version":%d,"chunks":[["a",1,2,5,"doc",null]]}' % v,
+            '{"version":%d,"chunks":[["a",1,2,null,"doc",null]]}' % v,
+            '{"version":%d,"chunks":[["a",1,2,["x"],"doc",null]]}' % v,
+            '{"version":%d,"chunks":[["a",1,2,"t"]]}' % v,
+            '{"version":%d,"chunks":[["a",1,2,"t","raro",null]]}' % v,
+            '{"version":%d,"chunks":[["a","1",2,"t","doc",null]]}' % v,
+            '{"version":%d,"chunks":[["a",1,2,"t","doc",7]]}' % v,
+            '{"version":%d,"chunks":"no"}' % v,
+            '{"version":%d}' % v,
+            '{"chunks":[]}',
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "i.json"
+            for c in cases:
+                p.write_text(c)
+                self.assertIsNone(aindex.Index.load(p), c)
+
+    def test_lines_only_split_on_newline(self):
+        idx = aindex.Index.build([doc("a.md", "# A\nx\x0cy\n\x85z\u2028w\nfoo\n")])
+        self.assertEqual([(c.line_start, c.line_end) for c in idx.chunks], [(1, 4)])
+
+    def test_crlf_no_trailing_newline_and_bare_cr(self):
+        idx = aindex.Index.build([doc("a.md", "# A\r\nx\r\n## B\r\ny")])
+        self.assertEqual([(c.line_start, c.line_end) for c in idx.chunks], [(1, 2), (3, 4)])
+        self.assertNotIn("\r", idx.chunks[0].text)
+        idx = aindex.Index.build([doc("a.txt", "a\rb\nc", "resultado", "a")])
+        self.assertEqual([(c.line_start, c.line_end) for c in idx.chunks], [(1, 2)])
+
+    def test_fenced_hash_not_split(self):
+        text = "# A\n```bash\n# comentario\necho hi\n```\nfin\n"
+        idx = aindex.Index.build([doc("a.md", text)])
+        self.assertEqual([(c.line_start, c.line_end) for c in idx.chunks], [(1, 6)])
+
     def test_stale_detects_changed_source(self):
         with tempfile.TemporaryDirectory() as d:
             fw = Path(d) / "fw"
