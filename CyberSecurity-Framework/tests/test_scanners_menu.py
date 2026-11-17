@@ -137,6 +137,21 @@ class ScannersTest(unittest.TestCase):
         self.assertIn('COMPROBACIÓN LOCAL', result.stdout)
         self.assertIn('example.invalid', result.stdout)
         self.assertIn('root', result.stdout)
+        self.assertIn('zaproxy', result.stdout)
+        self.assertEqual(self.invocations(), [])
+
+    def test_menu_zap_choice_is_offered(self):
+        result = self.menu('03\n3\n0\n0\nQ\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('ZAP', result.stdout)
+
+    def test_menu_zap_gates_on_missing_zaproxy(self):
+        # zaproxy no está en el bin sintético: igual que Nikto/Nuclei gatean
+        # sobre su propio binario, ZAP tiene que fallar antes de pedir URL o
+        # invocar nada.
+        result = self.menu('03\n3\n3\n\n0\nQ\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('zaproxy', result.stdout + result.stderr)
         self.assertEqual(self.invocations(), [])
 
     def test_menu_basic_is_limited_and_confirmed(self):
@@ -183,7 +198,7 @@ class ScannersTest(unittest.TestCase):
         result = self.menu('03\n99\n5\n0\n0\nQ\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('no válida', result.stdout)
-        self.assertIn('10 scripts', result.stdout)
+        self.assertIn('11 scripts', result.stdout)
         self.assertIn('[intrusiva]', result.stdout)
         self.assertEqual(self.invocations(), [])
 
@@ -199,9 +214,11 @@ class ScannersTest(unittest.TestCase):
         self.assertEqual(self.invocations(), [])
 
     def test_orchestrator_partial_failure_is_not_success(self):
+        # zaproxy no está en el bin sintético, así que ZAP falla en cada
+        # puerto además de Nikto: 2 fallos × 2 puertos = 4.
         result = self.run_all(FAIL_TOOL='nikto')
         self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
-        self.assertIn('Fallidas: 2', result.stdout)
+        self.assertIn('Fallidas: 4', result.stdout)
         self.assertNotIn('✅ ESCANEOS COMPLETADOS', result.stdout)
 
     def test_orchestrator_discovery_failure_stops_web(self):
@@ -227,7 +244,10 @@ class ScannersTest(unittest.TestCase):
         log = self.root/'scans/unrelated/errores.log'; log.parent.mkdir(parents=True)
         log.write_text('error ajeno antiguo\n')
         result = self.run_all()
-        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        # zaproxy no está en el bin sintético: ZAP falla en cada puerto, así
+        # que el orquestador ya no puede salir 0 aquí (sigue siendo la única
+        # causa de fallo — Nikto/Nuclei siguen en su ruta de éxito normal).
+        self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
         calls = self.invocations()
         urls = [call[call.index('-h')+1] for call in calls if call[0] == 'nikto']
         self.assertEqual(urls, ['http://example.invalid:8080', 'https://example.invalid:8443'])
@@ -404,9 +424,11 @@ assert result.findings[0].cve == 'CVE-2021-44228'
                 self.assertIn('NO DETERMINADO', result.stdout+result.stderr)
 
     def test_nikto_partial_failure_is_counted_by_orchestrator(self):
+        # zaproxy no está en el bin sintético: ZAP también falla en cada
+        # puerto, además del cero-resultado de Nikto: 2 × 2 puertos = 4.
         result = self.run_all(NIKTO_RESULT='zero')
         self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
-        self.assertIn('Fallidas: 2', result.stdout)
+        self.assertIn('Fallidas: 4', result.stdout)
 
     def test_ipv6_network_targets_rejected_before_invoking_any_tool(self):
         for name in ('smart', 'aggressive', 'nse', 'rustscan'):
