@@ -957,6 +957,7 @@ main_menu() {
     echo -e "  ${CYAN}R ${NC}  ${WHITE}📊 Informe rápido${NC}"
     echo -e "  ${CYAN}T ${NC}  ${WHITE}🎯 Cambiar objetivo${NC} ${DIM}(actual: ${target:-sin definir})${NC}"
     echo -e "  ${CYAN}K ${NC}  ${WHITE}🔑 Claves de API${NC} ${DIM}($(keys_resumen_line))${NC}"
+    echo -e "  ${CYAN}D ${NC}  ${WHITE}📦 Dependencias${NC} ${DIM}($(dependencies_resumen_line))${NC}"
     echo -e "  ${CYAN}? ${NC}  ${WHITE}📖 Ayuda y Comandos Útiles${NC}"
     echo -e "  ${CYAN}Q ${NC}  ${RED}Salir${NC}"
     echo ""
