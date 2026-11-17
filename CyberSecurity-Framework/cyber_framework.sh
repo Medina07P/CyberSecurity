@@ -30,6 +30,7 @@ source "$LIB_DIR/forensics_menu.bash"
 source "$LIB_DIR/automation_menu.bash"
 source "$LIB_DIR/evidence_menu.bash"
 source "$LIB_DIR/dependencies.bash"
+source "$LIB_DIR/ai_menu.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -906,6 +907,7 @@ show_help() {
     echo -e "  ${GREEN}R${NC}   Informe rápido (técnico, cliente o ambos)"
     echo -e "  ${GREEN}K${NC}   Claves de API (pide y guarda las que falten)"
     echo -e "  ${GREEN}D${NC}   Dependencias (ver qué falta e instalarlo)"
+    echo -e "  ${GREEN}I${NC}   Asistente IA local (explica hallazgos y responde sobre el framework)"
     echo -e "  ${GREEN}0${NC}   Volver al menú principal"
     echo -e "  ${GREEN}Q${NC}   Salir"
     echo ""
@@ -958,6 +960,7 @@ main_menu() {
     echo -e "  ${CYAN}T ${NC}  ${WHITE}🎯 Cambiar objetivo${NC} ${DIM}(actual: ${target:-sin definir})${NC}"
     echo -e "  ${CYAN}K ${NC}  ${WHITE}🔑 Claves de API${NC} ${DIM}($(keys_resumen_line))${NC}"
     echo -e "  ${CYAN}D ${NC}  ${WHITE}📦 Dependencias${NC} ${DIM}($(dependencies_resumen_line))${NC}"
+    echo -e "  ${CYAN}I ${NC}  ${WHITE}🤖 Asistente IA${NC}"
     echo -e "  ${CYAN}? ${NC}  ${WHITE}📖 Ayuda y Comandos Útiles${NC}"
     echo -e "  ${CYAN}Q ${NC}  ${RED}Salir${NC}"
     echo ""
@@ -967,7 +970,7 @@ main_menu() {
         echo -e "  ${DIM}Siguiente paso sugerido:${NC} ${YELLOW}${next}${NC}"
     fi
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, R, T, K, D, ?, Q]: ${NC}"
+    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, R, T, K, D, I, ?, Q]: ${NC}"
 }
 
 # ─── Claves de API ───────────────────────────────────────────
@@ -1168,6 +1171,7 @@ main() {
             T|t) change_target ;;
             K|k) keys_menu ;;
             D|d) dependencies_menu ;;
+            I|i) ai_menu ;;
             \?|\?\?|help|HELP|H|h) show_help ;;
             Q|q|salir|exit)
                 echo -e "\n${GREEN}👋 ¡Hasta luego!${NC}"
@@ -1176,7 +1180,7 @@ main() {
             "") : ;;
             *)
                 echo -e "\n${RED}❌ Opción inválida: '$choice'${NC}"
-                echo -e "${YELLOW}Prueba con 00-13, 99, R, T, K, D, ? o Q.${NC}"
+                echo -e "${YELLOW}Prueba con 00-13, 99, R, T, K, D, I, ? o Q.${NC}"
                 pause
                 ;;
         esac
