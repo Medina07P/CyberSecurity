@@ -118,5 +118,10 @@ run "menú: K muestra el estado"       'K\n3\n0\nQ\n' "theHarvester"
     || echo "  OK       K no crea el registro"
 
 echo ""
+echo "=== dependencias: acción D ==="
+run "menú: D abre el submenú"         'D\n0\nQ\n'    "Paquetes que faltan"
+run "menú: D 0 vuelve sin tocar nada" 'D\n0\nQ\n'    "DEPENDENCIAS"
+
+echo ""
 echo "----------------------------------------"
 echo "fallos: $fail"
