@@ -46,6 +46,13 @@ def _abs(path) -> str:
         return str(path)
 
 
+def _real(path) -> str:
+    try:
+        return os.path.realpath(str(path))
+    except (OSError, ValueError):
+        return _abs(path)
+
+
 def is_data_path(framework_root, path, exclude=None) -> bool:
     """¿``path`` pertenece al directorio de datos del asistente?
 
@@ -62,8 +69,14 @@ def is_data_path(framework_root, path, exclude=None) -> bool:
     except ValueError:
         pass
     if exclude is not None:
-        base = _abs(exclude)
-        cand = _abs(path)
+        # Se comparan rutas resueltas: un AI_DATA_DIR que sea un enlace simbólico
+        # dentro del árbol no debe poder ingerirse a sí mismo. El nombre final
+        # del candidato no se sigue (los enlaces a ficheros ya se omiten al
+        # recorrer); solo se resuelve su directorio padre.
+        base = _real(exclude)
+        cand_abs = _abs(path)
+        cand = os.path.join(_real(os.path.dirname(cand_abs)),
+                            os.path.basename(cand_abs))
         if cand == base or cand.startswith(base + os.sep):
             return True
     return False

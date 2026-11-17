@@ -238,6 +238,24 @@ class AssistantTests(unittest.TestCase):
             self.assertTrue(client.calls, "el modelo debía ser llamado")
             self.assertNotIn("hunter2", all_text(client))
 
+    def test_pasted_secret_not_sent_nor_stored(self):
+        with tempfile.TemporaryDirectory() as d:
+            client = FakeClient()
+            a, _ = make_assistant(Path(d), client=client)
+            a.ask("que es el framework con password=hunter2")
+            self.assertTrue(client.calls)
+            self.assertNotIn("hunter2", all_text(client))
+            self.assertNotIn("hunter2", json.dumps(a.conversation.messages()))
+
+    def test_model_output_is_redacted(self):
+        with tempfile.TemporaryDirectory() as d:
+            client = FakeClient(reply="Usa password=hunter2 para entrar [README.md:1-2]")
+            a, _ = make_assistant(Path(d), client=client)
+            ans = a.ask("que es el framework")
+            self.assertTrue(ans.used_model)
+            self.assertNotIn("hunter2", ans.text)
+            self.assertNotIn("hunter2", json.dumps(a.conversation.messages()))
+
 
 if __name__ == "__main__":
     unittest.main()

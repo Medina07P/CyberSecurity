@@ -1,7 +1,6 @@
 """Cliente mínimo de Ollama: solo loopback salvo permiso explícito."""
 import ipaddress
 import json
-import socket
 from urllib.parse import urlparse
 
 import requests
@@ -16,6 +15,11 @@ class OllamaError(Exception):
 
 
 def _is_loopback(host):
+    """Solo el nombre literal ``localhost`` o una IP literal de loopback.
+
+    No se resuelve ningún nombre por DNS: un host como ``localhost.evil.com``
+    podría resolver a 127.0.0.1 y no es de fiar.
+    """
     if not host:
         return False
     if host.lower() == "localhost":
@@ -23,20 +27,25 @@ def _is_loopback(host):
     try:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
-        pass
-    try:
-        return ipaddress.ip_address(socket.gethostbyname(host)).is_loopback
-    except (OSError, ValueError):
         return False
 
 
 class OllamaClient:
     def __init__(self, endpoint, model, allow_remote=False, timeout=120):
-        host = urlparse(endpoint).hostname
+        try:
+            parsed = urlparse(endpoint)
+            host = parsed.hostname
+            parsed.port  # valida el puerto (puede lanzar ValueError)
+        except (ValueError, AttributeError):
+            raise OllamaError(
+                "La dirección de Ollama configurada no es válida. Revisa el "
+                "endpoint en la configuración del asistente.")
         if allow_remote is not True and not _is_loopback(host):
+            # Se muestra solo el host, nunca usuario ni contraseña de la URL.
             raise OllamaError(
                 "El endpoint de Ollama (%s) no es local. Por seguridad nada sale "
-                "de esta máquina salvo que se permita explícitamente." % endpoint)
+                "de esta máquina salvo que se permita explícitamente."
+                % (host or "dirección desconocida"))
         self.endpoint = endpoint.rstrip("/")
         self.model = model
         self.timeout = timeout

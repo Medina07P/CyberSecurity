@@ -65,6 +65,33 @@ class ClientTests(unittest.TestCase):
             OllamaClient("http://192.0.2.1:11434", "m", allow_remote="yes")
         OllamaClient("http://192.0.2.1:11434", "m", allow_remote=True)
 
+    def test_loopback_literal_rules_no_dns(self):
+        import socket
+        called = []
+        orig = socket.gethostbyname
+        socket.gethostbyname = lambda h: called.append(h) or "127.0.0.1"
+        try:
+            for bad in ("http://localhost.evil.com:11434", "http://127.0.0.1.nip.io:11434",
+                        "http://localhost@evil.example/"):
+                with self.assertRaises(OllamaError, msg=bad):
+                    OllamaClient(bad, "m")
+            for good in ("http://LOCALHOST:11434", "http://[::1]:11434",
+                         "http://127.0.0.2:11434"):
+                OllamaClient(good, "m")
+        finally:
+            socket.gethostbyname = orig
+        self.assertEqual(called, [], "no debe resolver nombres por DNS")
+
+    def test_malformed_endpoint_is_ollama_error(self):
+        with self.assertRaises(OllamaError):
+            OllamaClient("http://[::1", "m")
+
+    def test_userinfo_not_echoed(self):
+        with self.assertRaises(OllamaError) as cm:
+            OllamaClient("http://user:s3cretpw@192.0.2.1:11434", "m")
+        self.assertNotIn("s3cretpw", str(cm.exception))
+        self.assertNotIn("s3cretpw", cm.exception.user_message)
+
     def test_connection_refused_gives_spanish_message(self):
         s = self.serve()
         url = s.url
