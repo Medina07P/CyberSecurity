@@ -293,5 +293,17 @@ class SubcommandTests(CliBase):
         self.assertFalse((self.fw / "09_Automation" / "ai" / "data").exists())
 
 
+class DocumentationTests(unittest.TestCase):
+    def test_documentation_mentions_key_i_and_ollama_pull(self):
+        repo = FW.parent
+        guide = repo / "docs" / "ASISTENTE-IA-2026-11-17.md"
+        self.assertTrue(guide.is_file(), "falta la guía del asistente")
+        text = guide.read_text(encoding="utf-8")
+        for needle in ("ollama pull", "conversación nueva", "no ejecuta"):
+            self.assertIn(needle, text)
+        for name in ("docs/MANUAL-GESTOR.md", "README.md"):
+            self.assertIn("Asistente", (repo / name).read_text(encoding="utf-8"), name)
+
+
 if __name__ == "__main__":
     unittest.main()
