@@ -99,5 +99,8 @@ bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_resolve_sele
 eq "un token inválido cancela todo el lote (ni el 1 válido se imprime)" "$?-$(cat "$DRO_PARCIAL")" "1-"
 rm -f "$DRO_FUERA" "$DRO_BASURA" "$DRO_PARCIAL"
 
+out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_resolve_selection '1 1' '${FALTAN3[0]}' '${FALTAN3[1]}' '${FALTAN3[2]}'")
+eq "número repetido no duplica el paquete" "$out" "paquete-a"
+
 echo ""; echo "Resultado: $pasan ok, $fallan fallos"
 [[ $fallan -eq 0 ]]
