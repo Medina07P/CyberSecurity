@@ -137,6 +137,21 @@ class ScannersTest(unittest.TestCase):
         self.assertIn('COMPROBACIÓN LOCAL', result.stdout)
         self.assertIn('example.invalid', result.stdout)
         self.assertIn('root', result.stdout)
+        self.assertIn('zaproxy', result.stdout)
+        self.assertEqual(self.invocations(), [])
+
+    def test_menu_zap_choice_is_offered(self):
+        result = self.menu('03\n3\n0\n0\nQ\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('ZAP', result.stdout)
+
+    def test_menu_zap_gates_on_missing_zaproxy(self):
+        # zaproxy no está en el bin sintético: igual que Nikto/Nuclei gatean
+        # sobre su propio binario, ZAP tiene que fallar antes de pedir URL o
+        # invocar nada.
+        result = self.menu('03\n3\n3\n\n0\nQ\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('zaproxy', result.stdout + result.stderr)
         self.assertEqual(self.invocations(), [])
 
     def test_menu_basic_is_limited_and_confirmed(self):
@@ -183,7 +198,7 @@ class ScannersTest(unittest.TestCase):
         result = self.menu('03\n99\n5\n0\n0\nQ\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('no válida', result.stdout)
-        self.assertIn('10 scripts', result.stdout)
+        self.assertIn('11 scripts', result.stdout)
         self.assertIn('[intrusiva]', result.stdout)
         self.assertEqual(self.invocations(), [])
 
