@@ -109,14 +109,18 @@ dependencies_install() {
 dependencies_resolve_selection() {
     local seleccion="$1"; shift
     local -a faltan=("$@") elegidos=()
-    local idx
+    local -A vistos=()
+    local idx paquete
     if [[ "$seleccion" == 'todas' ]]; then
         printf '%s\n' "${faltan[@]}"
         return 0
     fi
     for idx in $seleccion; do
         if [[ "$idx" =~ ^[0-9]+$ ]] && (( 10#$idx >= 1 && 10#$idx <= ${#faltan[@]} )); then
-            elegidos+=("${faltan[$((10#$idx - 1))]}")
+            paquete="${faltan[$((10#$idx - 1))]}"
+            [[ -v vistos[$paquete] ]] && continue
+            vistos[$paquete]=1
+            elegidos+=("$paquete")
         else
             return 1
         fi

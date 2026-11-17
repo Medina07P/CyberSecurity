@@ -119,7 +119,7 @@ run "menú: K muestra el estado"       'K\n3\n0\nQ\n' "theHarvester"
 
 echo ""
 echo "=== dependencias: acción D ==="
-run "menú: D abre el submenú"         'D\n0\nQ\n'    "Paquetes que faltan"
+run "menú: D abre el submenú"         'D\n0\nQ\n'    "Instalar dependencias"
 run "menú: D 0 vuelve sin tocar nada" 'D\n0\nQ\n'    "DEPENDENCIAS"
 
 echo ""
