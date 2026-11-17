@@ -16,6 +16,7 @@ def fingerprint(path):
     return hashlib.sha256(path.read_bytes()).digest() if path.exists() else None
 before = [fingerprint(path) for path in paths]
 data_existed = (fw/'09_Automation/ai/data').exists()
+pycache_before = {str(d.relative_to(fw)) for d in fw.rglob('__pycache__')}
 result = subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', str(fw/'tests'), '-p', 'test_ai_*.py', '-v'], cwd=str(fw))
 if before != [fingerprint(path) for path in paths]:
     print('FALLO: se alteró configuración real', file=sys.stderr)
@@ -23,7 +24,8 @@ if before != [fingerprint(path) for path in paths]:
 if not data_existed and (fw/'09_Automation/ai/data').exists():
     print('FALLO: las pruebas dejaron 09_Automation/ai/data en el árbol', file=sys.stderr)
     sys.exit(1)
-if any(fw.rglob('__pycache__')):
+new_pycache = {str(d.relative_to(fw)) for d in fw.rglob('__pycache__')} - pycache_before
+if new_pycache:
     print('FALLO: las pruebas dejaron __pycache__ en el árbol', file=sys.stderr)
     sys.exit(1)
 print('Guardas de claves, scope y targets reales: intactas')
