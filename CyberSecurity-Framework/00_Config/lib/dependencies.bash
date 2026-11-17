@@ -105,3 +105,21 @@ dependencies_install() {
     fi
     sudo apt-get install -y "$@"
 }
+
+dependencies_resolve_selection() {
+    local seleccion="$1"; shift
+    local -a faltan=("$@") elegidos=()
+    local idx
+    if [[ "$seleccion" == 'todas' ]]; then
+        printf '%s\n' "${faltan[@]}"
+        return 0
+    fi
+    for idx in $seleccion; do
+        if [[ "$idx" =~ ^[0-9]+$ ]] && (( 10#$idx >= 1 && 10#$idx <= ${#faltan[@]} )); then
+            elegidos+=("${faltan[$((10#$idx - 1))]}")
+        else
+            return 1
+        fi
+    done
+    printf '%s\n' "${elegidos[@]}"
+}

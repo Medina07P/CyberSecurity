@@ -1114,18 +1114,14 @@ dependencies_menu() {
             if ! IFS= read -r seleccion || [[ "$seleccion" == '0' || "$seleccion" == '!' || -z "$seleccion" ]]; then
                 pause; return 0
             fi
-            elegidos=()
-            if [[ "$seleccion" == 'todas' ]]; then
-                elegidos=("${faltan[@]}")
-            else
-                for idx in $seleccion; do
-                    if [[ "$idx" =~ ^[0-9]+$ ]] && (( idx >= 1 && idx <= ${#faltan[@]} )); then
-                        elegidos+=("${faltan[$((idx - 1))]}")
-                    else
-                        echo -e "${RED}Número inválido: $idx${NC}"; pause; return 0
-                    fi
-                done
+            local resuelto rc_resuelto
+            resuelto=$(dependencies_resolve_selection "$seleccion" "${faltan[@]}")
+            rc_resuelto=$?
+            if [[ $rc_resuelto -ne 0 ]]; then
+                echo -e "${RED}Selección inválida.${NC}"; pause; return 0
             fi
+            elegidos=()
+            mapfile -t elegidos <<< "$resuelto"
             dependencies_install "${elegidos[@]}"
             ;;
         *) echo -e "${RED}❌ Opción inválida${NC}" ;;
