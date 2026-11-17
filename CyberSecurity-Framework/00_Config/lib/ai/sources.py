@@ -30,10 +30,43 @@ SKIP_DIRS = frozenset({".git", "__pycache__", "node_modules", "tests", ".superpo
 TEXT_SUFFIXES = frozenset({".md", ".txt", ".log", ".json", ".xml", ".csv", ".tsv",
                            ".nmap", ".gnmap", ".yaml", ".yml", ".html"})
 REPORTS_REL = "11_Reports/generated"
+# Directorio de datos del propio asistente (índice y resúmenes). Nunca se indexa:
+# si lo hiciéramos, el índice se ingiere a sí mismo e invalida su propio caché.
+DATA_DIR_REL_PARTS = ("09_Automation", "ai", "data")
 
 
 def slug(target: str) -> str:
     return target.replace(":", "_").replace("/", "_")
+
+
+def _abs(path) -> str:
+    try:
+        return os.path.abspath(str(path))
+    except (OSError, ValueError):
+        return str(path)
+
+
+def is_data_path(framework_root, path, exclude=None) -> bool:
+    """¿``path`` pertenece al directorio de datos del asistente?
+
+    Dos reglas, por secuencia de componentes (no por subcadena):
+    - exclusión relativa fija ``09_Automation/ai/data`` bajo el framework;
+    - exclusión explícita opcional ``exclude`` (p. ej. un ``AI_DATA_DIR`` que
+      caiga dentro del árbol del framework), comparada por prefijo de ruta.
+    """
+    fw = Path(framework_root)
+    try:
+        rel = Path(path).relative_to(fw).parts
+        if tuple(rel[:len(DATA_DIR_REL_PARTS)]) == DATA_DIR_REL_PARTS:
+            return True
+    except ValueError:
+        pass
+    if exclude is not None:
+        base = _abs(exclude)
+        cand = _abs(path)
+        if cand == base or cand.startswith(base + os.sep):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -85,7 +118,7 @@ def _rel(p: Path, base: Path) -> str:
 
 
 def discover(framework_root: Path, *, include_credentials: bool = False,
-             max_file_bytes: int = 2_000_000) -> Iterator[Document]:
+             max_file_bytes: int = 2_000_000, exclude=None) -> Iterator[Document]:
     fw = Path(framework_root)
     repo = fw.parent
     seen = set()
@@ -111,6 +144,8 @@ def discover(framework_root: Path, *, include_credentials: bool = False,
         rel = _rel(p, fw)
         if _brute_path(rel.split("/")):
             continue
+        if is_data_path(fw, p, exclude):
+            continue
         cred = credential(rel, p.name)
         if rel.startswith(REPORTS_REL + "/"):
             parts = rel.split("/")
@@ -128,6 +163,8 @@ def discover(framework_root: Path, *, include_credentials: bool = False,
         for p in _walk(docs):
             if _brute_path(p.relative_to(docs).parts):
                 continue
+            if is_data_path(fw, p, exclude):
+                continue
             d = emit(p, "doc", None, False)
             if d and d.path not in seen:
                 seen.add(d.path)
@@ -139,6 +176,8 @@ def discover(framework_root: Path, *, include_credentials: bool = False,
         for p in _walk(scans):
             rel = p.relative_to(scans).parts
             if len(rel) < 2 or _brute_path(rel):
+                continue
+            if is_data_path(fw, p, exclude):
                 continue
             tool = rel[0]
             stem = p.stem

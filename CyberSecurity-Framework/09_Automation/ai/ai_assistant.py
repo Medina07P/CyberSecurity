@@ -49,8 +49,11 @@ def framework_root() -> Path:
 
 
 def data_dir() -> Path:
+    # Por defecto, dentro del framework (09_Automation/ai/data); así sigue a
+    # AI_FRAMEWORK_ROOT en pruebas y coincide con producción. Queda EXCLUIDO del
+    # índice en get_index/cmd_reindexar para no auto-ingerirse.
     env = os.environ.get("AI_DATA_DIR")
-    d = Path(env) if env else (_SCRIPT_DIR / "data")
+    d = Path(env) if env else (framework_root() / "09_Automation" / "ai" / "data")
     d.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(d, 0o700)
@@ -85,14 +88,17 @@ def model_available(client) -> bool:
 
 
 def get_index(fw: Path, cfg: dict, data: Path, note=None) -> Index:
+    # `data` se excluye del índice: puede caer dentro del árbol del framework
+    # (por defecto 09_Automation/ai/data) y, si se indexara, se invalidaría solo.
     path = data / "index.json"
     idx = Index.load(path)
-    if idx is not None and not idx.stale(fw):
+    if idx is not None and not idx.stale(fw, data):
         return idx
     if note:
         note("Preparando el índice… (puede tardar la primera vez)\n")
-    fp = index_mod.fingerprint(fw)
-    docs = sources.discover(fw, include_credentials=cfg["incluir_credenciales"])
+    fp = index_mod.fingerprint(fw, data)
+    docs = sources.discover(fw, include_credentials=cfg["incluir_credenciales"],
+                            exclude=data)
     idx = Index.build(docs, fingerprint=fp)
     idx.save(path)
     return idx
@@ -172,8 +178,9 @@ def cmd_modelo(cfg):
 
 def cmd_reindexar(fw, cfg, data):
     path = data / "index.json"
-    fp = index_mod.fingerprint(fw)
-    docs = sources.discover(fw, include_credentials=cfg["incluir_credenciales"])
+    fp = index_mod.fingerprint(fw, data)
+    docs = sources.discover(fw, include_credentials=cfg["incluir_credenciales"],
+                            exclude=data)
     idx = Index.build(docs, fingerprint=fp)
     idx.save(path)
     print("Índice reconstruido: %d fragmentos en %s" % (len(idx.chunks), path))
