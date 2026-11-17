@@ -91,11 +91,15 @@ else
 fi
 
 echo ""
-echo "=== marcas en 06 ==="
+echo "=== marcas de generador ==="
 # 01_OSINT ya no tiene generadores: osint_harvester.sh se reescribía a sí mismo
-# y se materializó el 2026-10-31. Los generadores que quedan están en 06.
-out=$(printf '06\n9\n0\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
-printf '%s' "$out" | grep -qF "[generador]" && echo "  OK       aparece [generador] en 06" || { echo "  FALLO    sin [generador] en 06"; fail=$((fail+1)); }
+# y se materializó el 2026-10-31. Los dos que quedaban en 06 (ps_exec.sh,
+# linpeas.sh) se migraron aparte al patrón stable_cli.py (trabajo del
+# aislador09 descrito en AGENTS.md, sin aprobar) y ya no coinciden con la
+# huella cat>/mv -f que detecta params_is_generator; esta prueba no los toca.
+# El único generador real que queda es 04_Enumeration/web/deepseeenum_web.sh.
+out=$(printf '04\n11\n0\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
+printf '%s' "$out" | grep -qF "[generador]" && echo "  OK       aparece [generador] en 04 (deepseeenum_web.sh)" || { echo "  FALLO    sin [generador] en 04"; fail=$((fail+1)); }
 printf '%s' "$out" | grep -qF "[intrusiva]" && echo "  OK       aparece [intrusiva] en 06" || { echo "  FALLO    sin [intrusiva] en 06"; fail=$((fail+1)); }
 
 out=$(printf '00\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
