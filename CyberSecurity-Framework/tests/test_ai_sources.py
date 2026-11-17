@@ -165,5 +165,93 @@ class RedactTests(unittest.TestCase):
             self.assertLess(time.monotonic() - t0, 2.0, ln[:20])
 
 
+class RedactExtraTests(unittest.TestCase):
+    def chk(self, text, leaks, keep=()):
+        out = redact.redact(text)
+        self.assertIn("[REDACTADO]", out, text)
+        for l in leaks:
+            self.assertNotIn(l, out, text)
+        for k in keep:
+            self.assertIn(k, out, text)
+
+    def test_cli_flags(self):
+        self.chk("mysql -u root -p hunter2 -h x", ["hunter2"], ["-u root", "-h x"])
+        self.chk("tool --password hunter2 --verbose", ["hunter2"], ["--verbose"])
+        self.chk("tool --password=hunter2", ["hunter2"])
+        self.chk("tool --token hunter2", ["hunter2"])
+
+    def test_port_flags_intact(self):
+        t = "nmap -p 80,443 -p- -p 1-1024 -p T:80 -sV host"
+        self.assertEqual(redact.redact(t), t)
+
+    def test_cookies_and_auth_schemes(self):
+        self.chk("Cookie: session=abcDEF123456; x=y", ["abcDEF123456", "x=y"])
+        self.chk("Set-Cookie: sid=abc123xyz; HttpOnly", ["abc123xyz"])
+        self.chk("Authorization: Token abc123tok", ["abc123tok"])
+        self.chk("authorization: Digest user=a response=zzz", ["zzz"])
+
+    def test_private_key_blocks(self):
+        pem = ("-----BEGIN RSA PRIVATE KEY-----\nMIIFAKEFAKE\nZZZZFAKE\n"
+               "-----END RSA PRIVATE KEY-----")
+        out = redact.redact("antes\n" + pem + "\ndespues")
+        self.assertNotIn("FAKE", out)
+        self.assertIn("antes", out)
+        self.assertIn("despues", out)
+        out = redact.redact("x\n-----BEGIN PRIVATE KEY-----\nFAKEBODY\nsin fin")
+        self.assertNotIn("FAKEBODY", out)
+        self.assertIn("[REDACTADO]", out)
+
+    def test_aws_and_base64_secrets(self):
+        self.chk("id AKIAABCDEFGHIJKLMNOP fin", ["AKIAABCDEFGHIJKLMNOP"])
+        self.chk("ASIAABCDEFGHIJKLMNOP", ["ASIAABCDEFGHIJKLMNOP"])
+        b64 = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYFAKEKEY=="
+        self.chk("aws_secret_access_key = " + b64, [b64])
+        self.chk("private_key: " + b64, [b64])
+
+    def test_quoted_values_with_spaces(self):
+        self.chk('password: "hunter two"', ["hunter", "two"])
+        self.chk('password="abc def"', ["abc", "def"])
+        self.chk("secret='uno dos tres' resto", ["uno", "dos", "tres"], ["resto"])
+        self.chk('{"password": "hunter two", "u": "a"}', ["hunter", "two"], ['"u": "a"'])
+
+    def test_backtracking_new_patterns(self):
+        lines = ["-----BEGIN PRIVATE KEY-----" * 40_000, "-----BEGIN " * 90_000,
+                 "Cookie: " * 120_000, "-p " * 300_000, "--password " * 90_000,
+                 'password="' * 100_000, "AKIA" * 250_000,
+                 "secret_access_key" * 60_000, "x" * 1_000_000 + "\n" + "-----BEGIN PRIVATE KEY-----"]
+        for ln in lines:
+            t0 = time.monotonic()
+            redact.redact(ln)
+            self.assertLess(time.monotonic() - t0, 2.0, ln[:20])
+
+
+class DiscoverExtraTests(Base):
+    def test_denylist_any_component_both_walks(self):
+        w(self.repo / "scans/x/hydra/a.txt", "x")
+        w(self.repo / "scans/x/Medusa/a.txt", "x")
+        w(self.fw / "05_Exploitation/Hashcat/out/r.txt", "x")
+        w(self.fw / "10_Evidence/logs/john/r.log", "x")
+        w(self.fw / "02_Recon/ncrack/r.txt", "x")
+        w(self.fw / "02_Recon/ok/r.txt", "ok")
+        w(self.repo / "scans/nmap/nmap_h.txt", "ok")
+        for n in ("medusa", "ncrack", "john", "hashcat"):
+            self.assertIn(n, sources.BRUTEFORCE_TOOL_DIRS)
+        self.assertEqual(sorted(self.docs()),
+                         ["02_Recon/ok/r.txt", "../scans/nmap/nmap_h.txt"].__class__(
+                             sorted(["02_Recon/ok/r.txt", "../scans/nmap/nmap_h.txt"])))
+
+    def test_secret_names_excluded_regardless_of_suffix(self):
+        names = ["id_rsa", "id_rsa.txt", "ID_ED25519.md", "key.pem", "K.PEM.txt",
+                 "server.key", "x.KEY", ".env", ".env.txt", "vault.kdbx", "shadow",
+                 "shadow.txt"]
+        for n in names:
+            w(self.fw / "00_Config" / "stuff" / n, "-----BEGIN PRIVATE KEY-----")
+        w(self.fw / "00_Config" / "README.md", "ok")
+        self.assertEqual(list(self.docs()), ["00_Config/README.md"])
+        d = self.docs(include_credentials=True)
+        for n in names:
+            self.assertIn("00_Config/stuff/" + n, d)
+
+
 if __name__ == "__main__":
     unittest.main()
