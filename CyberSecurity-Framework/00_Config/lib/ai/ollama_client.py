@@ -40,6 +40,9 @@ class OllamaClient:
         self.endpoint = endpoint.rstrip("/")
         self.model = model
         self.timeout = timeout
+        # Sin proxies del entorno: nada de lo local debe salir por HTTP(S)_PROXY.
+        self._http = requests.Session()
+        self._http.trust_env = False
 
     def _no_server(self):
         return OllamaError(
@@ -53,13 +56,13 @@ class OllamaClient:
 
     def is_up(self):
         try:
-            return requests.get(self.endpoint + "/api/tags", timeout=min(self.timeout, 5)).status_code == 200
+            return self._http.get(self.endpoint + "/api/tags", timeout=min(self.timeout, 5), allow_redirects=False).status_code == 200
         except requests.RequestException:
             return False
 
     def has_model(self):
         try:
-            r = requests.get(self.endpoint + "/api/tags", timeout=min(self.timeout, 5))
+            r = self._http.get(self.endpoint + "/api/tags", timeout=min(self.timeout, 5), allow_redirects=False)
             names = [m.get("name") for m in r.json().get("models", [])]
         except (requests.RequestException, ValueError, AttributeError):
             return False
@@ -70,8 +73,12 @@ class OllamaClient:
                    "keep_alive": keep_alive}
         parts = []
         try:
-            with requests.post(self.endpoint + "/api/chat", json=payload,
-                               stream=True, timeout=self.timeout) as r:
+            with self._http.post(self.endpoint + "/api/chat", json=payload,
+                               stream=True, timeout=self.timeout, allow_redirects=False) as r:
+                if 300 <= r.status_code < 400:
+                    raise OllamaError(
+                        "Ollama intentó redirigir la petición a otra dirección; "
+                        "por seguridad no se sigue.")
                 if r.status_code == 404:
                     raise self._no_model()
                 if r.status_code != 200:
@@ -110,8 +117,8 @@ class OllamaClient:
 
     def unload(self):
         try:
-            requests.post(self.endpoint + "/api/chat",
+            self._http.post(self.endpoint + "/api/chat",
                           json={"model": self.model, "messages": [], "stream": False,
-                                "keep_alive": 0}, timeout=min(self.timeout, 10))
+                                "keep_alive": 0}, timeout=min(self.timeout, 10), allow_redirects=False)
         except requests.RequestException:
             pass

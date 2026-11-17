@@ -6,7 +6,7 @@ Uso: python3 ollama_fake.py <puerto|0> <fichero_ready>
 El fichero ready recibe "pid puerto" cuando el servidor ya escucha.
 Nunca es un Ollama real. Variables de entorno:
 
-  FAKE_OLLAMA_MODE  ok | no_model | truncated | slow  (por defecto ok)
+  FAKE_OLLAMA_MODE  ok | no_model | truncated | slow | redirect (307 a FAKE_OLLAMA_REDIRECT_TO)  (por defecto ok)
   FAKE_OLLAMA_LOG   ruta donde se guarda el último cuerpo de /api/chat
   FAKE_OLLAMA_MODEL nombre del modelo que anuncia /api/tags (por defecto "fake:1b")
 """
@@ -51,6 +51,12 @@ class Manejador(BaseHTTPRequestHandler):
         if LOG:
             with open(LOG, 'wb') as f:
                 f.write(crudo)
+        if MODE == 'redirect':
+            self.send_response(307)
+            self.send_header('Location', os.environ.get('FAKE_OLLAMA_REDIRECT_TO', ''))
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
         if MODE == 'no_model':
             return self._json(404, {'error': 'model not found'})
         try:
