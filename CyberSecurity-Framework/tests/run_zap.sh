@@ -51,7 +51,14 @@ eq "fixture: ruta desconocida da 404" \
 curl -s "http://127.0.0.1:$RPORT/JSON/core/action/shutdown/" >/dev/null
 sleep 0.2
 curl -s --max-time 1 "http://127.0.0.1:$RPORT/JSON/core/view/version/" >/dev/null 2>&1
-eq "fixture: tras shutdown deja de responder" "$?" "7"
+rc_tras_shutdown=$?
+# 7 = conexión rechazada, 56 = reset a mitad: según el timing exacto del
+# cierre del socket tras server.shutdown(), cualquiera de los dos significa
+# correctamente «ya no sirve»; solo 0 (seguiría respondiendo) sería un fallo.
+case "$rc_tras_shutdown" in
+    7|56) ok "fixture: tras shutdown deja de responder" ;;
+    *) ko "fixture: tras shutdown deja de responder (obtenido rc=$rc_tras_shutdown, esperado 7 o 56)" ;;
+esac
 wait "$FAKEPID" 2>/dev/null
 
 READY4="$TMPD/ready4"
@@ -102,6 +109,58 @@ OUT="$TMPD/informe_sin_conexion.txt"
 python3 "$DRIVER" --host 127.0.0.1 --port "$PUERTO_CERRADO" --url http://obj.test/ --salida "$OUT" --max-seg 5
 eq "driver: sin conexión sale 1" "$?" "1"
 eq "driver: sin conexión no inventa hallazgos" "$(grep -ci 'hallazgo' "$OUT" 2>/dev/null)" "0"
+
+echo "=== zap_scan.sh ==="
+STUBDIR="$(mktemp -d)"
+cat > "$STUBDIR/zaproxy" <<EOF
+#!/bin/bash
+puerto=""
+for ((i=1; i<=\$#; i++)); do [[ "\${!i}" == -port ]] && { j=\$((i+1)); puerto="\${!j}"; }; done
+exec python3 "$FAKE_API" "\$puerto"
+EOF
+chmod +x "$STUBDIR/zaproxy"
+
+URL_PRUEBA="http://obj.test/"
+OUT=$(PATH="$STUBDIR:$PATH" bash "$FW/03_Scanners/web_scanners/zap/zap_scan.sh" "$URL_PRUEBA" 2>&1); RC=$?
+eq "zap_scan: feliz sale 0" "$RC" "0"
+eq "zap_scan: anuncia terminado" "$(printf '%s' "$OUT" | grep -c 'Ejecución completada')" "1"
+INFORME=$(find "$FW/../scans/zap" -name 'zap_http___obj.test_.txt' 2>/dev/null | head -1)
+eq "zap_scan: escribe el informe esperado" "$([[ -n "$INFORME" ]] && echo si)" "si"
+eq "zap_scan: informe dice SIN HALLAZGOS" "$(grep -c 'SIN HALLAZGOS' "$INFORME")" "1"
+rm -rf "$FW/../scans/zap"
+
+echo "sin argumentos:"
+OUT=$(bash "$FW/03_Scanners/web_scanners/zap/zap_scan.sh" 2>&1); RC=$?
+eq "zap_scan: sin URL da uso" "$(printf '%s' "$OUT" | grep -c 'Uso:')" "1"
+eq "zap_scan: sin URL sale 1" "$RC" "1"
+
+OUT=$(PATH="$(mktemp -d):$PATH" bash "$FW/03_Scanners/web_scanners/zap/zap_scan.sh" "$URL_PRUEBA" 2>&1); RC=$?
+eq "zap_scan: sin zaproxy instalado sale 1" "$RC" "1"
+eq "zap_scan: sin zaproxy instalado lo dice" "$(printf '%s' "$OUT" | grep -ci 'zaproxy')" "1"
+
+rm -rf "$STUBDIR"
+
+echo "=== zap_scan.sh: limpieza ==="
+STUBDIR="$(mktemp -d)"
+cat > "$STUBDIR/zaproxy" <<EOF
+#!/bin/bash
+puerto=""; perfil=""
+for ((i=1; i<=\$#; i++)); do
+    [[ "\${!i}" == -port ]] && { j=\$((i+1)); puerto="\${!j}"; }
+    [[ "\${!i}" == -dir ]] && { j=\$((i+1)); perfil="\${!j}"; }
+done
+echo "\$perfil" > "$TMPD/ultimo_perfil"
+exec python3 "$FAKE_API" "\$puerto"
+EOF
+chmod +x "$STUBDIR/zaproxy"
+PATH="$STUBDIR:$PATH" bash "$FW/03_Scanners/web_scanners/zap/zap_scan.sh" "$URL_PRUEBA" >/dev/null 2>&1 &
+ZSPID=$!
+sleep 1
+kill -INT "$ZSPID"
+wait "$ZSPID" 2>/dev/null
+PERFIL_USADO=$(cat "$TMPD/ultimo_perfil")
+eq "zap_scan: SIGINT borra el perfil temporal" "$([[ -e "$PERFIL_USADO" ]] && echo existe || echo borrado)" "borrado"
+rm -rf "$FW/../scans/zap" "$STUBDIR"
 
 echo ""; echo "Resultado: $pasan ok, $fallan fallos"
 [[ $fallan -eq 0 ]]
