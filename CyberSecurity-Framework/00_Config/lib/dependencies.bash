@@ -90,3 +90,18 @@ dependencies_missing_with_package() {
         printf '%s\n' "$paquete"
     done
 }
+
+dependencies_install() {
+    local respuesta
+    if [[ $# -eq 0 ]]; then
+        printf 'No hay nada que instalar.\n' >&2
+        return 0
+    fi
+    printf 'Paquetes a instalar: %s\n' "$*" >&2
+    printf "Escribe 'instalar' para continuar (cualquier otra entrada cancela): " >&2
+    if ! IFS= read -r respuesta || [[ "$respuesta" != 'instalar' ]]; then
+        printf 'Instalación cancelada.\n' >&2
+        return 1
+    fi
+    sudo apt-get install -y "$@"
+}
