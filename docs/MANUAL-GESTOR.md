@@ -57,6 +57,7 @@ La cabecera muestra:
 | `00`–`13` | Entrar en un módulo (también vale `0`–`9`) |
 | `T` | Cambiar el objetivo de la sesión |
 | `R` | Generar informes (técnico, cliente o ambos) |
+| `I` | Asistente IA local (explica resultados e informes) |
 | `99` | Flujo completo (ejecuta todas las fases en orden) |
 | `?` | Ayuda, con el orden recomendado de fases |
 | `Q` | Salir |
@@ -630,6 +631,18 @@ Estado de entrega/pruebas/revisión:
 
 ---
 
+## Asistente IA local
+
+La tecla `I` abre un Asistente que explica los hallazgos del objetivo de sesión, el
+informe generado con `R` y la documentación del framework, citando `ruta:líneas`. **No
+ejecuta nada** y sus borradores de informe requieren revisión humana. Usa Ollama si está
+disponible; si no, funciona en modo determinista. Opciones: 1 entender resultados,
+2 explicar el informe, 3 ayudar a redactarlo, 4 dudas, 5 conversación nueva.
+Necesita objetivo (`T`) y, para 2 y 3, informe (`R`). Guía completa, instalación de
+Ollama y solución de problemas en `docs/ASISTENTE-IA-2026-11-17.md`.
+
+---
+
 ## Claves de API
 
 Las herramientas de OSINT y de reconocimiento leen sus claves de API de ficheros y bases
@@ -753,6 +766,7 @@ cd CyberSecurity-Framework
 ./tests/run_e2e.sh             # Script recibe argumento tecleado
 ./tests/run_smoke.sh           # Navegación del menú
 ./tests/run_reports.sh         # Motor de informes
+bash ./tests/run_ai.sh         # Asistente IA local
 bash ./tests/run_wizard.sh     # Asistente de configuración
 ```
 
@@ -777,6 +791,7 @@ cat scans/<herramienta>/errores.log  # Ver errores de una herramienta
 - `docs/SQLMAP-Y-FRENOS-2026-10-31.md`: sqlmap, `Retry-After` y rate limiting.
 - `docs/RATE-LIMIT-2026-10-31.md`: prueba de rate limiting.
 - `docs/PATHS-KALI-2026-10-31.md`: rutas absolutas y relativas en Kali.
+- `docs/ASISTENTE-IA-2026-11-17.md`: Asistente IA local (tecla `I`).
 
 ---
 
