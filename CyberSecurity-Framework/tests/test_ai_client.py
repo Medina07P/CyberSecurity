@@ -3,8 +3,10 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 FW = Path(__file__).resolve().parents[1]
@@ -16,12 +18,12 @@ FAKE = FW / "tests" / "fixtures" / "ollama_fake.py"
 
 
 class FakeServer:
-    def __init__(self, mode="ok"):
+    def __init__(self, mode="ok", extra_env=None):
         self.tmp = tempfile.TemporaryDirectory()
         self.log = os.path.join(self.tmp.name, "chat.json")
         ready = os.path.join(self.tmp.name, "ready")
         env = dict(os.environ, FAKE_OLLAMA_MODE=mode, FAKE_OLLAMA_LOG=self.log,
-                   PYTHONDONTWRITEBYTECODE="1")
+                   PYTHONDONTWRITEBYTECODE="1", **(extra_env or {}))
         self.proc = subprocess.Popen([sys.executable, str(FAKE), "0", ready], env=env)
         for _ in range(100):
             if os.path.exists(ready) and " " in Path(ready).read_text().strip():
@@ -37,8 +39,8 @@ class FakeServer:
 
 
 class ClientTests(unittest.TestCase):
-    def serve(self, mode="ok"):
-        s = FakeServer(mode)
+    def serve(self, mode="ok", extra_env=None):
+        s = FakeServer(mode, extra_env)
         self.addCleanup(s.stop)
         return s
 
@@ -95,6 +97,53 @@ class ClientTests(unittest.TestCase):
         body = json.loads(Path(s.log).read_text())
         self.assertEqual(body["keep_alive"], 0)
         self.assertEqual(body["model"], "fake:1b")
+
+    def test_env_proxies_are_ignored(self):
+        names = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+                 "http_proxy", "https_proxy", "all_proxy")
+        old = {n: os.environ.get(n) for n in names}
+        os.environ.pop("NO_PROXY", None)
+        os.environ.pop("no_proxy", None)
+        try:
+            s = self.serve()
+            for n in names:
+                os.environ[n] = "http://127.0.0.1:1"
+            c = OllamaClient(s.url, "fake:1b")
+            self.assertTrue(c.is_up())
+            self.assertEqual(c.chat([{"role": "user", "content": "x"}]), "Hola, mundo")
+        finally:
+            for n, v in old.items():
+                if v is None:
+                    os.environ.pop(n, None)
+                else:
+                    os.environ[n] = v
+
+    def test_redirect_is_not_followed(self):
+        hits = []
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                hits.append(self.path)
+                self.send_response(200)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            do_POST = do_GET
+
+        other = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        t = threading.Thread(target=other.serve_forever, daemon=True)
+        t.start()
+        self.addCleanup(other.server_close)
+        self.addCleanup(other.shutdown)
+        target = "http://127.0.0.1:%d/api/chat" % other.server_address[1]
+        s = self.serve("redirect", {"FAKE_OLLAMA_REDIRECT_TO": target})
+        with self.assertRaises(OllamaError) as cm:
+            OllamaClient(s.url, "fake:1b").chat([{"role": "user", "content": "secreto"}])
+        self.assertNotIn("secreto", cm.exception.user_message)
+        self.assertEqual(hits, [])
 
 
 if __name__ == "__main__":
