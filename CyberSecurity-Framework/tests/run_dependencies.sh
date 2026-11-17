@@ -20,5 +20,13 @@ touch "$TMPBIN/nmap-vulners.nse"
 NMAP_VULNERS_PATH="$TMPBIN/nmap-vulners.nse" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_binary_ok nmap-vulners"
 eq "nmap-vulners presente (archivo existe)" "$?" "0"
 
+echo "=== dependencies_status ==="
+out=$(bash -c "export PATH='$TMPBIN'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_status")
+printf '%s\n' "$out" | grep -qF '03_Scanners:' && ok "incluye el grupo 03_Scanners" || ko "incluye el grupo 03_Scanners"
+printf '%s\n' "$out" | grep -qF 'Dependencias adicionales:' && ok "incluye el grupo adicional" || ko "incluye el grupo adicional"
+eq "nmap aparece una sola vez en el reporte" \
+    "$(printf '%s\n' "$out" | grep -c -E '^  [✓✗] nmap$')" "1"
+printf '%s\n' "$out" | grep -qF 'avml (binario de GitHub' && ok "avml muestra el motivo" || ko "avml muestra el motivo"
+
 echo ""; echo "Resultado: $pasan ok, $fallan fallos"
 [[ $fallan -eq 0 ]]

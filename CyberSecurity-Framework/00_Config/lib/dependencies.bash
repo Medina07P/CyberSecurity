@@ -56,3 +56,22 @@ dependencies_binary_ok() {
     fi
     command -v "$binario" >/dev/null 2>&1
 }
+
+dependencies_status() {
+    local entry grupo binario previo=''
+    for entry in "${DEPENDENCIES_ORDER[@]}"; do
+        grupo="${entry%%|*}"
+        binario="${entry#*|}"
+        if [[ "$grupo" != "$previo" ]]; then
+            printf '%s:\n' "$grupo"
+            previo="$grupo"
+        fi
+        if dependencies_binary_ok "$binario"; then
+            printf '  ✓ %s\n' "$binario"
+        elif [[ -v DEPENDENCIES_NO_APT[$binario] ]]; then
+            printf '  ✗ %s (%s)\n' "$binario" "${DEPENDENCIES_NO_APT[$binario]}"
+        else
+            printf '  ✗ %s\n' "$binario"
+        fi
+    done
+}
