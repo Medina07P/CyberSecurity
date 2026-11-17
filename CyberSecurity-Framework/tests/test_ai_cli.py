@@ -293,6 +293,47 @@ class SubcommandTests(CliBase):
         self.assertFalse((self.fw / "09_Automation" / "ai" / "data").exists())
 
 
+class MissingPackageTests(CliBase):
+    """Si falta un paquete de Python, se explica en llano (sin traceback)."""
+
+    def _run_without(self, pkg):
+        shadow = Path(self.base.name) / ("sin_" + pkg)
+        shadow.mkdir()
+        (shadow / (pkg + ".py")).write_text(
+            "raise ImportError('simulado: no instalado')\n", encoding="utf-8")
+        self._write_config("http://127.0.0.1:1")
+        env = self._env()
+        env["PYTHONPATH"] = str(shadow)
+        return subprocess.run([sys.executable, str(SCRIPT), "estado"],
+                              env=env, capture_output=True, text=True, timeout=40)
+
+    def test_missing_yaml_explained(self):
+        p = self._run_without("yaml")
+        self.assertEqual(p.returncode, 1, p.stderr)
+        self.assertNotIn("Traceback", p.stderr)
+        self.assertIn("yaml", p.stderr.lower())
+        self.assertIn("pip install", p.stderr)
+
+    def test_missing_requests_explained(self):
+        p = self._run_without("requests")
+        self.assertEqual(p.returncode, 1, p.stderr)
+        self.assertNotIn("Traceback", p.stderr)
+        self.assertIn("requests", p.stderr.lower())
+        self.assertIn("pip install", p.stderr)
+
+
+class RedactionCliTests(CliBase):
+    def test_pasted_secret_not_saved_in_summary(self):
+        p = self.run_cli([], stdin_text="que es nmap con password=hunter2\n5\ns\n0\n",
+                         server="ok")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        summaries = self.data / "summaries"
+        files = list(summaries.iterdir()) if summaries.is_dir() else []
+        self.assertTrue(files, "debía guardarse un resumen")
+        for f in files:
+            self.assertNotIn("hunter2", f.read_text(encoding="utf-8"))
+
+
 class DocumentationTests(unittest.TestCase):
     def test_documentation_mentions_key_i_and_ollama_pull(self):
         repo = FW.parent

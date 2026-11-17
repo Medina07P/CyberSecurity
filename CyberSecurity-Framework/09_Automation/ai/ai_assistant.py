@@ -22,18 +22,38 @@ import os
 import sys
 from pathlib import Path
 
+# Comprobación previa de paquetes de terceros: si falta alguno se explica en
+# llano y se sale con 1, sin traceback. Solo se muestra texto; nunca se instala.
+for _mod, _pip, _apt in (("yaml", "pyyaml", "python3-yaml"),
+                         ("requests", "requests", "python3-requests")):
+    try:
+        __import__(_mod)
+    except ImportError:
+        sys.stderr.write(
+            "Al asistente le falta el paquete de Python «%s».\n"
+            "Instálalo con: pip install %s   (o: sudo apt install %s)\n"
+            "Después vuelve a abrir el asistente.\n" % (_mod, _pip, _apt))
+        sys.exit(1)
+
 # El código del asistente vive en 00_Config/lib/ai (para que el descubrimiento
 # de herramientas no lo liste). Se resuelve desde la ubicación REAL del script.
 _SCRIPT_DIR = Path(__file__).resolve().parent          # 09_Automation/ai
 _REAL_FW = _SCRIPT_DIR.parents[1]                       # CyberSecurity-Framework
 sys.path.insert(0, str(_REAL_FW / "00_Config" / "lib"))
 
-from ai import config, hardware, menu, sources          # noqa: E402
-from ai import index as index_mod                        # noqa: E402
-from ai.assistant import Assistant                        # noqa: E402
-from ai.context import Conversation                        # noqa: E402
-from ai.index import Index                                  # noqa: E402
-from ai.ollama_client import OllamaClient, OllamaError      # noqa: E402
+try:
+    from ai import config, hardware, menu, sources          # noqa: E402
+    from ai import index as index_mod                        # noqa: E402
+    from ai.assistant import Assistant                        # noqa: E402
+    from ai.context import Conversation                        # noqa: E402
+    from ai.index import Index                                  # noqa: E402
+    from ai.ollama_client import OllamaClient, OllamaError      # noqa: E402
+except ImportError as _e:
+    sys.stderr.write(
+        "No se pudo cargar el código del asistente (%s). Comprueba que el "
+        "framework está completo y que los paquetes de Python están instalados.\n"
+        % (getattr(_e, "name", None) or "módulo desconocido"))
+    sys.exit(1)
 
 USAGE = ("Uso del asistente -> ./ai_assistant.py [subcomando]\n"
          "Subcomandos: analizar | explicar-informe | borrador [ejecutivo|tecnico] "

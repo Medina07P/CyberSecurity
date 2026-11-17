@@ -251,7 +251,11 @@ class Assistant:
         history = self.conversation.messages() if use_history else []
         msgs = prompts.build_messages(question, chunks, history)
         try:
-            text = self.client.chat(msgs, stream_to=stream_to)
+            # El flujo (stream_to) es solo para mostrar en pantalla: un secreto
+            # partido entre trozos no se puede redactar de forma incremental y
+            # no se acumula todo el flujo para no romper la experiencia en vivo.
+            # Lo que se devuelve y se guarda sí pasa por la redacción final.
+            text = _redact.redact(self.client.chat(msgs, stream_to=stream_to))
         except OllamaError as e:
             return Answer(deterministic_text, sources=srcs, used_model=False,
                           notice=e.user_message)
@@ -265,7 +269,9 @@ class Assistant:
         if not isinstance(question, str) or not question.strip():
             return Answer("Escribe tu pregunta y te ayudo. Por ejemplo: «¿qué "
                           "significa este resultado de Nmap?».")
-        q = question.strip()
+        # Un secreto pegado en la pregunta no debe llegar al modelo, al
+        # historial ni a los resúmenes guardados.
+        q = _redact.redact(question.strip())
         chunks = self.index.search(q, k=self.top_k, target=self.slug)
         if not chunks:
             return Answer("No encuentro base en la documentación ni en los "

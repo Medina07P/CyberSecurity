@@ -248,6 +248,18 @@ class DiscoverExtraTests(Base):
         self.assertNotIn("datos_ia/index.json", d)
         self.assertIn("09_Automation/README.md", d)
 
+    def test_symlinked_exclude_dir_is_excluded(self):
+        real = self.repo / "fuera_datos"
+        w(real / "index.json", "{}")
+        (self.fw / "enlace_ia").symlink_to(real, target_is_directory=True)
+        w(self.fw / "09_Automation/README.md", "x")
+        # La ruta real (fuera del árbol) y la del enlace dentro del árbol se
+        # resuelven al mismo directorio: ambas deben quedar excluidas.
+        self.assertTrue(sources.is_data_path(self.fw, real / "index.json",
+                                             exclude=self.fw / "enlace_ia"))
+        self.assertTrue(sources.is_data_path(self.fw, self.fw / "enlace_ia" / "index.json",
+                                             exclude=real))
+
     def test_denylist_any_component_both_walks(self):
         w(self.repo / "scans/x/hydra/a.txt", "x")
         w(self.repo / "scans/x/Medusa/a.txt", "x")
