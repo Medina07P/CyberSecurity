@@ -127,3 +127,14 @@ dependencies_resolve_selection() {
     done
     printf '%s\n' "${elegidos[@]}"
 }
+
+# Resumen de una línea para el menú principal (mismo rol que keys_resumen_line)
+dependencies_resumen_line() {
+    local -a faltan
+    mapfile -t faltan < <(dependencies_missing_with_package)
+    if [[ ${#faltan[@]} -eq 0 ]]; then
+        printf 'nada pendiente por apt\n'
+    else
+        printf '%s paquetes por apt\n' "${#faltan[@]}"
+    fi
+}

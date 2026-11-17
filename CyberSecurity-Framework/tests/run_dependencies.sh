@@ -102,5 +102,19 @@ rm -f "$DRO_FUERA" "$DRO_BASURA" "$DRO_PARCIAL"
 out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_resolve_selection '1 1' '${FALTAN3[0]}' '${FALTAN3[1]}' '${FALTAN3[2]}'")
 eq "número repetido no duplica el paquete" "$out" "paquete-a"
 
+echo "=== dependencies_resumen_line ==="
+out=$(bash -c "export PATH='$TMPBIN'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_resumen_line")
+N_FALTAN=$(bash -c "export PATH='$TMPBIN'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_missing_with_package" | wc -l | tr -d ' ')
+eq "resumen: cuenta paquetes instalables pendientes" "$out" "$N_FALTAN paquetes por apt"
+
+TODO_INSTALADO="$(mktemp -d)"
+bash -c "
+source '$FW/00_Config/lib/dependencies.bash'
+for b in \"\${!DEPENDENCIES_MAP[@]}\"; do touch '$TODO_INSTALADO/'\"\$b\"; chmod +x '$TODO_INSTALADO/'\"\$b\"; done
+"
+out=$(NMAP_VULNERS_PATH="$TODO_INSTALADO/nmap-vulners.nse" bash -c "export PATH='$TODO_INSTALADO'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_resumen_line")
+eq "resumen: nada pendiente cuando todo está instalado" "$out" "nada pendiente por apt"
+rm -rf "$TODO_INSTALADO"
+
 echo ""; echo "Resultado: $pasan ok, $fallan fallos"
 [[ $fallan -eq 0 ]]
