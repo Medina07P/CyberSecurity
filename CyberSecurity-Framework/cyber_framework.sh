@@ -29,6 +29,7 @@ source "$LIB_DIR/wireless_menu.bash"
 source "$LIB_DIR/forensics_menu.bash"
 source "$LIB_DIR/automation_menu.bash"
 source "$LIB_DIR/evidence_menu.bash"
+source "$LIB_DIR/dependencies.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -904,6 +905,7 @@ show_help() {
     echo -e "  ${GREEN}T${NC}   Cambiar objetivo"
     echo -e "  ${GREEN}R${NC}   Informe rápido (técnico, cliente o ambos)"
     echo -e "  ${GREEN}K${NC}   Claves de API (pide y guarda las que falten)"
+    echo -e "  ${GREEN}D${NC}   Dependencias (ver qué falta e instalarlo)"
     echo -e "  ${GREEN}0${NC}   Volver al menú principal"
     echo -e "  ${GREEN}Q${NC}   Salir"
     echo ""
@@ -964,7 +966,7 @@ main_menu() {
         echo -e "  ${DIM}Siguiente paso sugerido:${NC} ${YELLOW}${next}${NC}"
     fi
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, R, T, K, ?, Q]: ${NC}"
+    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, R, T, K, D, ?, Q]: ${NC}"
 }
 
 # ─── Claves de API ───────────────────────────────────────────
@@ -1073,6 +1075,64 @@ keys_menu() {
     pause
 }
 
+# ─── Dependencias ────────────────────────────────────────────
+
+dependencies_menu() {
+    local -a faltan
+    local eleccion seleccion i idx
+    local -a elegidos
+
+    clear_screen
+    echo -e "${CYAN}${BOLD}━━━ DEPENDENCIAS ━━━${NC}"
+    echo ""
+    dependencies_status
+    echo ""
+    mapfile -t faltan < <(dependencies_missing_with_package)
+    if [[ ${#faltan[@]} -eq 0 ]]; then
+        echo -e "  ${DIM}No falta nada instalable por apt.${NC}"
+    else
+        echo -e "${YELLOW}Paquetes que faltan e instalan por apt:${NC}"
+        for i in "${!faltan[@]}"; do
+            printf '  %d) %s\n' "$((i + 1))" "${faltan[$i]}"
+        done
+    fi
+    echo ""
+    echo -e "  ${GREEN}1${NC}) Instalar dependencias (elegir de la lista)"
+    echo -e "  ${GREEN}0${NC}) Volver al menú principal"
+    echo ""
+    echo -ne "${BOLD}➜ Elige una opción [0-1]: ${NC}"
+    if ! IFS= read -r eleccion; then
+        return 0
+    fi
+    case "$eleccion" in
+        0|'') return 0 ;;
+        1)
+            if [[ ${#faltan[@]} -eq 0 ]]; then
+                echo -e "${DIM}Nada que instalar.${NC}"; pause; return 0
+            fi
+            echo -ne "${BOLD}➜ Números a instalar (espacio entre varios, 'todas', 0 o ! cancela): ${NC}"
+            if ! IFS= read -r seleccion || [[ "$seleccion" == '0' || "$seleccion" == '!' || -z "$seleccion" ]]; then
+                pause; return 0
+            fi
+            elegidos=()
+            if [[ "$seleccion" == 'todas' ]]; then
+                elegidos=("${faltan[@]}")
+            else
+                for idx in $seleccion; do
+                    if [[ "$idx" =~ ^[0-9]+$ ]] && (( idx >= 1 && idx <= ${#faltan[@]} )); then
+                        elegidos+=("${faltan[$((idx - 1))]}")
+                    else
+                        echo -e "${RED}Número inválido: $idx${NC}"; pause; return 0
+                    fi
+                done
+            fi
+            dependencies_install "${elegidos[@]}"
+            ;;
+        *) echo -e "${RED}❌ Opción inválida${NC}" ;;
+    esac
+    pause
+}
+
 # ─── Bucle Principal ─────────────────────────────────────────
 
 main() {
@@ -1110,6 +1170,7 @@ main() {
             R|r) quick_report ;;
             T|t) change_target ;;
             K|k) keys_menu ;;
+            D|d) dependencies_menu ;;
             \?|\?\?|help|HELP|H|h) show_help ;;
             Q|q|salir|exit)
                 echo -e "\n${GREEN}👋 ¡Hasta luego!${NC}"
@@ -1118,7 +1179,7 @@ main() {
             "") : ;;
             *)
                 echo -e "\n${RED}❌ Opción inválida: '$choice'${NC}"
-                echo -e "${YELLOW}Prueba con 00-13, 99, R, T, K, ? o Q.${NC}"
+                echo -e "${YELLOW}Prueba con 00-13, 99, R, T, K, D, ? o Q.${NC}"
                 pause
                 ;;
         esac
