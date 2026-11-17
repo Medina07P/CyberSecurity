@@ -75,3 +75,18 @@ dependencies_status() {
         fi
     done
 }
+
+dependencies_missing_with_package() {
+    local entry binario paquete
+    local -A vistos=()
+    for entry in "${DEPENDENCIES_ORDER[@]}"; do
+        binario="${entry#*|}"
+        [[ -v DEPENDENCIES_MAP[$binario] ]] || continue
+        [[ -v DEPENDENCIES_NO_APT[$binario] ]] && continue
+        dependencies_binary_ok "$binario" && continue
+        paquete="${DEPENDENCIES_MAP[$binario]}"
+        [[ -v vistos[$paquete] ]] && continue
+        vistos[$paquete]=1
+        printf '%s\n' "$paquete"
+    done
+}
