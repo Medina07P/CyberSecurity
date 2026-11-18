@@ -303,6 +303,33 @@ class Assistant:
         return self._model(q, chunks, srcs, stream_to, use_history=True,
                            deterministic_text=_fragments_text(chunks))
 
+    # -- opción 7: conversación libre con el modelo --------------------------
+    def chat_libre(self, mensaje, stream_to=None) -> Answer:
+        """Charla abierta con el modelo, sin buscar en la documentación ni
+        exigir que la respuesta esté anclada en fragmentos citados — como
+        hablar con un asistente de IA genérico. Sin modelo no hay nada
+        determinista que devolver (no hay fragmentos de los que tirar)."""
+        if not isinstance(mensaje, str) or not mensaje.strip():
+            return Answer("Escribe algo y te respondo.")
+        if self.client is None:
+            return Answer("Para hablar libremente hace falta un modelo de IA "
+                          "cargado. Instala Ollama (tecla D, opción 2) o, si "
+                          "ya lo tienes, elige un modelo con la opción 6 de "
+                          "este menú.")
+        # Un secreto pegado en el mensaje no debe llegar al modelo ni al
+        # historial, igual que en ask().
+        m = _redact.redact(mensaje.strip())
+        history = self.conversation.messages()
+        msgs = prompts.build_free_messages(m, history)
+        try:
+            text = _redact.redact(self.client.chat(msgs, stream_to=stream_to))
+        except OllamaError as e:
+            return Answer("No pude obtener respuesta del modelo.",
+                          used_model=False, notice=e.user_message)
+        self.conversation.add("user", m)
+        self.conversation.add("assistant", text)
+        return Answer(text, used_model=True)
+
     # -- opción 1: entender resultados --------------------------------------
     def understand_results(self, stream_to=None) -> Answer:
         if self.target is None:
