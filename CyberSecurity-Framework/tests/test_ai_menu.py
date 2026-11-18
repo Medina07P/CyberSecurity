@@ -1,6 +1,7 @@
 """Pruebas unitarias del bucle de menu.py con un assistant doble (sin subproceso)."""
 import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -63,6 +64,25 @@ class NoticeTimingTests(unittest.TestCase):
         stdout = io.StringIO()
         menu.run(stdin, stdout, lambda: assistant)
         self.assertNotIn("He recuperado el resumen", stdout.getvalue())
+
+
+class SummariesDirCreationTests(unittest.TestCase):
+    def test_forgetting_with_nothing_saved_does_not_create_the_directory(self):
+        with tempfile.TemporaryDirectory() as d:
+            assistant = _FakeAssistant(_AlwaysDownClient())
+            assistant.data_dir = d
+            assistant.slug = "10.0.0.5"
+            self.assertFalse(menu._forget_saved_summary(assistant))
+            self.assertFalse((Path(d) / "summaries").exists())
+
+    def test_saving_still_creates_the_directory(self):
+        with tempfile.TemporaryDirectory() as d:
+            assistant = _FakeAssistant(_AlwaysDownClient())
+            assistant.data_dir = d
+            assistant.slug = "10.0.0.5"
+            assistant.conversation.add("user", "hola")
+            menu._save_summary(assistant, io.StringIO())
+            self.assertTrue((Path(d) / "summaries").is_dir())
 
 
 if __name__ == "__main__":
