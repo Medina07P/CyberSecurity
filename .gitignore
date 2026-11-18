@@ -110,3 +110,6 @@ __pycache__/
 *~
 .DS_Store
 Thumbs.db
+
+# Worktrees locales de desarrollo (nunca al remoto)
+/.worktrees/
