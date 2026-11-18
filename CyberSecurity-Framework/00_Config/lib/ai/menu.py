@@ -129,6 +129,18 @@ def _save_summary(assistant, stdout):
     stdout.write("Resumen guardado en %s\n" % destino)
 
 
+def _forget_saved_summary(assistant):
+    d = _summaries_dir(assistant)
+    if d is None:
+        return
+    slug = assistant.slug or "sin_objetivo"
+    try:
+        (d / ("%s.md" % slug)).unlink()
+    except OSError:
+        pass
+    assistant.resumen_recuperado = False
+
+
 def _nueva(assistant, stdin, stdout):
     stdout.write("¿Guardar un resumen antes de empezar de nuevo? (s/N) ")
     stdout.flush()
@@ -137,6 +149,7 @@ def _nueva(assistant, stdin, stdout):
         _save_summary(assistant, stdout)
     else:
         assistant.conversation.reset(save_summary=False)
+        _forget_saved_summary(assistant)
         stdout.write("Empezamos una conversación nueva.\n")
     client = assistant.client
     if client is not None:
@@ -293,7 +306,7 @@ def run(stdin, stdout, assistant_factory):
         try:
             status = _model_status(assistant)
             if primera_vuelta:
-                if getattr(assistant, "resumen_recuperado", False):
+                if getattr(assistant, "resumen_recuperado", False) and status[0]:
                     stdout.write(
                         "He recuperado el resumen de tu conversación anterior "
                         "sobre «%s».\n" % assistant.target)

@@ -499,6 +499,28 @@ class SummaryRecoveryTests(CliBase):
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertNotIn(NOTICE_MARK, p.stdout)
 
+    def test_no_notice_when_no_model_available_even_with_saved_summary(self):
+        resumen_dir = self.data / "summaries"
+        resumen_dir.mkdir(parents=True)
+        (resumen_dir / ("%s.md" % SLUG)).write_text(
+            "# Resumen de la conversación — objetivo: %s\n\n"
+            "Hablamos de puertos abiertos en el objetivo.\n" % TARGET,
+            encoding="utf-8")
+        p = self.run_cli([], stdin_text="   \n0\n", server=None)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn(NOTICE_MARK, p.stdout)
+
+    def test_new_conversation_without_saving_forgets_saved_summary_on_disk(self):
+        resumen_dir = self.data / "summaries"
+        resumen_dir.mkdir(parents=True)
+        path = resumen_dir / ("%s.md" % SLUG)
+        path.write_text(
+            "# Resumen de la conversación — objetivo: %s\n\nTexto previo.\n" % TARGET,
+            encoding="utf-8")
+        p = self.run_cli([], stdin_text="5\nN\n0\n", server="ok")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertFalse(path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
