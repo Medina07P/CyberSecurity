@@ -478,6 +478,13 @@ class DocumentationTests(unittest.TestCase):
         for name in ("docs/MANUAL-GESTOR.md", "README.md"):
             self.assertIn("Asistente", (repo / name).read_text(encoding="utf-8"), name)
 
+    def test_documentation_mentions_automatic_recovery_and_module_table(self):
+        repo = FW.parent
+        guide = repo / "docs" / "ASISTENTE-IA-2026-11-17.md"
+        text = guide.read_text(encoding="utf-8")
+        for needle in ("recupera", "módulos del framework"):
+            self.assertIn(needle, text)
+
 
 NOTICE_MARK = "He recuperado el resumen"
 

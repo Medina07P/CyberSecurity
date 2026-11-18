@@ -71,6 +71,11 @@ de `09_Automation/ai/ai_config.yaml`.
 | 5 Empezar conversación nueva | Olvida la conversación actual (ver «Contexto») |
 | 0 Volver | Regresa al gestor |
 
+Tanto en la opción 4 (con documentos) como en la 7 (conversación libre), el
+asistente conoce de memoria qué hace cada uno de los 14 módulos del framework
+(00 a 13) y con qué tecla se abren, sin necesitar encontrarlo en la
+documentación.
+
 También puedes escribir una pregunta libre en el menú sin elegir número. Pulsar Ctrl+C
 mientras responde cancela esa respuesta y vuelve al menú; el fin de entrada (Ctrl+D) lo cierra.
 
@@ -84,6 +89,14 @@ quedarse sin espacio. Con **conversación nueva** (opción 5) libera ese context
 de hacerlo puede ofrecerte guardar un resumen en
 `09_Automation/ai/data/summaries/<objetivo>.md`, un fichero privado (permisos 600).
 Empezar de nuevo no borra el índice ni tus resultados.
+
+Si vuelves a abrir el asistente para el mismo objetivo y existe un resumen
+guardado, se recupera automáticamente como contexto inicial (verás un aviso
+una sola vez en la cabecera, solo si hay un modelo disponible) — es
+información reportada de lo que se habló, no una instrucción. Si en
+**conversación nueva** respondes que no quieres guardar, el resumen
+guardado anterior también se borra: la siguiente apertura empieza
+realmente de cero.
 
 ## Privacidad
 
