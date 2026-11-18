@@ -11,7 +11,7 @@ import html
 import json
 from pathlib import Path
 
-from .model import finding_to_dict, finding_from_dict
+from .model import finding_to_dict, finding_from_dict, redact_findings
 from .engine import Collected
 from .publication import preflight, write_private
 
@@ -34,8 +34,14 @@ def to_json(collected: Collected, meta: dict) -> dict:
 
 
 def from_json(data: dict) -> tuple[Collected, dict]:
-    """Reconstruye un ``Collected`` y metadatos desde un diccionario."""
-    findings = [finding_from_dict(f) for f in data["findings"]]
+    """Reconstruye un ``Collected`` y metadatos desde un diccionario.
+
+    Redacta de nuevo: un ``findings.json`` puede venir de antes de que
+    ``collect()`` empezara a redactar, y ``redact()`` es idempotente sobre
+    su propia marca, así que repetirlo sobre un fichero ya limpio no tiene
+    coste observable.
+    """
+    findings = redact_findings([finding_from_dict(f) for f in data["findings"]])
     collected = Collected(
         findings=findings,
         activos=data["activos"],

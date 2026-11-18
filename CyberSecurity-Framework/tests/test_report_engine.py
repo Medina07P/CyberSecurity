@@ -387,6 +387,22 @@ class VerdictTests(unittest.TestCase):
         keys = {f.key for f in r.findings}
         self.assertEqual(keys, {"sqli|127.0.0.1|id", "sqli|127.0.0.1|q", "sqli|127.0.0.1|t"})
 
+    def test_http_inject_payload_on_token_field_survives_redaction(self):
+        # El propio redact() trata "token=valor" como un secreto a tapar;
+        # sin este cuidado en el parser, la evidencia de una inyección sobre
+        # un campo llamado "token" (o password/api_key/secret/...) se
+        # perdería al redactar: justo el caso confirmado en revisión con
+        # token=<script>alert(1)</script> -> token=[REDACTADO].
+        tsv = "nivel\tparam\tclase\tpayload\tcodigo\ttamano\tms\tevidencia\n"
+        tsv += "FUERTE\ttoken\txss\t<script>alert(1)</script>\t200\t99\t12\tz\n"
+        path = write("web/http_inject_token_127.0.0.1.tsv", tsv)
+        write("web/http_inject_token_127.0.0.1/contexto.txt", "host=127.0.0.1\n")
+        r = http_inject.parse(path, ROOT)
+        redacted = redact_findings(r.findings)
+        extracto = redacted[0].evidencia[0].extracto
+        self.assertIn("<script>alert(1)</script>", extracto)
+        self.assertNotIn("[REDACTADO]", extracto)
+
     def test_sqlmap_verdicts(self):
         ok = "- Objetivo: 127.0.0.1:443 (https)\n- Veredicto: INYECTABLE (id): boolean-based blind\n"
         r = sqlmap.parse(write("web/sqlmap_a.txt", ok), ROOT)
@@ -608,6 +624,22 @@ class RenderTests(unittest.TestCase):
         c = self.collected(); data = to_json(c, {"cliente": "ACME"})
         c2, meta = from_json(data)
         self.assertEqual(len(c2.findings), 2); self.assertEqual(meta["cliente"], "ACME")
+
+    def test_from_json_redacts_a_pre_upgrade_findings_json(self):
+        # findings.json escritos antes de que collect() empezara a redactar
+        # (toda generación anterior a esta rama) siguen en disco con el
+        # secreto en claro; --desde-json no debe reintroducirlo al informe.
+        f = Finding(rule="headers.missing.csp", key="k", titulo="t", categoria="web",
+                    severidad="media", confianza="confirmado", activo="127.0.0.1",
+                    tecnica="headers", descripcion="d", impacto_cliente="i",
+                    recomendacion="r", esfuerzo="bajo", cve=None, cvss=None,
+                    evidencia=[Evidence("scans/web/headers_a.txt", 1,
+                                        "Authorization: Bearer abcdef1234567890ABCDEF")],
+                    referencias=[])
+        pre_upgrade = to_json(Collected([f], {}, [], [], [], True), {"cliente": "ACME"})
+        c2, _ = from_json(pre_upgrade)
+        self.assertNotIn("abcdef1234567890ABCDEF", c2.findings[0].evidencia[0].extracto)
+        self.assertIn("[REDACTADO]", c2.findings[0].evidencia[0].extracto)
 
     def test_client_no_determinado_never_claims_completion(self):
         collected = Collected(
