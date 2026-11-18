@@ -23,7 +23,7 @@ from typing import List, Optional
 from . import prompts
 from . import redact as _redact
 from . import sources
-from .index import Chunk
+from .index import Chunk, tokenize
 from .ollama_client import OllamaError
 
 TOP_K = 5
@@ -43,6 +43,24 @@ RESULTS_QUERY = "resultados escaneo servicios puertos vulnerabilidades hallazgos
 
 NO_TARGET = ("No hay objetivo de sesión fijado. Fíjalo con la tecla T en el "
              "menú principal y vuelve a intentarlo.")
+
+# Saludos y cortesías sin contenido técnico: un «Hola» no debe disparar una
+# búsqueda en la documentación. Sin esto, index.search puede devolver
+# fragmentos irrelevantes solo porque la palabra aparece ahí por casualidad
+# (p. ej. como valor de prueba en un script), y el modelo —siguiendo la regla
+# de no inventar— responde "no encuentro base" a un simple saludo.
+_SALUDOS = {"hola", "holaa", "holaaa", "buenas", "buenos", "dias", "tardes",
+           "noches", "hey", "ey", "saludos", "que", "tal"}
+_SALUDO_RESPUESTA = (
+    "¡Hola! Soy el asistente del framework. Puedo ayudarte a entender tus "
+    "resultados (opción 1), explicarte el informe (opción 2), ayudarte a "
+    "redactarlo (opción 3) o responder dudas sobre cómo usar el framework "
+    "(opción 4, o escribe tu pregunta directamente). ¿En qué te ayudo?"
+)
+
+
+def _is_greeting(terms: set) -> bool:
+    return bool(terms) and terms <= _SALUDOS
 
 
 @dataclass
@@ -272,6 +290,8 @@ class Assistant:
         # Un secreto pegado en la pregunta no debe llegar al modelo, al
         # historial ni a los resúmenes guardados.
         q = _redact.redact(question.strip())
+        if _is_greeting(set(tokenize(q))):
+            return Answer(_SALUDO_RESPUESTA)
         chunks = self.index.search(q, k=self.top_k, target=self.slug)
         if not chunks:
             return Answer("No encuentro base en la documentación ni en los "

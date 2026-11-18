@@ -121,6 +121,27 @@ class AssistantTests(unittest.TestCase):
             self.assertFalse(ans.used_model)
             self.assertIn("base", ans.text.lower())
 
+    def test_greeting_does_not_search_or_call_model(self):
+        with tempfile.TemporaryDirectory() as d:
+            client = FakeClient()
+            a, _ = make_assistant(Path(d), client=client)
+            for saludo in ("Hola", "hola!", "Buenas", "buenos dias",
+                          "Buenas tardes", "hey", "Que tal"):
+                with self.subTest(saludo=saludo):
+                    ans = a.ask(saludo)
+                    self.assertEqual(client.calls, [])
+                    self.assertFalse(ans.used_model)
+                    self.assertIn("asistente del framework", ans.text.lower())
+
+    def test_greeting_as_substring_of_a_real_question_still_searches(self):
+        # "hola" aparece dentro del texto, pero la pregunta en sí no es un
+        # saludo puro: no debe tomar el atajo de cortesía.
+        with tempfile.TemporaryDirectory() as d:
+            client = FakeClient()
+            a, _ = make_assistant(Path(d), client=client)
+            a.ask("hola, puerto abierto en el servidor")
+            self.assertTrue(client.calls, "una pregunta real sí debe buscar/llamar al modelo")
+
     def test_prompt_wraps_chunks_as_untrusted_data(self):
         with tempfile.TemporaryDirectory() as d:
             client = FakeClient()
