@@ -51,9 +51,9 @@ dependencies_general_model_size() {
     python3 -c '
 import os, sys
 sys.path.insert(0, "'"$DEPENDENCIES_LIB_DIR"'")
-from ai.hardware import read_mem_available_gib, has_nvidia_gpu, recommend_model, MODEL_1B, MODEL_3B, MODEL_7B, MODEL_14B
+from ai.hardware import read_mem_available_gib, has_nvidia_gpu, has_amd_gpu, recommend_model, MODEL_1B, MODEL_3B, MODEL_7B, MODEL_14B
 mem = read_mem_available_gib(os.environ.get("DEPENDENCIES_MEMINFO_PATH", "/proc/meminfo"))
-rec = recommend_model(mem, has_nvidia_gpu())
+rec = recommend_model(mem, has_nvidia_gpu(), has_amd_gpu())
 print({MODEL_1B: "1b", MODEL_3B: "3b", MODEL_7B: "7b", MODEL_14B: "14b"}.get(rec.model, "3b"))
 '
 }

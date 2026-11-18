@@ -130,7 +130,8 @@ def make_assistant(fw, cfg, idx, target, client):
 
 def recommendation():
     return hardware.recommend_model(hardware.read_mem_available_gib(),
-                                    hardware.has_nvidia_gpu())
+                                    hardware.has_nvidia_gpu(),
+                                    hardware.has_amd_gpu())
 
 
 # --- impresión de respuestas de subcomando ---------------------------------

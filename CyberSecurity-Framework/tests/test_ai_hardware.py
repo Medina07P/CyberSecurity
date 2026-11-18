@@ -40,6 +40,43 @@ class HardwareTests(unittest.TestCase):
         self.assertTrue(hardware.has_nvidia_gpu(which=lambda n: "/usr/bin/" + n))
         self.assertFalse(hardware.has_nvidia_gpu(which=lambda n: None))
 
+    def _drm_tree(self, d, vendores):
+        """vendores: lista de vendor-id ('0x1002', '0x10de'...) una por tarjeta."""
+        drm = Path(d) / "drm"
+        drm.mkdir()
+        for i, vendor in enumerate(vendores):
+            card = drm / f"card{i}" / "device"
+            card.mkdir(parents=True)
+            (card / "vendor").write_text(vendor + "\n")
+        # Un conector (no una tarjeta): no debe hacer que se confunda ni truene.
+        (drm / "card0-HDMI-A-1").mkdir()
+        return str(drm)
+
+    def test_has_amd_gpu_reads_pci_vendor(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertTrue(hardware.has_amd_gpu(self._drm_tree(d, ["0x1002"])))
+
+    def test_has_amd_gpu_false_for_other_vendors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(hardware.has_amd_gpu(self._drm_tree(d, ["0x10de", "0x8086"])))
+
+    def test_has_amd_gpu_false_without_sysfs(self):
+        self.assertFalse(hardware.has_amd_gpu("/no/existe/drm"))
+
+    def test_recommend_with_amd_includes_rocm_caveat(self):
+        rec = hardware.recommend_model(20, False, amd_gpu=True)
+        self.assertIn("ROCm", rec.reason)
+        self.assertIn("HSA_OVERRIDE_GFX_VERSION", rec.reason)
+
+    def test_recommend_amd_bumps_small_memory_like_nvidia(self):
+        self.assertEqual(hardware.recommend_model(1.0, False, amd_gpu=True).model,
+                         hardware.MODEL_3B)
+        self.assertIn("GPU AMD", hardware.recommend_model(1.0, False, amd_gpu=True).reason)
+
+    def test_recommend_without_amd_has_no_rocm_text(self):
+        self.assertNotIn("ROCm", hardware.recommend_model(20, False).reason)
+        self.assertNotIn("ROCm", hardware.recommend_model(20, True).reason)
+
 
 class ConfigTests(unittest.TestCase):
     def test_config_defaults_and_roundtrip(self):
