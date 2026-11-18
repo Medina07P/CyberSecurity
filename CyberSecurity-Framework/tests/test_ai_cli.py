@@ -5,6 +5,7 @@ configuración y árbol del framework sintéticos) y un Ollama falso en loopback
 Nunca se toca la configuración real ni se ejecuta ninguna herramienta.
 """
 import hashlib
+import json
 import os
 import re
 import signal
@@ -32,13 +33,15 @@ FINDING_TITLE = "Puerto 22 abierto (SSH)"
 class FakeOllama:
     """Lanza tests/fixtures/ollama_fake.py en 127.0.0.1 y expone su URL."""
 
-    def __init__(self, mode="ok", model="fake:1b", port=0, models=None):
+    def __init__(self, mode="ok", model="fake:1b", port=0, models=None, log=None):
         self.tmp = tempfile.TemporaryDirectory()
         ready = os.path.join(self.tmp.name, "ready")
         env = dict(os.environ, FAKE_OLLAMA_MODE=mode, FAKE_OLLAMA_MODEL=model,
                    PYTHONDONTWRITEBYTECODE="1")
         if models:
             env["FAKE_OLLAMA_MODELS"] = ",".join(models)
+        if log:
+            env["FAKE_OLLAMA_LOG"] = str(log)
         self.proc = subprocess.Popen(
             [sys.executable, str(FAKE), str(port), ready], env=env)
         for _ in range(200):
@@ -130,10 +133,10 @@ class CliBase(unittest.TestCase):
         return env
 
     def run_cli(self, args, stdin_text="", server="ok", model="fake:1b", timeout=40,
-                models=None):
+                models=None, log=None):
         srv = None
         if server is not None:
-            srv = FakeOllama(mode=server, model=model, models=models)
+            srv = FakeOllama(mode=server, model=model, models=models, log=log)
             self.addCleanup(srv.stop)
             self._write_config(srv.url, model)
         else:
@@ -509,6 +512,20 @@ class SummaryRecoveryTests(CliBase):
         p = self.run_cli([], stdin_text="   \n0\n", server=None)
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertNotIn(NOTICE_MARK, p.stdout)
+
+    def test_recovered_summary_reaches_the_model_request(self):
+        resumen_dir = self.data / "summaries"
+        resumen_dir.mkdir(parents=True)
+        marcador = "MARCADOR-RESUMEN-7781"
+        (resumen_dir / ("%s.md" % SLUG)).write_text(
+            "# Resumen de la conversación — objetivo: %s\n\n%s\n"
+            % (TARGET, marcador), encoding="utf-8")
+        log_path = Path(self.base.name) / "chat.json"
+        p = self.run_cli([], stdin_text="7\n¿qué tal?\n\n0\n", server="ok",
+                         log=log_path)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        body = json.loads(log_path.read_text())
+        self.assertIn(marcador, json.dumps(body))
 
     def test_new_conversation_without_saving_forgets_saved_summary_on_disk(self):
         resumen_dir = self.data / "summaries"
