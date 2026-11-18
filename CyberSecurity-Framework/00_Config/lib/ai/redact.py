@@ -13,7 +13,12 @@ _VALUE = r"(?:\"[^\"\r\n]{0,4096}\"|'[^'\r\n]{0,4096}'|[^\s\"',&;]+)"
 _KEYED = re.compile(r"(?i)((?:" + _KEYS + r")[\"']?[ \t]*[=:][ \t]*)" + _VALUE)
 _CLI_LONG = re.compile(
     r"(?i)(--(?:password|passwd|pass|pwd|token|secret|api-?key)(?:[ \t]+|=))" + _VALUE)
-_CLI_P = re.compile(r"(?<![\w-])(-p[ \t]+)(?![TUtu]?:?[0-9][0-9,\-]*(?:\s|$))" + _VALUE)
+# Nmap acota cada puerto a 1-5 dígitos (<=65535), separados por ',' o '-'. Una
+# tirada de 6+ dígitos pegados (p. ej. una contraseña numérica tras "-p") no
+# encaja en esa forma y sí se redacta.
+_CLI_P = re.compile(
+    r"(?<![\w-])(-p[ \t]+)"
+    r"(?![TUtu]?:?[0-9]{1,5}(?:[,\-][0-9]{1,5})*(?:[ \t]|$))" + _VALUE)
 _COOKIE = re.compile(r"(?i)\b((?:Set-)?Cookie[ \t]*:[ \t]*)[^\r\n]+")
 _AUTH = re.compile(r"(?i)\b(Authorization[ \t]*:[ \t]*)[^\r\n]+")
 _AWS = re.compile(r"\b(?:AKIA|ASIA|AGPA|AIDA|AROA)[A-Z0-9]{16}\b")
