@@ -99,6 +99,16 @@ class ContextTests(unittest.TestCase):
     def test_reset_empty_with_save_returns_none(self):
         self.assertIsNone(Conversation(max_tokens=1000).reset(save_summary=True))
 
+    def test_reset_combines_existing_summary_with_unfolded_turns(self):
+        c = Conversation(max_tokens=1000, literal_turns=1)
+        c.add("user", "uno")
+        c.add("assistant", "dos")  # pliega "uno", queda resumen
+        self.assertTrue(c.summary)
+        c.add("user", "tres")  # queda sin plegar: literal_turns=1 lo mantiene
+        s = c.reset(save_summary=True)
+        self.assertIn("uno", s)
+        self.assertIn("tres", s)
+
     def test_summarizer_callback_used_when_given(self):
         calls = []
 

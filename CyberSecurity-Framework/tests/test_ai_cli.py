@@ -30,12 +30,13 @@ FINDING_TITLE = "Puerto 22 abierto (SSH)"
 class FakeOllama:
     """Lanza tests/fixtures/ollama_fake.py en 127.0.0.1 y expone su URL."""
 
-    def __init__(self, mode="ok", model="fake:1b"):
+    def __init__(self, mode="ok", model="fake:1b", port=0):
         self.tmp = tempfile.TemporaryDirectory()
         ready = os.path.join(self.tmp.name, "ready")
         env = dict(os.environ, FAKE_OLLAMA_MODE=mode, FAKE_OLLAMA_MODEL=model,
                    PYTHONDONTWRITEBYTECODE="1")
-        self.proc = subprocess.Popen([sys.executable, str(FAKE), "0", ready], env=env)
+        self.proc = subprocess.Popen(
+            [sys.executable, str(FAKE), str(port), ready], env=env)
         for _ in range(200):
             if os.path.exists(ready) and " " in Path(ready).read_text().strip():
                 break
@@ -166,6 +167,52 @@ class MenuTests(CliBase):
         # producir ninguna respuesta entre medias.
         self.assertEqual(p.stdout.count(MENU_MARK), 2)
 
+    def test_header_refreshes_when_ollama_starts_mid_session(self):
+        import socket
+        import threading
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()  # ventana corta: nadie más debería tomarlo en este test
+        self._write_config("http://127.0.0.1:%d" % port)
+        proc = subprocess.Popen(
+            [sys.executable, str(SCRIPT)], stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=self._env())
+        buf = []
+        saw_down = threading.Event()
+
+        def drain():
+            while True:
+                ch = proc.stdout.read(1)
+                if ch == "":
+                    break
+                buf.append(ch)
+                if not saw_down.is_set() and "✗" in "".join(buf):
+                    saw_down.set()
+
+        reader = threading.Thread(target=drain)
+        reader.start()
+        self.assertTrue(saw_down.wait(20), "no mostró el modelo como ausente")
+        srv = FakeOllama(mode="ok", model="fake:1b", port=port)
+        self.addCleanup(srv.stop)
+        proc.stdin.write("   \n")  # entrada en blanco: solo redibuja la cabecera
+        proc.stdin.flush()
+        for _ in range(100):
+            if "✔" in "".join(buf):
+                break
+            time.sleep(0.05)
+        try:
+            proc.stdin.write("0\n")
+            proc.stdin.close()
+        except (BrokenPipeError, ValueError):
+            pass
+        proc.wait(timeout=20)
+        reader.join(timeout=5)
+        full = "".join(buf)
+        self.assertEqual(proc.returncode, 0, full)
+        self.assertIn("✔", full)
+
     def test_nueva_resets_and_keeps_index_files(self):
         p = self.run_cli([], stdin_text="que es nmap\n5\nn\n0\n", server="ok")
         self.assertEqual(p.returncode, 0, p.stderr)
@@ -238,6 +285,19 @@ class SubcommandTests(CliBase):
         q = self.run_cli(["modelo"], server="ok")
         self.assertEqual(q.returncode, 0, q.stderr)
         self.assertIn("ollama pull", q.stdout)
+
+    def test_estado_missing_model_pull_command_matches_configured_model(self):
+        # El servidor anuncia un modelo distinto al configurado para que
+        # has_model() sea False y dispare el mensaje de "no instalado".
+        srv = FakeOllama(mode="ok", model="fake:1b")
+        self.addCleanup(srv.stop)
+        self._write_config(srv.url, model="qwen2.5:14b")
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "estado"], input="",
+            env=self._env(), capture_output=True, text=True, timeout=40)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("qwen2.5:14b no está instalado", proc.stdout)
+        self.assertIn("ollama pull qwen2.5:14b", proc.stdout)
 
     def test_unknown_subcommand_exits_2_with_usage(self):
         p = self.run_cli(["frobnicate"], server=None)

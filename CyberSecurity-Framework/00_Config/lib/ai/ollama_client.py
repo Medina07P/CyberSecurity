@@ -106,7 +106,10 @@ class OllamaClient:
                         raise OllamaError("Respuesta inesperada de Ollama.")
                     if obj.get("error"):
                         raise OllamaError("Ollama devolvió un error: %s" % obj["error"])
-                    trozo = (obj.get("message") or {}).get("content", "")
+                    message = obj.get("message")
+                    if message and not isinstance(message, dict):
+                        raise OllamaError("Respuesta inesperada de Ollama.")
+                    trozo = (message or {}).get("content", "")
                     if trozo:
                         parts.append(trozo)
                         if stream_to:

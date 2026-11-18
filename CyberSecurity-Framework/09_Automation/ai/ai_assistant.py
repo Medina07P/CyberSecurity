@@ -103,10 +103,6 @@ def build_client(cfg):
         return None
 
 
-def model_available(client) -> bool:
-    return bool(client is not None and client.is_up() and client.has_model())
-
-
 def get_index(fw: Path, cfg: dict, data: Path, note=None) -> Index:
     # `data` se excluye del índice: puede caer dentro del árbol del framework
     # (por defecto 09_Automation/ai/data) y, si se indexara, se invalidaría solo.
@@ -152,11 +148,15 @@ def _emit(answer, stdout=sys.stdout, stderr=sys.stderr):
 def cmd_menu(fw, cfg, data):
     idx = get_index(fw, cfg, data, note=sys.stdout.write)
     target = read_target(fw)
+    # El cliente se pasa siempre (salvo que construirlo falle, p. ej. endpoint
+    # remoto rechazado): la disponibilidad real (is_up/has_model) se sondea en
+    # vivo en cada vuelta del menú (menu._model_status), no solo al abrir el
+    # asistente, para detectar que el usuario arrancó Ollama a mitad de
+    # sesión. El núcleo ya cae al respaldo determinista si una llamada falla.
     client = build_client(cfg)
-    client_menu = client if model_available(client) else None
 
     def factory():
-        return make_assistant(fw, cfg, idx, target, client_menu)
+        return make_assistant(fw, cfg, idx, target, client)
 
     return menu.run(sys.stdin, sys.stdout, factory)
 
@@ -224,8 +224,8 @@ def cmd_estado(fw, cfg, data):
     elif not client.is_up():
         estado = "Ollama no está en marcha (arráncalo con «ollama serve»)"
     elif not client.has_model():
-        estado = "el modelo %s no está instalado (%s)" % (cfg["modelo"],
-                                                          recommendation().pull_command)
+        estado = "el modelo %s no está instalado (ollama pull %s)" % (
+            cfg["modelo"], cfg["modelo"])
     else:
         estado = "modelo %s disponible" % cfg["modelo"]
     print("Estado del modelo: %s" % estado)

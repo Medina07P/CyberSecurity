@@ -81,10 +81,16 @@ class Conversation:
     def reset(self, save_summary: bool = False) -> Optional[str]:
         result = None
         if save_summary:
+            # El resumen acumulado y los turnos aún sin plegar son conjuntos
+            # disjuntos de historia; perder uno de los dos pierde contexto que
+            # el usuario pidió explícitamente conservar.
+            parts = []
             if self.summary:
-                result = self.summary
-            elif self._turns:
-                result = _extractive(self._turns)
+                parts.append(self.summary)
+            if self._turns:
+                parts.append(_extractive(self._turns))
+            if parts:
+                result = "\n".join(parts)
         self.summary = ""
         self._turns = []
         return result

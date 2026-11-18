@@ -54,6 +54,14 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.load(p)["modelo"], "qwen2.5:7b")
             self.assertIs(config.load(p)["permitir_endpoint_remoto"], False)
 
+    def test_wrong_typed_value_falls_back_to_default_instead_of_crashing(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "ai.yaml"
+            p.write_text("turnos_literales: cuatro\ntop_k: si\n", encoding="utf-8")
+            cfg = config.load(p)
+            self.assertEqual(cfg["turnos_literales"], config.DEFAULTS["turnos_literales"])
+            self.assertEqual(cfg["top_k"], config.DEFAULTS["top_k"])
+
     def test_default_path_honors_env(self):
         old = os.environ.get("AI_CONFIG")
         try:
