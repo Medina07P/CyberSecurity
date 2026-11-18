@@ -1,7 +1,9 @@
 #!/bin/bash
-# Pruebas de 00_Config/lib/dependencies.bash — aisladas, sin red ni sudo/apt reales.
+# Pruebas de 00_Config/lib/dependencies.bash y dependencies_models.bash —
+# aisladas, sin red ni sudo/apt reales.
 FW="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$FW/00_Config/lib/dependencies.bash"
+source "$FW/00_Config/lib/dependencies_models.bash"
 pasan=0; fallan=0
 ok()  { echo "  ok   $1"; pasan=$((pasan+1)); }
 ko()  { echo "  FALLO $1"; fallan=$((fallan+1)); }
@@ -19,6 +21,23 @@ eq "nmap-vulners ausente (archivo no existe)" "$?" "1"
 touch "$TMPBIN/nmap-vulners.nse"
 NMAP_VULNERS_PATH="$TMPBIN/nmap-vulners.nse" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_binary_ok nmap-vulners"
 eq "nmap-vulners presente (archivo existe)" "$?" "0"
+grep -q '/usr/share/nmap/scripts/vulners.nse' "$FW/00_Config/lib/dependencies.bash"
+eq "el código usa vulners.nse como ruta por defecto" "$?" "0"
+grep -q 'nmap-vulners\.nse' "$FW/00_Config/lib/dependencies.bash"
+eq "el código ya no menciona nmap-vulners.nse" "$?" "1"
+
+echo "=== dependencies_extra_missing ==="
+# NMAP_VULNERS_PATH se fija siempre: la ruta por defecto puede existir de
+# verdad en la máquina (nmap ya trae vulners.nse en algunos paquetes).
+out=$(NMAP_VULNERS_PATH="$TMPBIN/no-existe.nse" bash -c "export PATH='$TMPBIN'; export NMAP_VULNERS_PATH='$TMPBIN/no-existe.nse'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_extra_missing")
+eq "ollama aparece (ausente en el PATH cerrado)" "$(printf '%s\n' "$out" | grep -c -F ollama)" "1"
+eq "avml aparece (ausente en el PATH cerrado)" "$(printf '%s\n' "$out" | grep -c -F avml)" "1"
+eq "nmap-vulners aparece (ausente en el PATH cerrado)" "$(printf '%s\n' "$out" | grep -c -F nmap-vulners)" "1"
+eq "exactamente 3 líneas" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "3"
+touch "$TMPBIN/ollama"; chmod +x "$TMPBIN/ollama"
+out=$(NMAP_VULNERS_PATH="$TMPBIN/no-existe.nse" bash -c "export PATH='$TMPBIN'; export NMAP_VULNERS_PATH='$TMPBIN/no-existe.nse'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_extra_missing")
+eq "ollama ya no aparece si está en PATH" "$(printf '%s\n' "$out" | grep -c -F ollama)" "0"
+rm -f "$TMPBIN/ollama"
 
 echo "=== dependencies_status ==="
 out=$(bash -c "export PATH='$TMPBIN'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_status")
@@ -77,6 +96,303 @@ bash -c "export PATH='$STUBDIR'; source '$FW/00_Config/lib/dependencies.bash'; d
 eq "sin paquetes: rc 0 sin preguntar" "$?" "0"
 [[ -f "$CALLS" ]] && ko "sin paquetes: no debía llamar a apt-get" || ok "sin paquetes: no llamó a apt-get"
 rm -rf "$STUBDIR"
+
+echo "=== dependencies_install_nmap_vulners ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+cat > "$STUBDIR/sudo" <<'EOF'
+#!/bin/sh
+exec "$@"
+EOF
+chmod +x "$STUBDIR/sudo"
+cat > "$STUBDIR/git" <<EOF
+#!/bin/sh
+echo "git \$*" >> "$CALLS"
+if [ "\$1" = "clone" ]; then
+    last=""
+    for a in "\$@"; do last="\$a"; done
+    mkdir -p "\$last"
+    printf 'contenido de prueba\n' > "\$last/vulners.nse"
+fi
+exit 0
+EOF
+chmod +x "$STUBDIR/git"
+cat > "$STUBDIR/nmap" <<EOF
+#!/bin/sh
+echo "nmap \$@" >> "$CALLS"
+exit 0
+EOF
+chmod +x "$STUBDIR/nmap"
+
+NVP="$STUBDIR/scripts/vulners.nse"
+printf 'no\n' | PATH="$STUBDIR:$PATH" NMAP_VULNERS_PATH="$NVP" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_nmap_vulners" >/dev/null 2>&1
+eq "confirmación negada: rc 1" "$?" "1"
+[[ -f "$NVP" ]] && ko "confirmación negada: no debía clonar nada" || ok "confirmación negada: no clonó nada"
+
+printf 'NMAP_VULNERS_SI\n' | PATH="$STUBDIR:$PATH" NMAP_VULNERS_PATH="$NVP" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_nmap_vulners" >/dev/null 2>&1
+eq "confirmado: instala y verifica, rc 0" "$?" "0"
+grep -q -F 'clone' "$CALLS" && ok "invocó git clone" || ko "invocó git clone"
+grep -q -F -- '--script-updatedb' "$CALLS" && ok "invocó nmap --script-updatedb" || ko "invocó nmap --script-updatedb"
+[[ -f "$NVP" ]] && ok "copió vulners.nse al destino" || ko "copió vulners.nse al destino"
+
+out=$(PATH="$STUBDIR:$PATH" NMAP_VULNERS_PATH="$NVP" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_nmap_vulners" 2>&1)
+eq "ya presente: no vuelve a clonar" "$(printf '%s\n' "$out" | grep -c -F clone)" "0"
+rm -rf "$STUBDIR"
+
+echo "=== dependencies_github_token ==="
+KEYSFILE="$(mktemp)"
+out=$(KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_github_token")
+eq "sin registro: cadena vacía" "$out" ""
+printf 'version: 1\ntheharvester:\n  github:\n    key: tok-de-prueba\n' > "$KEYSFILE"
+out=$(KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_github_token")
+eq "registro con clave: la devuelve" "$out" "tok-de-prueba"
+rm -f "$KEYSFILE"
+
+echo "=== dependencies_offer_github_token ==="
+KEYSDIR="$(mktemp -d)"
+KEYSFILE="$KEYSDIR/registro.yaml"
+printf '\n' | KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_offer_github_token"
+out=$(KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_github_token")
+eq "Enter vacío: no guarda nada" "$out" ""
+printf 'tok-nuevo\n' | KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_offer_github_token"
+out=$(KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_github_token")
+eq "valor escrito: queda guardado" "$out" "tok-nuevo"
+printf 'otro\n' | KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_offer_github_token"
+out=$(KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_github_token")
+eq "ya había token: no vuelve a preguntar/sobrescribir" "$out" "tok-nuevo"
+rm -rf "$KEYSDIR"
+
+echo "=== dependencies_avml_release / dependencies_install_avml ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+export STUBDIR CALLS
+cat > "$STUBDIR/sudo" <<'EOF'
+#!/bin/sh
+echo "sudo $*" >> "$CALLS"
+if [ "$1" = "install" ]; then
+    prev2=""; prev1=""
+    for a in "$@"; do prev2="$prev1"; prev1="$a"; done
+    if [ "$prev1" = "/usr/local/bin/avml" ]; then
+        cp "$prev2" "$STUBDIR/avml" 2>/dev/null
+        chmod +x "$STUBDIR/avml" 2>/dev/null
+    fi
+    exit 0
+fi
+exec "$@"
+EOF
+chmod +x "$STUBDIR/sudo"
+cat > "$STUBDIR/curl" <<'EOF'
+#!/bin/sh
+echo "curl $*" >> "$CALLS"
+out=""; prev=""
+for a in "$@"; do
+    [ "$prev" = "-o" ] && out="$a"
+    prev="$a"
+done
+last=""
+for a in "$@"; do last="$a"; done
+case "$last" in
+    *releases/latest*)
+        cat "${CURL_JSON_FILE:-/dev/null}"
+        exit 0
+        ;;
+esac
+if [ -n "$out" ]; then
+    cat > "$out" <<'INNER'
+#!/bin/sh
+case "$1" in
+  --help) printf 'avml 0.0.0-test\nUSAGE:\n    avml <FILENAME>\n' ;;
+esac
+exit 0
+INNER
+    chmod +x "$out"
+    exit 0
+fi
+exit 1
+EOF
+chmod +x "$STUBDIR/curl"
+
+cat > "$STUBDIR/fixture.json" <<'JSON'
+{"tag_name": "v0.99.0", "assets": [{"name": "avml", "browser_download_url": "https://example.invalid/avml"}]}
+JSON
+out=$(CURL_JSON_FILE="$STUBDIR/fixture.json" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_avml_release")
+eq "tag y URL del asset avml" "$out" "v0.99.0|https://example.invalid/avml"
+
+cat > "$STUBDIR/sin-asset.json" <<'JSON'
+{"tag_name": "v0.99.0", "assets": [{"name": "avml-arm64", "browser_download_url": "https://example.invalid/arm"}]}
+JSON
+CURL_JSON_FILE="$STUBDIR/sin-asset.json" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_avml_release" >/dev/null 2>&1
+eq "sin asset avml: rc 1" "$?" "1"
+
+rm -f "$CALLS"
+printf 'no\n' | CURL_JSON_FILE="$STUBDIR/fixture.json" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_avml" >/dev/null 2>&1
+eq "confirmación negada: rc 1" "$?" "1"
+[[ -s "$CALLS" ]] && ko "confirmación negada: no debía invocar curl/sudo" || ok "confirmación negada: no invocó nada"
+
+printf 'AVML_SI\n\n' | CURL_JSON_FILE="$STUBDIR/fixture.json" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_avml" >/dev/null 2>&1
+eq "confirmado: instala y verifica, rc 0" "$?" "0"
+grep -q -F 'releases/latest' "$CALLS" && ok "consultó la API de releases" || ko "consultó la API de releases"
+grep -q -F '/usr/local/bin/avml' "$CALLS" && ok "instaló en /usr/local/bin/avml" || ko "instaló en /usr/local/bin/avml"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
+echo "=== dependencies_install_avml: ya presente ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+export STUBDIR CALLS
+cat > "$STUBDIR/sudo" <<'EOF'
+#!/bin/sh
+echo "sudo $*" >> "$CALLS"
+exit 0
+EOF
+chmod +x "$STUBDIR/sudo"
+cat > "$STUBDIR/curl" <<'EOF'
+#!/bin/sh
+echo "curl $*" >> "$CALLS"
+exit 0
+EOF
+chmod +x "$STUBDIR/curl"
+touch "$STUBDIR/avml"; chmod +x "$STUBDIR/avml"
+
+out=$(printf '' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_avml" 2>&1)
+eq "avml ya presente: rc 0 sin pedir confirmación" "$?" "0"
+[[ -f "$CALLS" ]] && ko "avml ya presente: no debía invocar curl ni sudo" || ok "avml ya presente: no invocó curl ni sudo"
+printf '%s\n' "$out" | grep -qF 'avml ya está instalado.' && ok "avml ya presente: lo dice" || ko "avml ya presente: lo dice"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
+echo "=== dependencies_install_ollama ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+cat > "$STUBDIR/curl" <<EOF
+#!/bin/sh
+echo "curl \$*" >> "$CALLS"
+printf 'touch "%s/ollama"; chmod +x "%s/ollama"\n' "$STUBDIR" "$STUBDIR"
+EOF
+chmod +x "$STUBDIR/curl"
+
+printf 'no\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_ollama" >/dev/null 2>&1
+eq "confirmación negada: rc 1" "$?" "1"
+[[ -x "$STUBDIR/ollama" ]] && ko "confirmación negada: no debía instalar ollama" || ok "confirmación negada: no instaló ollama"
+
+printf 'OLLAMA_SI\n0\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" >/dev/null 2>&1
+eq "confirmado: rc 0 y ollama queda en PATH" "$?" "0"
+[[ -x "$STUBDIR/ollama" ]] && ok "ollama quedó instalado" || ko "ollama no quedó instalado"
+
+out=$(printf '0\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" 2>&1)
+eq "ya presente: no vuelve a pedir confirmación ni a invocar curl" "$(printf '%s\n' "$out" | grep -c -F 'curl')" "0"
+printf '%s\n' "$out" | grep -qF 'ollama ya está instalado.' && ok "ya presente: lo dice" || ko "ya presente: lo dice"
+printf '%s\n' "$out" | grep -qF 'Catálogo de modelos para Ollama' && ok "ya presente: ofrece el catálogo" || ko "ya presente: ofrece el catálogo"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
+echo "=== dependencies_install_ollama: el instalador termina con error ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+cat > "$STUBDIR/curl" <<EOF
+#!/bin/sh
+echo "curl \$*" >> "$CALLS"
+echo "exit 1"
+EOF
+chmod +x "$STUBDIR/curl"
+
+out=$(printf 'OLLAMA_SI\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" 2>&1)
+eq "instalador falla: rc 1" "$?" "1"
+printf '%s\n' "$out" | grep -qF 'El instalador de Ollama terminó con error.' && ok "instalador falla: mensaje visible" || ko "instalador falla: mensaje visible"
+printf '%s\n' "$out" | grep -qF 'Catálogo de modelos para Ollama' && ko "instalador falla: no debía ofrecer el catálogo" || ok "instalador falla: no ofrece el catálogo"
+[[ -x "$STUBDIR/ollama" ]] && ko "instalador falla: no debía crear el binario" || ok "instalador falla: no creó el binario"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
+echo "=== dependencies_install_ollama: binario ausente tras instalar ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+cat > "$STUBDIR/curl" <<EOF
+#!/bin/sh
+echo "curl \$*" >> "$CALLS"
+echo "true"
+EOF
+chmod +x "$STUBDIR/curl"
+
+out=$(printf 'OLLAMA_SI\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" 2>&1)
+eq "binario ausente tras instalar: rc 1" "$?" "1"
+printf '%s\n' "$out" | grep -qF 'no aparece en PATH.' && ok "binario ausente: mensaje visible" || ko "binario ausente: mensaje visible"
+printf '%s\n' "$out" | grep -qF 'Catálogo de modelos para Ollama' && ko "binario ausente: no debía ofrecer el catálogo" || ok "binario ausente: no ofrece el catálogo"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
+echo "=== dependencies_models ==="
+out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_model_rows")
+eq "4 filas" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "4"
+printf '%s\n' "$out" | grep -q -F 'qwen|' && ok "incluye qwen" || ko "incluye qwen"
+printf '%s\n' "$out" | grep -qi 'sin censura' && ok "DeepHat avisa sin censura" || ko "DeepHat avisa sin censura"
+
+out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_model_sizes qwen")
+eq "qwen tiene 6 tamaños" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "6"
+
+out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_model_lookup qwen 7b")
+eq "lookup qwen:7b" "$out" "4.7|8|qwen2.5-coder:7b"
+
+bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_model_lookup qwen 128b" >/dev/null 2>&1
+eq "tamaño inexistente: rc 1" "$?" "1"
+
+MEMINFO_FALSO="$(mktemp)"; printf 'MemAvailable:  3774320 kB\n' > "$MEMINFO_FALSO"
+out=$(DEPENDENCIES_MEMINFO_PATH="$MEMINFO_FALSO" bash -c "export DEPENDENCIES_MEMINFO_PATH; source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_general_model_size")
+eq "~3,6 GiB libres recomienda 3b" "$out" "3b"
+out=$(DEPENDENCIES_MEMINFO_PATH="$MEMINFO_FALSO" bash -c "export DEPENDENCIES_MEMINFO_PATH; source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_mem_check 3")
+eq "3,6 GiB libres sí alcanza para 3 GiB: rc 0" "$?" "0"
+out=$(DEPENDENCIES_MEMINFO_PATH="$MEMINFO_FALSO" bash -c "export DEPENDENCIES_MEMINFO_PATH; source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_mem_check 14")
+eq "3,6 GiB libres NO alcanza para 14 GiB: rc 1" "$?" "1"
+rm -f "$MEMINFO_FALSO"
+
+echo "=== dependencies_offer_model_catalog ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+cat > "$STUBDIR/ollama" <<EOF
+#!/bin/sh
+echo "ollama \$*" >> "$CALLS"
+case "\$1" in
+    pull)
+        rc="\${OLLAMA_PULL_RC:-0}"
+        if [ "\$rc" = "0" ]; then
+            echo "\$2" >> "$STUBDIR/pulled.txt"
+        fi
+        exit "\$rc"
+        ;;
+    list)
+        [ -f "$STUBDIR/pulled.txt" ] && cat "$STUBDIR/pulled.txt"
+        exit 0
+        ;;
+esac
+exit 0
+EOF
+chmod +x "$STUBDIR/ollama"
+
+MEMINFO_BAJO="$(mktemp)"; printf 'MemAvailable:  3774320 kB\n' > "$MEMINFO_BAJO"  # ~3,6 GiB
+
+# Declinar el catálogo: no es un fallo.
+printf '0\n' | DEPENDENCIES_MEMINFO_PATH="$MEMINFO_BAJO" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_offer_model_catalog" >/dev/null 2>&1
+eq "declinar el catálogo: rc 0" "$?" "0"
+[[ -f "$STUBDIR/pulled.txt" ]] && ko "declinar: no debía descargar nada" || ok "declinar: no descargó nada"
+
+# Elegir qwen:14b con solo 3,6 GiB libres: el guardrail bloquea sin forzar.
+printf '2\n14b\nno\n' | DEPENDENCIES_MEMINFO_PATH="$MEMINFO_BAJO" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_offer_model_catalog" >/dev/null 2>&1
+eq "guardrail sin forzar: rc 0 (cancela el pull, no la pieza)" "$?" "0"
+[[ -f "$STUBDIR/pulled.txt" ]] && ko "guardrail sin forzar: no debía llegar a ollama pull" || ok "guardrail sin forzar: no llegó a ollama pull"
+
+# Elegir qwen:3b (sí entra en 3,6 GiB): pull directo sin aviso de guardrail.
+printf '2\n3b\n' | DEPENDENCIES_MEMINFO_PATH="$MEMINFO_BAJO" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_offer_model_catalog" >/dev/null 2>&1
+eq "entra en RAM libre: rc 0" "$?" "0"
+grep -q -F 'qwen2.5-coder:3b' "$STUBDIR/pulled.txt" && ok "hizo ollama pull qwen2.5-coder:3b" || ko "hizo ollama pull qwen2.5-coder:3b"
+rm -f "$STUBDIR/pulled.txt"; : > "$CALLS"
+
+# Forzar qwen:14b con CONTINUAR_IGUAL: sí llega a ollama pull.
+printf '2\n14b\nCONTINUAR_IGUAL\n' | DEPENDENCIES_MEMINFO_PATH="$MEMINFO_BAJO" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_offer_model_catalog" >/dev/null 2>&1
+eq "forzado: rc 0" "$?" "0"
+grep -q -F 'qwen2.5-coder:14b' "$STUBDIR/pulled.txt" && ok "forzado llega a ollama pull" || ko "forzado llega a ollama pull"
+rm -f "$STUBDIR/pulled.txt" "$MEMINFO_BAJO"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
 
 echo "=== dependencies_resolve_selection ==="
 FALTAN3=(paquete-a paquete-b paquete-c)

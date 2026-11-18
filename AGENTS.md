@@ -1,5 +1,35 @@
 # AGENTS.md
 
+**Herramientas adicionales en la tecla `D`, 2026-11-18 — integrado en
+`develop` (revisión de código aplicada), sin push:** la opción `2` del menú de
+`D` instala/verifica `ollama` (+ catálogo de 4 modelos con guardrail de
+recursos: General, Qwen2.5-Coder oficial recomendado, Foundation-Sec-8B-
+Instruct de Cisco, DeepHat/WhiteRabbitNeo sin censura con aviso), `avml`
+(con token de GitHub opcional) y `nmap-vulners`; cada una con su propia
+confirmación literal (`OLLAMA_SI`/`AVML_SI`/`NMAP_VULNERS_SI`,
+`CONTINUAR_IGUAL` para forzar el guardrail de recursos). `lime` y
+`volatility` (v2) siguen solo informativos, sin cambios — `lime` cruzaría la
+decisión ya tomada en 08_Forensics de nunca cargar un módulo de kernel por
+cuenta propia, y `volatility` (v2) está descontinuado a favor de
+`volatility3`. De paso se corrigió un hallazgo de investigación: la ruta por
+defecto de `nmap-vulners` comprobaba `nmap-vulners.nse`, que no es el nombre
+real del script del proyecto (`vulners.nse`) — con el nombre antiguo la
+detección nunca habría reconocido una instalación hecha por el método
+oficial. Nuevo fichero `00_Config/lib/dependencies_models.bash`.
+`code-review high` sobre la rama no encontró hallazgos críticos; dos huecos
+de cobertura importantes (Review Focus del plan: `avml` ya instalado no debía
+reinstalar, y las dos ramas de fallo de la instalación de `ollama` no debían
+ofrecer el catálogo) se corrigieron con TDD antes de este merge, más un nit
+de estilo (`sudo nmap --script-updatedb` ya no descarta su `stderr`) y una
+inconsistencia del spec de diseño (comando de token de GitHub obsoleto).
+`tests/run_dependencies.sh` sube a 96 asserts (dobles de `curl`/`git`/`sudo`/
+`ollama`, nunca red/sudo reales) y `tests/run_smoke.sh` cubre la opción `2`
+del menú. Diseño en
+`docs/superpowers/specs/2026-11-17-dependencias-herramientas-design.md`
+y plan en `docs/superpowers/plans/2026-11-17-dependencias-herramientas.md`.
+Ninguna instalación real se ejecutó durante el desarrollo. Merge local
+`feat/dependencias-herramientas` → `develop`; sin push.
+
 **Asistente IA local, 2026-11-17 — integrado en `develop` (revisión de código
 aplicada), sin push:** tecla `I` del gestor (`00_Config/lib/ai_menu.bash`),
 núcleo en `00_Config/lib/ai/`, entrada `09_Automation/ai/ai_assistant.py`, guía
