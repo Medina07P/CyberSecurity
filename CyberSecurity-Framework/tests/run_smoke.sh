@@ -159,5 +159,25 @@ run "menú: I EOF vuelve al gestor"    'I\n'          "Asistente"
 run "menú: opción inválida menciona I" 'zzz\n\nQ\n'  "K, D, I"
 
 echo ""
+echo "=== aspecto: sin emojis a color en el menú principal ==="
+out_asp=$(printf 'Q\n' | timeout 20 bash ./cyber_framework.sh 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+emo_asp=$(printf '%s' "$out_asp" | python3 -I -c '
+import sys
+KEEP = set("→←↳↔▶▼✓✗✔✖➜⚠⚙◎▪●›ℹ◆")
+R = [(0x1F000, 0x1FAFF), (0x2600, 0x27BF), (0x2B00, 0x2BFF), (0x2300, 0x23FF)]
+def emo(c):
+    if c in KEEP: return False
+    if c in ("\ufe0f", "\u200d"): return True
+    return any(a <= ord(c) <= b for a, b in R)
+print("".join(sorted({c for c in sys.stdin.read() if emo(c)})))
+')
+if [[ -z "$emo_asp" ]]; then
+    echo "  OK       menú principal sin emojis fuera del conjunto conservado"
+else
+    echo "  FALLO    menú principal con emojis: $emo_asp"
+    fail=$((fail+1))
+fi
+
+echo ""
 echo "----------------------------------------"
 echo "fallos: $fail"

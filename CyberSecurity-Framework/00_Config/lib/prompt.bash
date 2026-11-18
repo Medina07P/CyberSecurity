@@ -201,7 +201,7 @@ prompt_for_slots() {
     example=$(params_example "$script" 2>/dev/null) || example=""
 
     {
-        printf '\n📌 Este script necesita datos\n'
+        printf '\nEste script necesita datos\n'
         printf -- '────────────────────────────────────────────────────────\n'
         [[ -n "$usage" ]] && printf '  Uso: %s\n' "$usage"
         [[ -n "$example" ]] && printf '  Ej.: %s\n' "$example"

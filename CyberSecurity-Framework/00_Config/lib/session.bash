@@ -51,8 +51,8 @@ session_set_target() {
     local rc_scope=0 rc_targets=0
     scope_add_target "$1" || rc_scope=$?
     targets_add_entry "$1" || rc_targets=$?
-    (( rc_scope == 0 ))   || printf '⚠️  No se pudo registrar en scope.yaml (código %s)\n' "$rc_scope" >&2
-    (( rc_targets == 0 )) || printf '⚠️  No se pudo registrar en targets.txt (código %s)\n' "$rc_targets" >&2
+    (( rc_scope == 0 ))   || printf '⚠  No se pudo registrar en scope.yaml (código %s)\n' "$rc_scope" >&2
+    (( rc_targets == 0 )) || printf '⚠  No se pudo registrar en targets.txt (código %s)\n' "$rc_targets" >&2
     return 0
 }
 
@@ -191,10 +191,10 @@ scope_add_target() {
         if python3 -c 'import yaml' >/dev/null 2>&1; then
             puede_validar=1
         else
-            printf '   ⚠️  PyYAML no está: no se pudo validar scope.yaml\n' >&2
+            printf '   ⚠  PyYAML no está: no se pudo validar scope.yaml\n' >&2
         fi
     else
-        printf '   ⚠️  python3 no está: no se pudo validar scope.yaml\n' >&2
+        printf '   ⚠  python3 no está: no se pudo validar scope.yaml\n' >&2
     fi
     if (( puede_validar )); then
         if ! python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))' "$tmp" >/dev/null 2>&1; then
@@ -210,7 +210,7 @@ scope_add_target() {
     mv -f "$tmp" "$SESSION_SCOPE_FILE" || return 2
 
     for i in "${missing[@]}"; do
-        printf '   ➕ scope.yaml: %s\n' "$i" >&2
+        printf '   + scope.yaml: %s\n' "$i" >&2
     done
     return 0
 }
@@ -274,7 +274,7 @@ targets_add_entry() {
         printf '%s|—|—|Registrado al fijar el objetivo|B\n' "$host"
     } >> "$f" || return 2
 
-    printf '   ➕ targets.txt: %s\n' "$host" >&2
+    printf '   + targets.txt: %s\n' "$host" >&2
     return 0
 }
 
