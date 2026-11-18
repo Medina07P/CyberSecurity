@@ -89,11 +89,13 @@ def _print_answer(stdout, answer):
     stdout.flush()
 
 
-def _summaries_dir(assistant):
+def _summaries_dir(assistant, create: bool = True):
     data = getattr(assistant, "data_dir", None)
     if not data:
         return None
     d = Path(data) / "summaries"
+    if not create:
+        return d
     d.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(Path(data), 0o700)
@@ -130,7 +132,7 @@ def _save_summary(assistant, stdout):
 
 
 def _saved_summary_path(assistant):
-    d = _summaries_dir(assistant)
+    d = _summaries_dir(assistant, create=False)
     if d is None:
         return None
     slug = assistant.slug or "sin_objetivo"
