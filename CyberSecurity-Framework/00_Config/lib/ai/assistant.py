@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
+from . import context as _context
 from . import prompts
 from . import redact as _redact
 from . import sources
@@ -174,6 +175,28 @@ def _findings_chunk(rel: str, slug: Optional[str], findings: list) -> Chunk:
     text = _redact.redact("\n\n".join(parts))
     n = max(1, text.count("\n") + 1)
     return Chunk(rel, 1, n, text, "informe", slug)
+
+
+def load_saved_summary(data_dir, slug: Optional[str]) -> Optional[str]:
+    """Lee <data_dir>/summaries/<slug>.md si existe y devuelve su cuerpo
+    (sin la línea de cabecera), redactado y recortado al mismo límite que usa
+    Conversation. None si no hay nada que cargar o la lectura falla."""
+    if not slug:
+        return None
+    path = Path(data_dir) / "summaries" / ("%s.md" % slug)
+    try:
+        if not path.is_file() or path.is_symlink():
+            return None
+        texto = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    lineas = texto.splitlines()
+    if lineas and lineas[0].startswith("#"):
+        lineas = lineas[1:]
+    cuerpo = "\n".join(lineas).strip()
+    if not cuerpo:
+        return None
+    return _context._cap(_redact.redact(cuerpo))
 
 
 # --- asistente --------------------------------------------------------------

@@ -341,5 +341,53 @@ class ChatLibreTests(unittest.TestCase):
             self.assertEqual(ans.notice, ErrorClient.MESSAGE)
 
 
+class LoadSavedSummaryTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.data = Path(self.tmp.name)
+        self.summaries = self.data / "summaries"
+        self.summaries.mkdir()
+
+    def _write_summary(self, slug, body, header=True):
+        texto = (("# Resumen de la conversación — objetivo: %s\n\n" % slug)
+                 if header else "") + body
+        _write(self.summaries / ("%s.md" % slug), texto)
+
+    def test_returns_none_when_file_absent(self):
+        self.assertIsNone(asst.load_saved_summary(self.data, "10.0.0.5"))
+
+    def test_returns_none_when_slug_empty_or_none(self):
+        self.assertIsNone(asst.load_saved_summary(self.data, ""))
+        self.assertIsNone(asst.load_saved_summary(self.data, None))
+
+    def test_returns_body_without_header_line(self):
+        self._write_summary("10.0.0.5", "Hablamos del puerto 22 abierto.\n")
+        out = asst.load_saved_summary(self.data, "10.0.0.5")
+        self.assertIn("puerto 22", out)
+        self.assertNotIn("Resumen de la conversación", out)
+
+    def test_returns_body_when_header_missing(self):
+        self._write_summary("10.0.0.5", "Texto sin cabecera.\n", header=False)
+        out = asst.load_saved_summary(self.data, "10.0.0.5")
+        self.assertEqual(out, "Texto sin cabecera.")
+
+    def test_returns_none_for_other_target_slug(self):
+        self._write_summary("otro-objetivo", "Esto es de otro objetivo.\n")
+        self.assertIsNone(asst.load_saved_summary(self.data, "10.0.0.5"))
+
+    def test_redacts_secret_in_loaded_body(self):
+        self._write_summary("10.0.0.5", "La contraseña es password=SuperSecreto123\n")
+        out = asst.load_saved_summary(self.data, "10.0.0.5")
+        self.assertNotIn("SuperSecreto123", out)
+        self.assertIn("[REDACTADO]", out)
+
+    def test_caps_long_summary_like_conversation_cap(self):
+        largo = "x" * (context.SUMMARY_CAP + 500)
+        self._write_summary("10.0.0.5", largo)
+        out = asst.load_saved_summary(self.data, "10.0.0.5")
+        self.assertLessEqual(len(out), context.SUMMARY_CAP)
+
+
 if __name__ == "__main__":
     unittest.main()
