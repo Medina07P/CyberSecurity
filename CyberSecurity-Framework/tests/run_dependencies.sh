@@ -95,6 +95,48 @@ eq "sin paquetes: rc 0 sin preguntar" "$?" "0"
 [[ -f "$CALLS" ]] && ko "sin paquetes: no debía llamar a apt-get" || ok "sin paquetes: no llamó a apt-get"
 rm -rf "$STUBDIR"
 
+echo "=== dependencies_install_nmap_vulners ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+cat > "$STUBDIR/sudo" <<'EOF'
+#!/bin/sh
+exec "$@"
+EOF
+chmod +x "$STUBDIR/sudo"
+cat > "$STUBDIR/git" <<EOF
+#!/bin/sh
+echo "git \$*" >> "$CALLS"
+if [ "\$1" = "clone" ]; then
+    last=""
+    for a in "\$@"; do last="\$a"; done
+    mkdir -p "\$last"
+    printf 'contenido de prueba\n' > "\$last/vulners.nse"
+fi
+exit 0
+EOF
+chmod +x "$STUBDIR/git"
+cat > "$STUBDIR/nmap" <<EOF
+#!/bin/sh
+echo "nmap \$@" >> "$CALLS"
+exit 0
+EOF
+chmod +x "$STUBDIR/nmap"
+
+NVP="$STUBDIR/scripts/vulners.nse"
+printf 'no\n' | PATH="$STUBDIR:$PATH" NMAP_VULNERS_PATH="$NVP" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_nmap_vulners" >/dev/null 2>&1
+eq "confirmación negada: rc 1" "$?" "1"
+[[ -f "$NVP" ]] && ko "confirmación negada: no debía clonar nada" || ok "confirmación negada: no clonó nada"
+
+printf 'NMAP_VULNERS_SI\n' | PATH="$STUBDIR:$PATH" NMAP_VULNERS_PATH="$NVP" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_nmap_vulners" >/dev/null 2>&1
+eq "confirmado: instala y verifica, rc 0" "$?" "0"
+grep -q -F 'clone' "$CALLS" && ok "invocó git clone" || ko "invocó git clone"
+grep -q -F -- '--script-updatedb' "$CALLS" && ok "invocó nmap --script-updatedb" || ko "invocó nmap --script-updatedb"
+[[ -f "$NVP" ]] && ok "copió vulners.nse al destino" || ko "copió vulners.nse al destino"
+
+out=$(PATH="$STUBDIR:$PATH" NMAP_VULNERS_PATH="$NVP" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_nmap_vulners" 2>&1)
+eq "ya presente: no vuelve a clonar" "$(printf '%s\n' "$out" | grep -c -F clone)" "0"
+rm -rf "$STUBDIR"
+
 echo "=== dependencies_resolve_selection ==="
 FALTAN3=(paquete-a paquete-b paquete-c)
 out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_resolve_selection todas '${FALTAN3[0]}' '${FALTAN3[1]}' '${FALTAN3[2]}'")

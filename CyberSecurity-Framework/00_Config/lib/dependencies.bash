@@ -143,6 +143,28 @@ dependencies_extra_missing() {
     done
 }
 
+dependencies_install_nmap_vulners() {
+    dependencies_binary_ok nmap-vulners && { printf 'nmap-vulners ya está instalado.\n' >&2; return 0; }
+    printf 'Clona vulnersCom/nmap-vulners de GitHub y copia vulners.nse a /usr/share/nmap/scripts/ con sudo; ejecuta "nmap --script-updatedb" al final.\nEscribe NMAP_VULNERS_SI para continuar (cualquier otra entrada cancela): ' >&2
+    local respuesta; IFS= read -r respuesta
+    [[ "$respuesta" == 'NMAP_VULNERS_SI' ]] || { printf 'Instalación de nmap-vulners cancelada.\n' >&2; return 1; }
+    local tmp; tmp=$(mktemp -d)
+    if ! git clone --depth 1 https://github.com/vulnersCom/nmap-vulners.git "$tmp/nmap-vulners"; then
+        printf 'No se pudo clonar nmap-vulners.\n' >&2; rm -rf "$tmp"; return 1
+    fi
+    local destino="${NMAP_VULNERS_PATH:-/usr/share/nmap/scripts/vulners.nse}"
+    mkdir -p "${destino%/*}" 2>/dev/null
+    if ! sudo install -m 644 "$tmp/nmap-vulners/vulners.nse" "$destino"; then
+        printf 'No se pudo copiar vulners.nse a su destino.\n' >&2; rm -rf "$tmp"; return 1
+    fi
+    [[ -f "$tmp/nmap-vulners/http-vulners-regex.nse" ]] && sudo install -m 644 "$tmp/nmap-vulners/http-vulners-regex.nse" "${destino%/*}" 2>/dev/null
+    rm -rf "$tmp"
+    sudo nmap --script-updatedb >/dev/null 2>&1
+    dependencies_binary_ok nmap-vulners && { printf 'nmap-vulners instalado y verificado.\n' >&2; return 0; }
+    printf 'nmap-vulners se copió pero no se detecta en su ruta.\n' >&2
+    return 1
+}
+
 # Resumen de una línea para el menú principal (mismo rol que keys_resumen_line)
 dependencies_resumen_line() {
     local -a faltan
