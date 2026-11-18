@@ -1,14 +1,25 @@
 # AGENTS.md
 
-**Asistente IA local, 2026-11-17 — implementado en `feat/asistente-ia-local`,
-NO integrado:** tecla `I` del gestor (`00_Config/lib/ai_menu.bash`), núcleo en
-`00_Config/lib/ai/`, entrada `09_Automation/ai/ai_assistant.py`, guía
+**Asistente IA local, 2026-11-17 — integrado en `develop` (revisión de código
+aplicada), sin push:** tecla `I` del gestor (`00_Config/lib/ai_menu.bash`),
+núcleo en `00_Config/lib/ai/`, entrada `09_Automation/ai/ai_assistant.py`, guía
 `docs/ASISTENTE-IA-2026-11-17.md`. Aditivo y aislado: lee solo docs y resultados
 del objetivo, excluye/redacta secretos, nunca ejecuta nada; datos en
-`09_Automation/ai/data/` (ignorado por git). Evidencia observada: `tests/run_ai.sh`
-103 tests rc0 con guardas intactas y `tests/run_smoke.sh` fallos:0, con Ollama
-simulado. Sin validación operativa con un modelo real (no hay Ollama instalado) y
-sin ejecutar las suites antiguas. Sin merge ni push.
+`09_Automation/ai/data/` (ignorado por git). `code-review high` sobre la rama
+encontró 9 hallazgos; 8 corregidos con TDD (dos de seguridad: deny-list de
+salidas de fuerza bruta por nombre real de fichero, contraseña numérica tras
+`-p` sin redactar; cinco de corrección: pérdida de turnos al guardar resumen,
+excepción sin capturar en el cliente Ollama, config sin chequeo de tipos,
+mensaje de `estado` mezclando dos modelos, cabecera sin refrescar disponibilidad
+de Ollama en sesión; uno de integración: `ollama` ausente de la tecla `D`).
+**Pendiente, NO regresión de esta rama:** la redacción de secretos solo protege
+la ingestión del asistente; `report_engine.py` y el empaquetado de evidencia
+(`10_Evidence/`) no redactan nada sobre los mismos datos de `scans/` — brecha
+preexistente en otros módulos, sin dueño asignado todavía. Evidencia: `tests/run_ai.sh`
+119 tests rc0 con guardas intactas, `tests/run_smoke.sh` y `tests/run_dependencies.sh`
+(36 tests) sin fallos, con Ollama simulado. Sin validación operativa con un modelo
+real (no hay Ollama instalado en esta máquina) ni ejecución de las suites antiguas.
+Merge local `feat/asistente-ia-local` → `develop`; sin push.
 
 **Rectificación del cierre local, 2026-11-15 — NO APROBADO:** la nota anterior
 que declaraba Tasks1–6 completadas y revisión independiente por tarea era
