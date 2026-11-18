@@ -1133,7 +1133,11 @@ dependencies_menu() {
         2)
             local -a extra; mapfile -t extra < <(dependencies_extra_missing)
             if [[ ${#extra[@]} -eq 0 ]]; then
-                echo -e "${DIM}No falta ninguna herramienta adicional.${NC}"; pause; return 0
+                echo -e "${DIM}avml, ollama y nmap-vulners ya están instalados.${NC}"
+                if dependencies_binary_ok ollama; then
+                    dependencies_offer_model_catalog
+                fi
+                pause; return 0
             fi
             echo -e "${YELLOW}Herramientas adicionales que faltan:${NC}"
             for i in "${!extra[@]}"; do

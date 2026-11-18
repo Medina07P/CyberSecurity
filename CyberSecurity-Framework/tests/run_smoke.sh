@@ -132,6 +132,25 @@ run "menú: D 0 vuelve sin tocar nada" 'D\n0\nQ\n'    "DEPENDENCIAS"
 run "menú: D opción 2 aparece"        'D\n0\nQ\n'    "herramientas adicionales"
 run "menú: D 2 lista las tres sin instalar nada" 'D\n2\n0\n0\n' "nmap-vulners"
 
+# Con ollama/avml/nmap-vulners ya instalados, D 2 no debe ser un callejón sin
+# salida: debe ofrecer el catálogo de modelos en vez de solo decir que no
+# falta nada (bug: antes de este fix, una vez instalado todo una sola vez,
+# el menú nunca volvía a dar forma de pedir otro modelo).
+STUBDIR_D2="$(mktemp -d)"
+printf '#!/bin/sh\n' > "$STUBDIR_D2/ollama"; chmod +x "$STUBDIR_D2/ollama"
+printf '#!/bin/sh\n' > "$STUBDIR_D2/avml"; chmod +x "$STUBDIR_D2/avml"
+NVP_D2="$STUBDIR_D2/vulners.nse"; touch "$NVP_D2"
+out_d2=$(printf 'D\n2\n0\n0\nQ\n' | PATH="$STUBDIR_D2:$PATH" NMAP_VULNERS_PATH="$NVP_D2" \
+    timeout 20 bash ./cyber_framework.sh 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+if printf '%s' "$out_d2" | grep -qF "Catálogo de modelos para Ollama"; then
+    echo "  OK       menú: D 2 con todo instalado ofrece el catálogo de modelos"
+else
+    echo "  FALLO    menú: D 2 con todo instalado ofrece el catálogo de modelos"
+    printf '%s\n' "$out_d2" | tail -15 | sed 's/^/            /'
+    fail=$((fail+1))
+fi
+rm -rf "$STUBDIR_D2"
+
 echo ""
 echo "=== asistente IA: acción I ==="
 run "menú: I aparece"                 'Q\n'          "Asistente"
