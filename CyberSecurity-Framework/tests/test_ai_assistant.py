@@ -132,6 +132,16 @@ class AssistantTests(unittest.TestCase):
             # build_messages que solo se añade cuando chunks no está vacío.
             self.assertNotIn("Fragmentos disponibles", all_text(client))
 
+    def test_no_chunks_with_real_client_error_falls_back_to_no_basis(self):
+        with tempfile.TemporaryDirectory() as d:
+            client = ErrorClient()
+            a, _ = make_assistant(Path(d), client=client)
+            ans = a.ask("zzqqxx plughh wumpus")
+            self.assertTrue(client.calls, "debía intentar consultar al modelo")
+            self.assertFalse(ans.used_model)
+            self.assertIn("base", ans.text.lower())
+            self.assertEqual(ans.notice, ErrorClient.MESSAGE)
+
     def test_greeting_does_not_search_or_call_model(self):
         with tempfile.TemporaryDirectory() as d:
             client = FakeClient()
