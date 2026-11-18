@@ -1,0 +1,8 @@
+# Configuración del asistente IA local. El modelo lo propone hardware.recommend_model.
+modelo: qwen2.5:3b
+endpoint: http://127.0.0.1:11434
+permitir_endpoint_remoto: false
+contexto_max_tokens: 2048
+turnos_literales: 4
+top_k: 4
+incluir_credenciales: false

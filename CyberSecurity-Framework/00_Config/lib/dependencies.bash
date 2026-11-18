@@ -26,6 +26,7 @@ declare -gA DEPENDENCIES_NO_APT=(
     [lime]='módulo de kernel que se compila, no se instala aquí'
     [volatility]='sin paquete apt en Kali (reemplazado por volatility3); solo se documenta'
     [nmap-vulners]='no es un binario: script NSE que se clona a mano a /usr/share/nmap/scripts/'
+    [ollama]='se instala con «curl -fsSL https://ollama.com/install.sh | sh», no es un paquete apt'
 )
 
 declare -ga DEPENDENCIES_ORDER=(
@@ -45,7 +46,7 @@ declare -ga DEPENDENCIES_ORDER=(
     '08_Forensics|volatility' '08_Forensics|autopsy' '08_Forensics|foremost' '08_Forensics|scalpel'
     '08_Forensics|wireshark' '08_Forensics|avml' '08_Forensics|lime' '08_Forensics|dd'
     'Dependencias adicionales|zaproxy' 'Dependencias adicionales|volatility3'
-    'Dependencias adicionales|nmap-vulners'
+    'Dependencias adicionales|nmap-vulners' 'Dependencias adicionales|ollama'
 )
 
 dependencies_binary_ok() {

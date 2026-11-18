@@ -232,6 +232,7 @@ fases tienen ya resultados.
 |---|---|
 | `00`–`13` | Entrar en un módulo (también vale `0`–`9`) |
 | `T` | Cambiar el objetivo de la sesión |
+| `I` | Asistente IA local: explica resultados e informes (no ejecuta nada; guía en `docs/ASISTENTE-IA-2026-11-17.md`) |
 | `99` | Flujo completo (comprueba el alcance de `scope.yaml` y pide confirmación) |
 | `?` | Ayuda, con el orden recomendado de fases |
 | `Q` | Salir |
@@ -459,6 +460,7 @@ cd CyberSecurity-Framework
 ./tests/run_e2e.sh      # el script recibe el argumento tecleado (11)
 ./tests/run_smoke.sh    # navegación del menú con entrada simulada
 ./tests/run_reports.sh  # motor de informes y documentación
+./tests/run_ai.sh       # Asistente IA local (sin Ollama real)
 ```
 
 No necesitan terminal interactiva ni herramientas de pentesting instaladas: se
