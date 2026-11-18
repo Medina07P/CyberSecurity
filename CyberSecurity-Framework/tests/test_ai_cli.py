@@ -498,6 +498,22 @@ class DocumentationTests(unittest.TestCase):
         ][-1]
         self.assertIn("7", encabezado)
 
+    def test_documentation_module_table_lists_options_6_and_7(self):
+        repo = FW.parent
+        guide = repo / "docs" / "ASISTENTE-IA-2026-11-17.md"
+        text = guide.read_text(encoding="utf-8")
+        idx = text.index("módulos del framework")
+        section = text[:idx]
+        filas = [
+            linea for linea in section.splitlines()
+            if linea.startswith("|") and linea not in ("| Opción | Para qué sirve |",)
+            and not linea.startswith("|---")
+        ]
+        self.assertTrue(any(f.startswith("| 6 ") for f in filas),
+                         "falta la fila de la opción 6 en la tabla")
+        self.assertTrue(any(f.startswith("| 7 ") for f in filas),
+                         "falta la fila de la opción 7 en la tabla")
+
 
 NOTICE_MARK = "He recuperado el resumen"
 

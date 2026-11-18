@@ -172,6 +172,10 @@ def _nueva(assistant, stdin, stdout):
         if _forget_saved_summary(assistant):
             stdout.write("Resumen guardado anterior borrado.\n")
         stdout.write("Empezamos una conversación nueva.\n")
+    # Una conversación nueva invalida cualquier aviso de "resumen recuperado"
+    # pendiente, se haya guardado, descartado o no hubiera nada que borrar:
+    # lo que se mostró como recuperado ya no es la conversación actual.
+    assistant.resumen_recuperado = False
     client = assistant.client
     if client is not None:
         try:

@@ -66,6 +66,26 @@ class NoticeTimingTests(unittest.TestCase):
         self.assertNotIn("He recuperado el resumen", stdout.getvalue())
 
 
+class NuevaClearsNoticeTests(unittest.TestCase):
+    def test_saving_in_nueva_clears_stale_resumen_recuperado_notice(self):
+        """"Nueva conversación" (opción 5, guardar) invalida el aviso de
+        "resumen recuperado": si el modelo llega a estar disponible en una
+        vuelta posterior del mismo proceso, el aviso ya obsoleto no debe
+        reaparecer."""
+        with tempfile.TemporaryDirectory() as d:
+            client = _TogglingClient()
+            assistant = _FakeAssistant(client, resumen_recuperado=True)
+            assistant.data_dir = d
+            assistant.slug = "10.0.0.5"
+            assistant.conversation.add("user", "hola")
+            # "5" (nueva conversación) -> "s" (guardar resumen) -> "0" (salir)
+            stdin = io.StringIO("5\ns\n0\n")
+            stdout = io.StringIO()
+            rc = menu.run(stdin, stdout, lambda: assistant)
+            self.assertEqual(rc, 0)
+            self.assertNotIn("He recuperado el resumen", stdout.getvalue())
+
+
 class SummariesDirCreationTests(unittest.TestCase):
     def test_forgetting_with_nothing_saved_does_not_create_the_directory(self):
         with tempfile.TemporaryDirectory() as d:

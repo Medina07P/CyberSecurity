@@ -69,6 +69,8 @@ de `09_Automation/ai/ai_config.yaml`.
 | 3 Ayudarme a redactar el informe | Propone un borrador ejecutivo o técnico |
 | 4 Tengo una duda / no sé cómo hacer algo | Responde sobre el framework usando su documentación |
 | 5 Empezar conversación nueva | Olvida la conversación actual (ver «Contexto») |
+| 6 Elegir modelo de IA | Lista los modelos ya descargados en Ollama y cambia el que usa el asistente |
+| 7 Hablar libremente con el modelo | Conversación abierta con el modelo, sin buscar en los documentos del framework |
 | 0 Volver | Regresa al gestor |
 
 Tanto en la opción 4 (con documentos) como en la 7 (conversación libre), el
