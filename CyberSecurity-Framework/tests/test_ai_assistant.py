@@ -278,5 +278,68 @@ class AssistantTests(unittest.TestCase):
             self.assertNotIn("hunter2", json.dumps(a.conversation.messages()))
 
 
+class ChatLibreTests(unittest.TestCase):
+    def test_without_client_explains_model_needed(self):
+        with tempfile.TemporaryDirectory() as d:
+            a, _ = make_assistant(Path(d), client=None)
+            ans = a.chat_libre("hola, como estas")
+            self.assertFalse(ans.used_model)
+            self.assertIn("modelo de IA", ans.text)
+
+    def test_empty_message_asks_to_write_something(self):
+        with tempfile.TemporaryDirectory() as d:
+            a, _ = make_assistant(Path(d), client=FakeClient())
+            self.assertFalse(a.chat_libre("   ").used_model)
+
+    def test_does_not_search_the_index_at_all(self):
+        # Ninguna palabra de este mensaje aparece en el arbol sintetico: si
+        # chat_libre buscase documentacion fallaria por falta de base, igual
+        # que ask(). No debe fallar: no toca el indice.
+        with tempfile.TemporaryDirectory() as d:
+            client = FakeClient(reply="Charlemos de lo que quieras.")
+            a, _ = make_assistant(Path(d), client=client)
+            ans = a.chat_libre("zzqqxx plughh wumpus, cuentame un chiste")
+            self.assertTrue(ans.used_model)
+            self.assertEqual(ans.text, "Charlemos de lo que quieras.")
+            self.assertEqual(ans.sources, [])
+
+    def test_uses_system_libre_without_untrusted_data_block(self):
+        with tempfile.TemporaryDirectory() as d:
+            client = FakeClient()
+            a, _ = make_assistant(Path(d), client=client)
+            a.chat_libre("hola, quien eres")
+            msgs = client.calls[0]
+            self.assertEqual(msgs[0]["role"], "system")
+            self.assertIn("conversación libre", msgs[0]["content"])
+            self.assertNotIn(prompts.OPEN, all_text(client))
+            self.assertEqual(msgs[-1], {"role": "user", "content": "hola, quien eres"})
+
+    def test_keeps_shared_conversation_history_across_turns(self):
+        with tempfile.TemporaryDirectory() as d:
+            client = FakeClient(reply="Encantado.")
+            a, _ = make_assistant(Path(d), client=client)
+            a.chat_libre("me llamo Ana")
+            a.chat_libre("y tu quien eres")
+            segundo = client.calls[1]
+            self.assertIn({"role": "user", "content": "me llamo Ana"}, segundo)
+            self.assertIn({"role": "assistant", "content": "Encantado."}, segundo)
+
+    def test_secret_in_message_and_reply_are_redacted(self):
+        with tempfile.TemporaryDirectory() as d:
+            client = FakeClient(reply="Usa password=hunter2 para entrar")
+            a, _ = make_assistant(Path(d), client=client)
+            ans = a.chat_libre("mi password=hunter2 es esa")
+            self.assertNotIn("hunter2", all_text(client))
+            self.assertNotIn("hunter2", ans.text)
+            self.assertNotIn("hunter2", json.dumps(a.conversation.messages()))
+
+    def test_model_error_has_no_deterministic_fallback_text(self):
+        with tempfile.TemporaryDirectory() as d:
+            a, _ = make_assistant(Path(d), client=ErrorClient())
+            ans = a.chat_libre("hola")
+            self.assertFalse(ans.used_model)
+            self.assertEqual(ans.notice, ErrorClient.MESSAGE)
+
+
 if __name__ == "__main__":
     unittest.main()

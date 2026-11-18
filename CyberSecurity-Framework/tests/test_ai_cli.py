@@ -200,6 +200,31 @@ class MenuTests(CliBase):
             yaml.safe_load(self.config_path.read_text(encoding="utf-8"))["modelo"],
             "fake:1b")
 
+    def test_opcion_7_sin_modelo_explica_que_hace_falta(self):
+        p = self.run_cli([], stdin_text="7\n0\n", server="no_model")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("hace falta un modelo de IA", p.stdout)
+        # No debe haber entrado al sub-modo de charla en absoluto.
+        self.assertNotIn("Tú: ", p.stdout)
+
+    def test_opcion_7_sin_servidor_ollama_tambien_lo_explica(self):
+        p = self.run_cli([], stdin_text="7\n0\n", server=None)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("hace falta un modelo de IA", p.stdout)
+
+    def test_opcion_7_conversa_sin_buscar_y_vuelve_con_linea_vacia(self):
+        p = self.run_cli([], stdin_text="7\nhola, quien eres\n\n0\n", server="ok")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("conversación libre", p.stdout)
+        self.assertIn("Hola, mundo", p.stdout)  # respuesta del Ollama falso
+        # Al volver al menu principal (no quedo atascado en el submodo).
+        self.assertEqual(p.stdout.count(MENU_MARK), 2)
+
+    def test_opcion_7_cero_vuelve_directo_sin_preguntar_nada(self):
+        p = self.run_cli([], stdin_text="7\n0\n0\n", server="ok")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("Hola, mundo", p.stdout)
+
     def test_free_text_is_a_question(self):
         p = self.run_cli([], stdin_text="que es nmap\n0\n", server="no_model")
         self.assertEqual(p.returncode, 0, p.stderr)

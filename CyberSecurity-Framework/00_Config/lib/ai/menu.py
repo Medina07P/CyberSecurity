@@ -32,6 +32,7 @@ OPCIONES = (
     " 4) Tengo una duda / no sé cómo hacer algo",
     " 5) Empezar conversación nueva",
     " 6) Elegir modelo de IA",
+    " 7) Hablar libremente con el modelo (sin buscar en los documentos)",
     " 0) Volver",
 )
 CANCELADA = "\n(Respuesta cancelada. Volvemos al menú.)"
@@ -192,6 +193,43 @@ def _elegir_modelo(assistant, stdin, stdout):
     stdout.write("Modelo configurado: %s\n" % nuevo)
 
 
+def _chat_libre(assistant, stdin, stdout):
+    """Sub-bucle de conversación abierta: se queda charlando turno a turno,
+    como con un asistente de IA genérico, hasta que la persona lo deja (línea
+    vacía, '0', EOF o Ctrl+C esperando el siguiente mensaje). Un Ctrl+C
+    mientras el modelo responde solo cancela ese turno y sigue en el modo."""
+    disponible, _, _, faltan = _model_status(assistant)
+    if not disponible:
+        stdout.write("\nPara hablar libremente hace falta un modelo de IA "
+                     "cargado y disponible:\n")
+        for linea in faltan:
+            stdout.write("  " + linea + "\n")
+        return
+    stdout.write("\nModo de conversación libre (no busca en los documentos "
+                 "del framework; para eso usa 1-4). Escribe lo que quieras; "
+                 "una línea vacía o «0» vuelve al menú.\n\n")
+    stdout.flush()
+    while True:
+        stdout.write("Tú: ")
+        stdout.flush()
+        try:
+            linea = stdin.readline()
+        except KeyboardInterrupt:
+            stdout.write("\n")
+            return
+        if linea == "":          # EOF
+            return
+        mensaje = linea.strip()
+        if not mensaje or mensaje.lower() in ("0", "salir"):
+            return
+        try:
+            ans = assistant.chat_libre(mensaje, stream_to=_writer(stdout))
+        except KeyboardInterrupt:
+            stdout.write(CANCELADA + "\n")
+            continue
+        _print_answer(stdout, ans)
+
+
 def _answer_free(assistant, stdout, pregunta):
     return assistant.ask(pregunta, stream_to=_writer(stdout))
 
@@ -271,6 +309,8 @@ def run(stdin, stdout, assistant_factory):
                 _nueva(assistant, stdin, stdout)
             elif texto == "6":
                 _elegir_modelo(assistant, stdin, stdout)
+            elif texto == "7":
+                _chat_libre(assistant, stdin, stdout)
             elif texto in ("1", "2", "3", "4"):
                 _run_option(assistant, stdin, stdout, texto)
             else:
