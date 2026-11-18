@@ -159,7 +159,7 @@ dependencies_install_nmap_vulners() {
     fi
     [[ -f "$tmp/nmap-vulners/http-vulners-regex.nse" ]] && sudo install -m 644 "$tmp/nmap-vulners/http-vulners-regex.nse" "${destino%/*}" 2>/dev/null
     rm -rf "$tmp"
-    sudo nmap --script-updatedb >/dev/null 2>&1
+    sudo nmap --script-updatedb >/dev/null
     dependencies_binary_ok nmap-vulners && { printf 'nmap-vulners instalado y verificado.\n' >&2; return 0; }
     printf 'nmap-vulners se copió pero no se detecta en su ruta.\n' >&2
     return 1
@@ -212,6 +212,9 @@ print(tag + "|" + url)
 DEPENDENCIES_AVML_MAX_BYTES=20971520
 
 dependencies_verify_avml() {
+    # El patrón de --help es el mismo que 08_Forensics/memory/memory_dump.sh
+    # usa en recognize_memory_backend; si el --help de avml cambia alguna vez,
+    # actualizar también esa función para que sigan coincidiendo.
     command -v avml >/dev/null 2>&1 || { printf 'avml no aparece en PATH tras instalarlo.\n' >&2; return 1; }
     local ayuda; ayuda=$(timeout 10 avml --help 2>&1)
     if [[ "${ayuda,,}" == *avml* && "${ayuda,,}" == *usage:* \

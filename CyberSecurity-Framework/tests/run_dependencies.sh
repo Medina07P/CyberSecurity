@@ -236,6 +236,31 @@ grep -q -F '/usr/local/bin/avml' "$CALLS" && ok "instaló en /usr/local/bin/avml
 rm -rf "$STUBDIR"
 unset STUBDIR CALLS
 
+echo "=== dependencies_install_avml: ya presente ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+export STUBDIR CALLS
+cat > "$STUBDIR/sudo" <<'EOF'
+#!/bin/sh
+echo "sudo $*" >> "$CALLS"
+exit 0
+EOF
+chmod +x "$STUBDIR/sudo"
+cat > "$STUBDIR/curl" <<'EOF'
+#!/bin/sh
+echo "curl $*" >> "$CALLS"
+exit 0
+EOF
+chmod +x "$STUBDIR/curl"
+touch "$STUBDIR/avml"; chmod +x "$STUBDIR/avml"
+
+out=$(printf '' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_avml" 2>&1)
+eq "avml ya presente: rc 0 sin pedir confirmación" "$?" "0"
+[[ -f "$CALLS" ]] && ko "avml ya presente: no debía invocar curl ni sudo" || ok "avml ya presente: no invocó curl ni sudo"
+printf '%s\n' "$out" | grep -qF 'avml ya está instalado.' && ok "avml ya presente: lo dice" || ko "avml ya presente: lo dice"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
 echo "=== dependencies_install_ollama ==="
 STUBDIR="$(mktemp -d)"
 CALLS="$STUBDIR/calls.log"
@@ -258,6 +283,41 @@ out=$(printf '0\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/de
 eq "ya presente: no vuelve a pedir confirmación ni a invocar curl" "$(printf '%s\n' "$out" | grep -c -F 'curl')" "0"
 printf '%s\n' "$out" | grep -qF 'ollama ya está instalado.' && ok "ya presente: lo dice" || ko "ya presente: lo dice"
 printf '%s\n' "$out" | grep -qF 'Catálogo de modelos para Ollama' && ok "ya presente: ofrece el catálogo" || ko "ya presente: ofrece el catálogo"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
+echo "=== dependencies_install_ollama: el instalador termina con error ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+cat > "$STUBDIR/curl" <<EOF
+#!/bin/sh
+echo "curl \$*" >> "$CALLS"
+echo "exit 1"
+EOF
+chmod +x "$STUBDIR/curl"
+
+out=$(printf 'OLLAMA_SI\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" 2>&1)
+eq "instalador falla: rc 1" "$?" "1"
+printf '%s\n' "$out" | grep -qF 'El instalador de Ollama terminó con error.' && ok "instalador falla: mensaje visible" || ko "instalador falla: mensaje visible"
+printf '%s\n' "$out" | grep -qF 'Catálogo de modelos para Ollama' && ko "instalador falla: no debía ofrecer el catálogo" || ok "instalador falla: no ofrece el catálogo"
+[[ -x "$STUBDIR/ollama" ]] && ko "instalador falla: no debía crear el binario" || ok "instalador falla: no creó el binario"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
+echo "=== dependencies_install_ollama: binario ausente tras instalar ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+cat > "$STUBDIR/curl" <<EOF
+#!/bin/sh
+echo "curl \$*" >> "$CALLS"
+echo "true"
+EOF
+chmod +x "$STUBDIR/curl"
+
+out=$(printf 'OLLAMA_SI\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" 2>&1)
+eq "binario ausente tras instalar: rc 1" "$?" "1"
+printf '%s\n' "$out" | grep -qF 'no aparece en PATH.' && ok "binario ausente: mensaje visible" || ko "binario ausente: mensaje visible"
+printf '%s\n' "$out" | grep -qF 'Catálogo de modelos para Ollama' && ko "binario ausente: no debía ofrecer el catálogo" || ok "binario ausente: no ofrece el catálogo"
 rm -rf "$STUBDIR"
 unset STUBDIR CALLS
 
