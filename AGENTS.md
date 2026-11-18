@@ -1,5 +1,31 @@
 # AGENTS.md
 
+**Redacción en `report_engine.py`, 2026-11-18 — implementado en
+`feat/redaccion-informes`, sin integrar:** cierra la mitad corregible de la
+brecha anotada en la nota del asistente IA (abajo): `collect()`
+(`11_Reports/lib/engine.py`) ahora pasa cada hallazgo por
+`redact_findings()` (`11_Reports/lib/model.py`), que reutiliza tal cual
+`00_Config/lib/ai/redact.py::redact()` sin reimplementarlo. Cubre
+`findings.json` y los informes técnico/cliente por construcción, porque se
+aplica una sola vez antes de fusionar/ordenar hallazgos. `10_Evidence/`
+queda fuera **a propósito**, no por descuido: `00_Config/lib/evidence/package.py`
+es un paquete de custodia forense (hash SHA-256 por miembro, detección de
+modificación) y redactar su contenido rompería esa garantía; su categoría
+`credentials/` guarda secretos a propósito, no es un escape de información.
+Ver `docs/superpowers/specs/2026-11-18-redaccion-informes-design.md`
+(sección "Anti-goals") para el razonamiento completo. Dos fixtures
+aisladas (`tests/reports_fixture.py`, `tests/test_reports_evidence_contract.py`)
+necesitaron añadir `00_Config/lib/ai/` a su copia/allowlist cerrada, porque
+`lib/model.py` ahora depende de ese módulo; `tests/automation_fixture.py`
+tiene el mismo síntoma pero no se tocó — pertenece al aislador de
+`09_Automation` que esta misma nota restringe más abajo, y en esta máquina
+falla antes por un directorio de entorno ausente, sin relación con este
+cambio. `tests/test_report_engine.py` sube a 86 asserts;
+`tests/run_reports_evidence.sh` rc=0 GUARD OK; `tests/run_reports.sh`
+mantiene sus mismos 2 fallos preexistentes del shim legacy (EXDEV entre el
+checkout y `/tmp` en esta máquina — confirmado idéntico en el commit base,
+no es una regresión de esta rama). Sin merge ni push.
+
 **Herramientas adicionales en la tecla `D`, 2026-11-18 — integrado en
 `develop` (revisión de código aplicada), sin push:** la opción `2` del menú de
 `D` instala/verifica `ollama` (+ catálogo de 4 modelos con guardrail de
