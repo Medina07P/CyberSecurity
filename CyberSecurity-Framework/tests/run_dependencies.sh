@@ -19,6 +19,10 @@ eq "nmap-vulners ausente (archivo no existe)" "$?" "1"
 touch "$TMPBIN/nmap-vulners.nse"
 NMAP_VULNERS_PATH="$TMPBIN/nmap-vulners.nse" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_binary_ok nmap-vulners"
 eq "nmap-vulners presente (archivo existe)" "$?" "0"
+grep -q '/usr/share/nmap/scripts/vulners.nse' "$FW/00_Config/lib/dependencies.bash"
+eq "el código usa vulners.nse como ruta por defecto" "$?" "0"
+grep -q 'nmap-vulners\.nse' "$FW/00_Config/lib/dependencies.bash"
+eq "el código ya no menciona nmap-vulners.nse" "$?" "1"
 
 echo "=== dependencies_status ==="
 out=$(bash -c "export PATH='$TMPBIN'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_status")
