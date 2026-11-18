@@ -63,6 +63,9 @@ SOURCE_FILES += ('09_Automation/python/report_generator.py',
         'parsers/rate_limit', 'parsers/scanner_ports',
         'parsers/sqli_findings', 'parsers/sqlmap'))
 
+# lib/model.py importa ai.redact (mismo repo, solo stdlib) desde 2026-11-18.
+SOURCE_FILES += tuple('00_Config/lib/ai/' + name + '.py' for name in ('__init__', 'redact'))
+
 SOURCE_FILES += ('tests/fixtures/automation/powershell_contract.ps1',)
 
 SOURCE_FILES += ('00_Config/lib/automation/cli.py',

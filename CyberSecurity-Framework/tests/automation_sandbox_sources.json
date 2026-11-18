@@ -3,6 +3,8 @@
   "files": [
     "CyberSecurity-Framework/tests/test_cross_closure.py",
     "CyberSecurity-Framework/tests/test_cross_documentation.py",
+    "CyberSecurity-Framework/00_Config/lib/ai/__init__.py",
+    "CyberSecurity-Framework/00_Config/lib/ai/redact.py",
     "CyberSecurity-Framework/00_Config/lib/automation/__init__.py",
     "CyberSecurity-Framework/00_Config/lib/automation/adapters.py",
     "CyberSecurity-Framework/00_Config/lib/automation/catalog.py",
