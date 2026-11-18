@@ -26,10 +26,12 @@ EVIDENCE = ('__init__', 'model', 'storage', 'inventory')
 TESTS = ('test_report_engine.py', 'test_postexploitation_reports.py',
          'test_reports_evidence_contract.py', 'test_reports_runner.py', 'test_reports_ports.py', 'test_reports_history.py',
          'test_reports_history_integration.py', 'reports_fixture.py', 'run_reports_evidence.sh')
+AI = ('__init__', 'redact')
 SOURCES = (('cyber_framework.sh',) + tuple('11_Reports/' + p for p in REPORT)
            + tuple('00_Config/lib/' + p + '.bash' for p in BASH)
            + ('00_Config/lib/postexploitation_evidence.py',)
            + tuple('00_Config/lib/evidence/' + p + '.py' for p in EVIDENCE)
+           + tuple('00_Config/lib/ai/' + p + '.py' for p in AI)
            + tuple('tests/' + p for p in TESTS))
 CONFIG = ('00_Config/scope.yaml', '00_Config/targets.txt', '00_Config/.session', '11_Reports/.report_profile')
 

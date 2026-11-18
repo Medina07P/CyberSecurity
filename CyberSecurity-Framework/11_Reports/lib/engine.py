@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from .attribution import belongs_to, guess_host, normalize_host
-from .model import Finding, ParseResult, merge_findings, sort_findings, relpath
+from .model import Finding, ParseResult, merge_findings, redact_findings, sort_findings, relpath
 from .sources import discover
 from .coverage import entry
 
@@ -270,7 +270,7 @@ def collect(
             objetivo_set.add(normalize_host(finding.activo))
 
     # Fusionar hallazgos con la misma clave y ordenar por gravedad
-    all_findings = sort_findings(merge_findings(all_findings))
+    all_findings = sort_findings(merge_findings(redact_findings(all_findings)))
 
     return Collected(
         findings=all_findings,

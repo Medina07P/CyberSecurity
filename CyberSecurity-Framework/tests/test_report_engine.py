@@ -282,6 +282,21 @@ class CollectTests(unittest.TestCase):
                     f"Evidence path should be repo-relative: {f.evidencia[0].archivo}"
                 )
 
+    def test_collect_redacts_secret_from_raw_scan_output(self):
+        tmpdir = Path(tmp())
+        scans = tmpdir / "scans"
+        web = scans / "web"
+        web.mkdir(parents=True)
+        suf = "443_10.0.0.5"
+        (web / f"security_headers_{suf}.txt").write_text(
+            "Authorization: Bearer abcdef1234567890ABCDEF\n", encoding="utf-8")
+        (web / f"headers_{suf}.txt").write_text("HTTP/1.1 200 OK\n", encoding="utf-8")
+        c = collect(scans, tmpdir, "10.0.0.5")
+        extractos = [e.extracto for f in c.findings for e in f.evidencia]
+        self.assertTrue(extractos, "debe producir al menos un hallazgo con evidencia")
+        self.assertFalse(any("abcdef1234567890ABCDEF" in texto for texto in extractos))
+        self.assertTrue(any("[REDACTADO]" in texto for texto in extractos))
+
     def test_external_scans_dir_uses_relpath_not_basename(self):
         # Cuando --scans apunta a un directorio externo, la evidencia debe
         # contener la ruta relativa completa, no solo el nombre del fichero
