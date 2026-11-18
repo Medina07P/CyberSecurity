@@ -30,6 +30,7 @@ source "$LIB_DIR/forensics_menu.bash"
 source "$LIB_DIR/automation_menu.bash"
 source "$LIB_DIR/evidence_menu.bash"
 source "$LIB_DIR/dependencies.bash"
+source "$LIB_DIR/dependencies_models.bash"
 source "$LIB_DIR/ai_menu.bash"
 
 # Colores
@@ -1102,9 +1103,10 @@ dependencies_menu() {
     fi
     echo ""
     echo -e "  ${GREEN}1${NC}) Instalar dependencias (elegir de la lista)"
+    echo -e "  ${GREEN}2${NC}) Instalar/verificar herramientas adicionales (Ollama, avml, nmap-vulners)"
     echo -e "  ${GREEN}0${NC}) Volver al menú principal"
     echo ""
-    echo -ne "${BOLD}➜ Elige una opción [0-1]: ${NC}"
+    echo -ne "${BOLD}➜ Elige una opción [0-2]: ${NC}"
     if ! IFS= read -r eleccion; then
         return 0
     fi
@@ -1127,6 +1129,33 @@ dependencies_menu() {
             elegidos=()
             mapfile -t elegidos <<< "$resuelto"
             dependencies_install "${elegidos[@]}"
+            ;;
+        2)
+            local -a extra; mapfile -t extra < <(dependencies_extra_missing)
+            if [[ ${#extra[@]} -eq 0 ]]; then
+                echo -e "${DIM}No falta ninguna herramienta adicional.${NC}"; pause; return 0
+            fi
+            echo -e "${YELLOW}Herramientas adicionales que faltan:${NC}"
+            for i in "${!extra[@]}"; do
+                printf '  %d) %s (%s)\n' "$((i + 1))" "${extra[$i]}" "${DEPENDENCIES_NO_APT[${extra[$i]}]}"
+            done
+            echo -ne "${BOLD}➜ Números a instalar (espacio entre varios, 'todas', 0 o ! cancela): ${NC}"
+            if ! IFS= read -r seleccion || [[ "$seleccion" == '0' || "$seleccion" == '!' || -z "$seleccion" ]]; then
+                pause; return 0
+            fi
+            local resuelto_extra rc_resuelto_extra
+            resuelto_extra=$(dependencies_resolve_selection "$seleccion" "${extra[@]}")
+            rc_resuelto_extra=$?
+            if [[ $rc_resuelto_extra -ne 0 ]]; then
+                echo -e "${RED}Selección inválida.${NC}"; pause; return 0
+            fi
+            local -a elegidas_extra; mapfile -t elegidas_extra <<< "$resuelto_extra"
+            local herramienta funcion
+            for herramienta in "${elegidas_extra[@]}"; do
+                funcion="dependencies_install_${herramienta//-/_}"
+                "$funcion"
+            done
+            echo ""; dependencies_status
             ;;
         *) echo -e "${RED}❌ Opción inválida${NC}" ;;
     esac
