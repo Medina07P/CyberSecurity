@@ -31,7 +31,7 @@ def _is_loopback(host):
 
 
 class OllamaClient:
-    def __init__(self, endpoint, model, allow_remote=False, timeout=120):
+    def __init__(self, endpoint, model, allow_remote=False, timeout=300):
         try:
             parsed = urlparse(endpoint)
             host = parsed.hostname
