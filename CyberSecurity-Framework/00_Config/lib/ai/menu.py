@@ -129,27 +129,46 @@ def _save_summary(assistant, stdout):
     stdout.write("Resumen guardado en %s\n" % destino)
 
 
-def _forget_saved_summary(assistant):
+def _saved_summary_path(assistant):
     d = _summaries_dir(assistant)
     if d is None:
-        return
+        return None
     slug = assistant.slug or "sin_objetivo"
+    return d / ("%s.md" % slug)
+
+
+def _forget_saved_summary(assistant) -> bool:
+    """Borra el resumen guardado en disco, si existía. Devuelve si había
+    algo que borrar (para que quien llama pueda avisar o no)."""
+    path = _saved_summary_path(assistant)
+    if path is None:
+        return False
+    existia = path.is_file()
     try:
-        (d / ("%s.md" % slug)).unlink()
+        path.unlink()
     except OSError:
-        pass
+        existia = False
     assistant.resumen_recuperado = False
+    return existia
 
 
 def _nueva(assistant, stdin, stdout):
-    stdout.write("¿Guardar un resumen antes de empezar de nuevo? (s/N) ")
+    # Si ya hay un resumen guardado, la persona debe saber que responder que
+    # no también lo borra — sin esto, "N" (la respuesta por defecto, también
+    # la que da un EOF) descarta en silencio algo que se guardó a propósito
+    # en una sesión anterior.
+    hay_guardado = (_saved_summary_path(assistant) or Path(os.devnull)).is_file()
+    aviso = (" (s/N; N borra también el resumen guardado anterior) "
+            if hay_guardado else " (s/N) ")
+    stdout.write("¿Guardar un resumen antes de empezar de nuevo?" + aviso)
     stdout.flush()
     resp = stdin.readline()
     if resp and resp.strip().lower() in ("s", "si", "sí"):
         _save_summary(assistant, stdout)
     else:
         assistant.conversation.reset(save_summary=False)
-        _forget_saved_summary(assistant)
+        if _forget_saved_summary(assistant):
+            stdout.write("Resumen guardado anterior borrado.\n")
         stdout.write("Empezamos una conversación nueva.\n")
     client = assistant.client
     if client is not None:

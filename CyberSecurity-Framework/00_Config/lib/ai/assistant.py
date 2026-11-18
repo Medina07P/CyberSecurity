@@ -206,6 +206,12 @@ def load_saved_summary(data_dir, slug: Optional[str]) -> Optional[str]:
     if lineas and lineas[0].startswith("# Resumen de la conversación"):
         lineas = lineas[1:]
     cuerpo = "\n".join(lineas).strip()
+    # Idempotente: si lo que se guardó la vez anterior ya llevaba el aviso
+    # (porque este mismo texto, ya cargado, se volvió a guardar sin más),
+    # se quita antes de volver a anteponer uno solo. Sin esto, cada ciclo
+    # cargar → guardar → cargar añade una copia más del aviso.
+    while cuerpo.startswith(_AVISO_RESUMEN_CARGADO):
+        cuerpo = cuerpo[len(_AVISO_RESUMEN_CARGADO):].strip()
     if not cuerpo:
         return None
     return _AVISO_RESUMEN_CARGADO + _context._cap(_redact.redact(cuerpo))
