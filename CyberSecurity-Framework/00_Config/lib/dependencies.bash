@@ -243,7 +243,11 @@ dependencies_install_avml() {
 }
 
 dependencies_install_ollama() {
-    dependencies_binary_ok ollama && { printf 'ollama ya está instalado.\n' >&2; return 0; }
+    if dependencies_binary_ok ollama; then
+        printf 'ollama ya está instalado.\n' >&2
+        dependencies_offer_model_catalog
+        return 0
+    fi
     printf 'Ejecuta el instalador oficial de Ollama (curl -fsSL https://ollama.com/install.sh | sh); puede pedir la contraseña de sudo por su cuenta e instala un servicio en segundo plano.\nEscribe OLLAMA_SI para continuar (cualquier otra entrada cancela): ' >&2
     local respuesta; IFS= read -r respuesta
     [[ "$respuesta" == 'OLLAMA_SI' ]] || { printf 'Instalación de Ollama cancelada.\n' >&2; return 1; }
@@ -254,6 +258,7 @@ dependencies_install_ollama() {
         printf 'El instalador terminó pero «ollama» no aparece en PATH.\n' >&2; return 1
     fi
     printf 'ollama instalado correctamente.\n' >&2
+    dependencies_offer_model_catalog
 }
 
 # Resumen de una línea para el menú principal (mismo rol que keys_resumen_line)
