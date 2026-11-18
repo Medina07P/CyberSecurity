@@ -1,4 +1,5 @@
 import json, os, sys, tempfile, unittest
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +51,32 @@ class ModelTests(unittest.TestCase):
     def test_json_roundtrip(self):
         f = self.mk("k")
         self.assertEqual(finding_from_dict(finding_to_dict(f)), f)
+
+
+from lib.model import redact_findings
+
+class RedactFindingsTests(unittest.TestCase):
+    def mk(self, extracto):
+        return Finding(rule="r", key="k", titulo="t", categoria="web",
+                       severidad="alta", confianza="confirmado", activo="h",
+                       tecnica="x", descripcion="d", impacto_cliente="i",
+                       recomendacion="r", esfuerzo="medio", cve=None, cvss=None,
+                       evidencia=[Evidence("a", 1, extracto)], referencias=[])
+
+    def test_redacts_secret_in_evidence_extracto(self):
+        out = redact_findings([self.mk("Authorization: Bearer abcdef1234567890ABCDEF")])
+        self.assertNotIn("abcdef1234567890ABCDEF", out[0].evidencia[0].extracto)
+        self.assertIn("[REDACTADO]", out[0].evidencia[0].extracto)
+
+    def test_leaves_non_secret_extracto_unchanged(self):
+        out = redact_findings([self.mk("200 OK (123b)")])
+        self.assertEqual(out[0].evidencia[0].extracto, "200 OK (123b)")
+
+    def test_finding_without_evidence_is_not_an_error(self):
+        f = self.mk("x")
+        f = replace(f, evidencia=[])
+        out = redact_findings([f])
+        self.assertEqual(out[0].evidencia, [])
 
 
 from lib.catalog import KNOWN_RULES, build
