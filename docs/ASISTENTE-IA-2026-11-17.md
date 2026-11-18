@@ -60,7 +60,7 @@ de `09_Automation/ai/ai_config.yaml`.
 2. Fija el objetivo con `T` y, si quieres explicar o redactar informes, genera con `R`.
 3. Pulsa `I`. Elige una opción o escribe tu pregunta directamente.
 
-## Las cinco opciones del menú
+## Las opciones del menú, de la 1 a la 7
 
 | Opción | Para qué sirve |
 |---|---|
