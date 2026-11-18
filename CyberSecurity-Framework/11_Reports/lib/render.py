@@ -11,7 +11,7 @@ import html
 import json
 from pathlib import Path
 
-from .model import finding_to_dict, finding_from_dict
+from .model import finding_to_dict, finding_from_dict, redact_findings
 from .engine import Collected
 from .publication import preflight, write_private
 
@@ -34,8 +34,14 @@ def to_json(collected: Collected, meta: dict) -> dict:
 
 
 def from_json(data: dict) -> tuple[Collected, dict]:
-    """Reconstruye un ``Collected`` y metadatos desde un diccionario."""
-    findings = [finding_from_dict(f) for f in data["findings"]]
+    """Reconstruye un ``Collected`` y metadatos desde un diccionario.
+
+    Redacta de nuevo: un ``findings.json`` puede venir de antes de que
+    ``collect()`` empezara a redactar, y ``redact()`` es idempotente sobre
+    su propia marca, así que repetirlo sobre un fichero ya limpio no tiene
+    coste observable.
+    """
+    findings = redact_findings([finding_from_dict(f) for f in data["findings"]])
     collected = Collected(
         findings=findings,
         activos=data["activos"],
@@ -86,6 +92,29 @@ def write_reports(
 # Informe técnico
 # ---------------------------------------------------------------------------
 
+def _tech_labels(findings: list) -> dict:
+    """Título del hallazgo en el técnico; si varios comparten título, añade
+    qué los distingue (el activo, o el último tramo de su clave: endpoint,
+    parámetro...) para que no se lean como repetidos."""
+    por_titulo: dict[str, list] = {}
+    for f in findings:
+        por_titulo.setdefault(f.titulo, []).append(f)
+    labels = {}
+    for titulo, fs in por_titulo.items():
+        if len(fs) == 1:
+            labels[fs[0].id] = titulo
+            continue
+        activos_distintos = len({f.activo for f in fs}) > 1
+        for f in fs:
+            if activos_distintos:
+                extra = f.activo
+            else:
+                partes = [p for p in f.key.split("|")[1:] if p and p != f.activo]
+                extra = "/".join(partes) if partes else f.id[:8]
+            labels[f.id] = f"{titulo} — {extra}"
+    return labels
+
+
 def _render_technical_md(collected: Collected, meta: dict) -> str:
     """Genera el informe técnico en Markdown."""
     lines: list[str] = []
@@ -122,10 +151,11 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
     # Hallazgos confirmados
     lines.append("## Hallazgos")
     lines.append("")
+    etiquetas = _tech_labels(collected.findings)
     confirmados = [f for f in collected.findings if f.confianza == "confirmado"]
     if confirmados:
         for f in confirmados:
-            lines.append(f"### {f.titulo}")
+            lines.append(f"### {etiquetas[f.id]}")
             lines.append("")
             lines.append(f"**ID:** {f.id}")
             lines.append(f"**Severidad:** {f.severidad}")
@@ -166,7 +196,7 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
     candidatos = [f for f in collected.findings if f.confianza == "candidato"]
     if candidatos:
         for f in candidatos:
-            lines.append(f"### {f.titulo}")
+            lines.append(f"### {etiquetas[f.id]}")
             lines.append("")
             lines.append(f"**ID:** {f.id}")
             lines.append(f"**Severidad:** {f.severidad}")
@@ -197,7 +227,7 @@ def _render_technical_md(collected: Collected, meta: dict) -> str:
     observaciones = [f for f in collected.findings if f.confianza == "observacion"]
     if observaciones:
         for f in observaciones:
-            lines.append(f"### {f.titulo}")
+            lines.append(f"### {etiquetas[f.id]}")
             lines.append("")
             lines.append(f"**ID:** {f.id}")
             lines.append(f"**Severidad:** {f.severidad}")
@@ -338,11 +368,12 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
 
     # Hallazgos
     html_parts.append("<h2>Hallazgos</h2>")
+    etiquetas = _tech_labels(collected.findings)
     confirmados = [f for f in collected.findings if f.confianza == "confirmado"]
     if confirmados:
         for f in confirmados:
             sev_class = html.escape(f.severidad)
-            html_parts.append(f"<h3>{html.escape(f.titulo)}</h3>")
+            html_parts.append(f"<h3>{html.escape(etiquetas[f.id])}</h3>")
             html_parts.append(f"<p><strong>ID:</strong> {html.escape(f.id)}</p>")
             html_parts.append(f"<p><strong>Severidad:</strong> <span class='{sev_class}'>{html.escape(f.severidad)}</span></p>")
             html_parts.append(f"<p><strong>Activo:</strong> {html.escape(f.activo)}</p>")
@@ -377,7 +408,7 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
     candidatos = [f for f in collected.findings if f.confianza == "candidato"]
     if candidatos:
         for f in candidatos:
-            html_parts.append(f"<h3>{html.escape(f.titulo)}</h3>")
+            html_parts.append(f"<h3>{html.escape(etiquetas[f.id])}</h3>")
             html_parts.append(f"<p><strong>ID:</strong> {html.escape(f.id)}</p>")
             html_parts.append(f"<p><strong>Severidad:</strong> <span class='{html.escape(f.severidad)}'>{html.escape(f.severidad)}</span></p>")
             html_parts.append(f"<p><strong>Activo:</strong> {html.escape(f.activo)}</p>")
@@ -403,7 +434,7 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
     observaciones = [f for f in collected.findings if f.confianza == "observacion"]
     if observaciones:
         for f in observaciones:
-            html_parts.append(f"<h3>{html.escape(f.titulo)}</h3>")
+            html_parts.append(f"<h3>{html.escape(etiquetas[f.id])}</h3>")
             html_parts.append(f"<p><strong>ID:</strong> {html.escape(f.id)}</p>")
             html_parts.append(f"<p><strong>Severidad:</strong> <span class='{html.escape(f.severidad)}'>{html.escape(f.severidad)}</span></p>")
             html_parts.append(f"<p><strong>Activo:</strong> {html.escape(f.activo)}</p>")
@@ -490,6 +521,52 @@ def _render_technical_html(collected: Collected, meta: dict) -> str:
 # Informe cliente
 # ---------------------------------------------------------------------------
 
+
+_SEVERIDADES = ["critica", "alta", "media", "baja", "info"]
+_RANGO_SEV = {s: i for i, s in enumerate(_SEVERIDADES)}
+
+
+def _client_groups(findings: list) -> list[dict]:
+    """Agrupa hallazgos que el cliente leería como el mismo: mismo título y
+    severidad. Devuelve [{f, n, rec}] ordenado por severidad; `rec` es la
+    recomendación, con aviso si los casos agrupados la tienen distinta
+    (p. ej. un parámetro vulnerable por caso).
+    """
+    groups: dict[tuple, dict] = {}
+    for f in findings:
+        k = (f.titulo, f.severidad)
+        if k in groups:
+            g = groups[k]
+            g["n"] += 1
+            if f.recomendacion != g["f"].recomendacion:
+                g["dist"] = True
+        else:
+            groups[k] = {"f": f, "n": 1, "dist": False}
+    for g in groups.values():
+        g["rec"] = g["f"].recomendacion + (
+            " (ejemplo de uno de los casos; detalle por caso en el informe técnico)" if g["dist"] else "")
+    return sorted(groups.values(), key=lambda g: _RANGO_SEV.get(g["f"].severidad, 99))
+
+
+def _gl(g: dict) -> str:
+    """Título con contador cuando el grupo reúne varios hallazgos."""
+    return g["f"].titulo + (f" (×{g['n']})" if g["n"] > 1 else "")
+
+
+def _client_buckets(collected: Collected) -> dict:
+    """Vista única del informe cliente, compartida por Markdown y HTML.
+
+    El técnico lista todo; el cliente debe poder reconciliarlo: cada hallazgo
+    cae en confirmado / por validar (candidato) / observación, y la tabla
+    cuenta las tres columnas, no solo los confirmados.
+    """
+    by = {c: [f for f in collected.findings if f.confianza == c]
+          for c in ("confirmado", "candidato", "observacion")}
+    counts = {sev: {c: sum(f.severidad == sev for f in fs) for c, fs in by.items()}
+              for sev in _SEVERIDADES}
+    return {"by": by, "counts": counts}
+
+
 def _client_limitations(collected: Collected) -> list[str]:
     """Limitaciones ejecutivas compartidas por Markdown y HTML.
 
@@ -556,7 +633,10 @@ def _render_cliente_md(collected: Collected, meta: dict) -> str:
     # Resumen ejecutivo
     lines.append("## Resumen ejecutivo")
     lines.append("")
-    confirmados = [f for f in collected.findings if f.confianza == "confirmado"]
+    vista = _client_buckets(collected)
+    confirmados = vista["by"]["confirmado"]
+    candidatos = vista["by"]["candidato"]
+    observaciones = vista["by"]["observacion"]
     lineas_resumen: list[str] = []
     if confirmados:
         criticos = len([f for f in confirmados if f.severidad == "critica"])
@@ -576,25 +656,29 @@ def _render_cliente_md(collected: Collected, meta: dict) -> str:
             lineas_resumen.append(f"Adicionalmente, se registraron {infos} hallazgos informativos.")
     else:
         lineas_resumen.append("No se identificaron hallazgos confirmados durante la evaluación.")
+    if candidatos:
+        por_sev = ", ".join(f"{vista['counts'][s]['candidato']} {s}" for s in _SEVERIDADES if vista["counts"][s]["candidato"])
+        lineas_resumen.append(f"Además hay {len(candidatos)} hallazgos por validar ({por_sev}) que requieren confirmación manual antes de priorizarse.")
     lines.append(" ".join(lineas_resumen))
     lines.append("")
 
     # Tabla de riesgo por severidad
     lines.append("## Riesgo por severidad")
     lines.append("")
-    lines.append("| Severidad | Cantidad |")
-    lines.append("|-----------|----------|")
-    for sev in ["critica", "alta", "media", "baja", "info"]:
-        count = len([f for f in confirmados if f.severidad == sev])
-        lines.append(f"| {sev.capitalize()} | {count} |")
+    lines.append("| Severidad | Confirmados | Por validar | Observaciones |")
+    lines.append("|-----------|-------------|-------------|---------------|")
+    for sev in _SEVERIDADES:
+        c = vista["counts"][sev]
+        lines.append(f"| {sev.capitalize()} | {c['confirmado']} | {c['candidato']} | {c['observacion']} |")
     lines.append("")
 
     # Hallazgos principales
     lines.append("## Hallazgos principales")
     lines.append("")
     if confirmados:
-        for f in confirmados:
-            lines.append(f"### {f.titulo}")
+        for g in _client_groups(confirmados):
+            f = g["f"]
+            lines.append(f"### {_gl(g)}")
             lines.append("")
             lines.append(f"**Qué significa:** {f.impacto_cliente}")
             lines.append(f"**Recomendación:** {f.recomendacion}")
@@ -604,33 +688,44 @@ def _render_cliente_md(collected: Collected, meta: dict) -> str:
         lines.append("No se identificaron hallazgos confirmados.")
         lines.append("")
 
+    if candidatos:
+        lines.append("## Pendientes de validación")
+        lines.append("")
+        lines.append("Pruebas con señales de vulnerabilidad aún no confirmadas; hay que verificarlas antes de decidir su prioridad.")
+        lines.append("")
+        for g in _client_groups(candidatos):
+            lines.append(f"- **{_gl(g)}** ({g['f'].severidad}): {g['rec']}")
+        lines.append("")
+
     # Plan de acción 30/60/90
     lines.append("## Plan de acción 30/60/90 días")
     lines.append("")
-    dias_30 = [f for f in confirmados if f.severidad in ("critica", "alta")]
-    dias_60 = [f for f in confirmados if f.severidad == "media"]
-    dias_90 = [f for f in confirmados if f.severidad in ("baja", "info")]
+    dias_30 = _client_groups([f for f in confirmados + candidatos if f.severidad in ("critica", "alta")])
+    dias_60 = _client_groups([f for f in confirmados + candidatos if f.severidad == "media"])
+    dias_90 = _client_groups([f for f in confirmados if f.severidad in ("baja", "info")])
 
     lines.append("### 30 días")
     if dias_30:
-        for f in dias_30:
-            lines.append(f"- {f.titulo}: {f.recomendacion}")
+        for g in dias_30:
+            pend = " (validar primero)" if g["f"].confianza == "candidato" else ""
+            lines.append(f"- {_gl(g)}{pend}: {g['rec']}")
     else:
         lines.append("- No hay hallazgos críticos o altos que abordar en este plazo.")
     lines.append("")
 
     lines.append("### 60 días")
     if dias_60:
-        for f in dias_60:
-            lines.append(f"- {f.titulo}: {f.recomendacion}")
+        for g in dias_60:
+            pend = " (validar primero)" if g["f"].confianza == "candidato" else ""
+            lines.append(f"- {_gl(g)}{pend}: {g['rec']}")
     else:
         lines.append("- No hay hallazgos medios que abordar en este plazo.")
     lines.append("")
 
     lines.append("### 90 días")
     if dias_90:
-        for f in dias_90:
-            lines.append(f"- {f.titulo}: {f.recomendacion}")
+        for g in dias_90:
+            lines.append(f"- {_gl(g)}: {g['rec']}")
     else:
         lines.append("- No hay hallazgos bajos o informativos que abordar en este plazo.")
     lines.append("")
@@ -638,10 +733,9 @@ def _render_cliente_md(collected: Collected, meta: dict) -> str:
     # Endurecimiento (observaciones)
     lines.append("## Endurecimiento")
     lines.append("")
-    observaciones = [f for f in collected.findings if f.confianza == "observacion"]
     if observaciones:
-        for f in observaciones:
-            lines.append(f"- {f.titulo}: {f.recomendacion}")
+        for g in _client_groups(observaciones):
+            lines.append(f"- {_gl(g)}: {g['rec']}")
     else:
         lines.append("No se identificaron oportunidades adicionales de endurecimiento.")
     lines.append("")
@@ -673,8 +767,10 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
     fecha = html.escape(str(meta.get("fecha", "No especificada")))
     alcance = html.escape(str(meta.get("alcance", "No especificado")))
 
-    confirmados = [f for f in collected.findings if f.confianza == "confirmado"]
-    observaciones = [f for f in collected.findings if f.confianza == "observacion"]
+    vista = _client_buckets(collected)
+    confirmados = vista["by"]["confirmado"]
+    candidatos = vista["by"]["candidato"]
+    observaciones = vista["by"]["observacion"]
 
     html_parts: list[str] = [
         "<!DOCTYPE html>",
@@ -722,41 +818,54 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
             resumen.append(f"Se identificaron {infos} hallazgos informativos que no representan un riesgo directo pero amplían la visibilidad del entorno.")
         elif infos:
             resumen.append(f"Adicionalmente, se registraron {infos} hallazgos informativos.")
-        html_parts.append(f"<p>{html.escape(' '.join(resumen))}</p>")
     else:
-        html_parts.append("<p>No se identificaron hallazgos confirmados durante la evaluación.</p>")
+        resumen = ["No se identificaron hallazgos confirmados durante la evaluación."]
+    if candidatos:
+        por_sev = ", ".join(f"{vista['counts'][s]['candidato']} {s}" for s in _SEVERIDADES if vista["counts"][s]["candidato"])
+        resumen.append(f"Además hay {len(candidatos)} hallazgos por validar ({por_sev}) que requieren confirmación manual antes de priorizarse.")
+    html_parts.append(f"<p>{html.escape(' '.join(resumen))}</p>")
 
     # Tabla de riesgo
     html_parts.append("<h2>Riesgo por severidad</h2>")
     html_parts.append("<table>")
-    html_parts.append("<tr><th>Severidad</th><th>Cantidad</th></tr>")
-    for sev in ["critica", "alta", "media", "baja", "info"]:
-        count = len([f for f in confirmados if f.severidad == sev])
-        html_parts.append(f"<tr><td class='{sev}'>{sev.capitalize()}</td><td>{count}</td></tr>")
+    html_parts.append("<tr><th>Severidad</th><th>Confirmados</th><th>Por validar</th><th>Observaciones</th></tr>")
+    for sev in _SEVERIDADES:
+        c = vista["counts"][sev]
+        html_parts.append(f"<tr><td class='{sev}'>{sev.capitalize()}</td><td>{c['confirmado']}</td><td>{c['candidato']}</td><td>{c['observacion']}</td></tr>")
     html_parts.append("</table>")
 
     # Hallazgos principales
     html_parts.append("<h2>Hallazgos principales</h2>")
     if confirmados:
-        for f in confirmados:
-            html_parts.append(f"<h3>{html.escape(f.titulo)}</h3>")
+        for g in _client_groups(confirmados):
+            f = g["f"]
+            html_parts.append(f"<h3>{html.escape(_gl(g))}</h3>")
             html_parts.append(f"<p><strong>Qué significa:</strong> {html.escape(f.impacto_cliente)}</p>")
             html_parts.append(f"<p><strong>Recomendación:</strong> {html.escape(f.recomendacion)}</p>")
             html_parts.append(f"<p><strong>Esfuerzo:</strong> {html.escape(f.esfuerzo)}</p>")
     else:
         html_parts.append("<p>No se identificaron hallazgos confirmados.</p>")
 
+    if candidatos:
+        html_parts.append("<h2>Pendientes de validación</h2>")
+        html_parts.append("<p>Pruebas con señales de vulnerabilidad aún no confirmadas; hay que verificarlas antes de decidir su prioridad.</p>")
+        html_parts.append("<ul>")
+        for g in _client_groups(candidatos):
+            html_parts.append(f"<li><strong>{html.escape(_gl(g))}</strong> ({html.escape(g['f'].severidad)}): {html.escape(g['rec'])}</li>")
+        html_parts.append("</ul>")
+
     # Plan 30/60/90
     html_parts.append("<h2>Plan de acción 30/60/90 días</h2>")
-    dias_30 = [f for f in confirmados if f.severidad in ("critica", "alta")]
-    dias_60 = [f for f in confirmados if f.severidad == "media"]
-    dias_90 = [f for f in confirmados if f.severidad in ("baja", "info")]
+    dias_30 = _client_groups([f for f in confirmados + candidatos if f.severidad in ("critica", "alta")])
+    dias_60 = _client_groups([f for f in confirmados + candidatos if f.severidad == "media"])
+    dias_90 = _client_groups([f for f in confirmados if f.severidad in ("baja", "info")])
 
     html_parts.append("<h3>30 días</h3>")
     if dias_30:
         html_parts.append("<ul>")
-        for f in dias_30:
-            html_parts.append(f"<li>{html.escape(f.titulo)}: {html.escape(f.recomendacion)}</li>")
+        for g in dias_30:
+            pend = " (validar primero)" if g["f"].confianza == "candidato" else ""
+            html_parts.append(f"<li>{html.escape(_gl(g) + pend)}: {html.escape(g['rec'])}</li>")
         html_parts.append("</ul>")
     else:
         html_parts.append("<p>No hay hallazgos críticos o altos que abordar en este plazo.</p>")
@@ -764,8 +873,9 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
     html_parts.append("<h3>60 días</h3>")
     if dias_60:
         html_parts.append("<ul>")
-        for f in dias_60:
-            html_parts.append(f"<li>{html.escape(f.titulo)}: {html.escape(f.recomendacion)}</li>")
+        for g in dias_60:
+            pend = " (validar primero)" if g["f"].confianza == "candidato" else ""
+            html_parts.append(f"<li>{html.escape(_gl(g) + pend)}: {html.escape(g['rec'])}</li>")
         html_parts.append("</ul>")
     else:
         html_parts.append("<p>No hay hallazgos medios que abordar en este plazo.</p>")
@@ -773,8 +883,8 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
     html_parts.append("<h3>90 días</h3>")
     if dias_90:
         html_parts.append("<ul>")
-        for f in dias_90:
-            html_parts.append(f"<li>{html.escape(f.titulo)}: {html.escape(f.recomendacion)}</li>")
+        for g in dias_90:
+            html_parts.append(f"<li>{html.escape(_gl(g))}: {html.escape(g['rec'])}</li>")
         html_parts.append("</ul>")
     else:
         html_parts.append("<p>No hay hallazgos bajos o informativos que abordar en este plazo.</p>")
@@ -783,8 +893,8 @@ def _render_cliente_html(collected: Collected, meta: dict) -> str:
     html_parts.append("<h2>Endurecimiento</h2>")
     if observaciones:
         html_parts.append("<ul>")
-        for f in observaciones:
-            html_parts.append(f"<li>{html.escape(f.titulo)}: {html.escape(f.recomendacion)}</li>")
+        for g in _client_groups(observaciones):
+            html_parts.append(f"<li>{html.escape(_gl(g))}: {html.escape(g['rec'])}</li>")
         html_parts.append("</ul>")
     else:
         html_parts.append("<p>No se identificaron oportunidades adicionales de endurecimiento.</p>")

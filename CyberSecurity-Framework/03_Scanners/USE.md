@@ -18,4 +18,8 @@ Para comprobar las correcciones sin escáneres reales:
 bash CyberSecurity-Framework/tests/run_scanners_menu.sh
 ```
 
+Masscan solo sirve contra redes remotas y como root; contra esta máquina usa
+`nmap -sT`. Un «SIN PUERTOS ABIERTOS DETECTADOS» no prueba que estén cerrados.
+Detalle de tasa y estados en la sección «Masscan» del README.
+
 Consulta [README.md](README.md) para requisitos, perfiles, salidas y códigos.

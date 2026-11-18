@@ -91,6 +91,9 @@ CyberSecurity-Framework/11_Reports/evidence/*.tar.gz
 CyberSecurity-Framework/11_Reports/evidence/.export-*/
 CyberSecurity-Framework/11_Reports/report_*.json
 
+# 09_Automation/ai: índice y datos locales del asistente IA
+CyberSecurity-Framework/09_Automation/ai/data/
+
 # Payloads generados (la muestra php_shell.php se conserva)
 CyberSecurity-Framework/05_Exploitation/payloads/web_shells/shell_*
 
@@ -107,3 +110,6 @@ __pycache__/
 *~
 .DS_Store
 Thumbs.db
+
+# Worktrees locales de desarrollo (nunca al remoto)
+/.worktrees/

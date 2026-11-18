@@ -69,7 +69,9 @@ elif name == 'masscan':
     formats = [x for x in args if x in ('-oJ', '-oG', '-oL')]
     if len(formats) != 1:
         sys.exit('masscan solo admite un formato de salida')
-    Path(args[args.index(formats[0])+1]).write_text('[]\n')
+    print('Starting masscan 1.3.2\rrate:  0.00-kpps, 100.00% done, waiting 9-secs, found=0       \rrate:  0.00-kpps, 100.00% done, waiting 8-secs, found=0       ', file=sys.stderr)
+    hit = '{ "ip": "192.0.2.1", "ports": [ {"port": 80, "proto": "tcp", "status": "open"} ] },\n'
+    Path(args[args.index(formats[0])+1]).write_text('[\n'+hit+']\n' if os.environ.get('MASSCAN_HIT') else '')
 '''
 
 
@@ -102,7 +104,7 @@ class ScannersTest(unittest.TestCase):
                         SESSION_FILE=str(self.root/'session'),
                         SESSION_SCOPE_FILE=str(self.fw/'00_Config/scope.yaml'),
                         SESSION_TARGETS_FILE=str(self.fw/'00_Config/targets.txt'))
-        for key in ('FAIL_TOOL', 'WARN_TOOL', 'PORT_LINES', 'FAKE_UID'):
+        for key in ('FAIL_TOOL', 'WARN_TOOL', 'PORT_LINES', 'FAKE_UID', 'MASSCAN_HIT', 'MASSCAN_RATE'):
             self.env.pop(key, None)
 
     def run_script(self, name, args=None, **env):
@@ -135,6 +137,21 @@ class ScannersTest(unittest.TestCase):
         self.assertIn('COMPROBACIÓN LOCAL', result.stdout)
         self.assertIn('example.invalid', result.stdout)
         self.assertIn('root', result.stdout)
+        self.assertIn('zaproxy', result.stdout)
+        self.assertEqual(self.invocations(), [])
+
+    def test_menu_zap_choice_is_offered(self):
+        result = self.menu('03\n3\n0\n0\nQ\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('ZAP', result.stdout)
+
+    def test_menu_zap_gates_on_missing_zaproxy(self):
+        # zaproxy no está en el bin sintético: igual que Nikto/Nuclei gatean
+        # sobre su propio binario, ZAP tiene que fallar antes de pedir URL o
+        # invocar nada.
+        result = self.menu('03\n3\n3\n\n0\nQ\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('zaproxy', result.stdout + result.stderr)
         self.assertEqual(self.invocations(), [])
 
     def test_menu_basic_is_limited_and_confirmed(self):
@@ -181,7 +198,7 @@ class ScannersTest(unittest.TestCase):
         result = self.menu('03\n99\n5\n0\n0\nQ\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('no válida', result.stdout)
-        self.assertIn('10 scripts', result.stdout)
+        self.assertIn('11 scripts', result.stdout)
         self.assertIn('[intrusiva]', result.stdout)
         self.assertEqual(self.invocations(), [])
 
@@ -197,9 +214,11 @@ class ScannersTest(unittest.TestCase):
         self.assertEqual(self.invocations(), [])
 
     def test_orchestrator_partial_failure_is_not_success(self):
+        # zaproxy no está en el bin sintético, así que ZAP falla en cada
+        # puerto además de Nikto: 2 fallos × 2 puertos = 4.
         result = self.run_all(FAIL_TOOL='nikto')
         self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
-        self.assertIn('Fallidas: 2', result.stdout)
+        self.assertIn('Fallidas: 4', result.stdout)
         self.assertNotIn('✅ ESCANEOS COMPLETADOS', result.stdout)
 
     def test_orchestrator_discovery_failure_stops_web(self):
@@ -225,7 +244,10 @@ class ScannersTest(unittest.TestCase):
         log = self.root/'scans/unrelated/errores.log'; log.parent.mkdir(parents=True)
         log.write_text('error ajeno antiguo\n')
         result = self.run_all()
-        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        # zaproxy no está en el bin sintético: ZAP falla en cada puerto, así
+        # que el orquestador ya no puede salir 0 aquí (sigue siendo la única
+        # causa de fallo — Nikto/Nuclei siguen en su ruta de éxito normal).
+        self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
         calls = self.invocations()
         urls = [call[call.index('-h')+1] for call in calls if call[0] == 'nikto']
         self.assertEqual(urls, ['http://example.invalid:8080', 'https://example.invalid:8443'])
@@ -283,6 +305,48 @@ class ScannersTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(self.invocations(), [])
 
+    def test_masscan_rejects_loopback_and_local_ranges_before_running(self):
+        for target in ('127.0.0.1', '127.0.0.0/8', '0.0.0.0/8'):
+            with self.subTest(target=target):
+                result = self.run_script('masscan', [target, '80'])
+                self.assertEqual(result.returncode, 1)
+                self.assertIn('misma máquina', result.stderr)
+                self.assertIn('nmap -sT', result.stderr)
+        self.assertEqual(self.invocations(), [])
+
+    def test_masscan_rate_default_custom_and_invalid(self):
+        self.run_script('masscan')
+        self.assertIn('--rate=1000', self.invocations()[-1])
+        self.run_script('masscan', ['192.0.2.1', '80', '250'])
+        self.assertIn('--rate=250', self.invocations()[-1])
+        self.run_script('masscan', ['192.0.2.1', '80'], MASSCAN_RATE='500')
+        self.assertIn('--rate=500', self.invocations()[-1])
+        before = len(self.invocations())
+        for bad in ('0', '100001', 'rapido', '-5', '1e3'):
+            with self.subTest(rate=bad):
+                result = self.run_script('masscan', ['192.0.2.1', '80', bad])
+                self.assertEqual(result.returncode, 1)
+        self.assertEqual(len(self.invocations()), before)
+
+    def test_masscan_zero_results_is_explicit_and_not_proof_of_closed(self):
+        result = self.run_script('masscan')
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertIn('SIN PUERTOS ABIERTOS DETECTADOS', result.stdout)
+        self.assertIn('NO prueba', result.stdout)
+
+    def test_masscan_reports_open_port_count(self):
+        result = self.run_script('masscan', MASSCAN_HIT='1')
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertIn('1 puerto(s) abierto(s)', result.stdout)
+        self.assertNotIn('SIN PUERTOS', result.stdout)
+
+    def test_masscan_log_drops_progress_bar_but_keeps_banner(self):
+        self.run_script('masscan')
+        log = (self.root/'scans/masscan/errores.log').read_text()
+        self.assertIn('Starting masscan', log)
+        self.assertNotIn('rate:', log)
+        self.assertNotIn('\r', log)
+
     def test_log_preserves_previous_run_and_stderr_warning_is_not_failure(self):
         log = self.root/'scans/nuclei/errores.log'; log.parent.mkdir(parents=True)
         log.write_text('error anterior\n')
@@ -310,6 +374,21 @@ class ScannersTest(unittest.TestCase):
             call = self.invocations()[-1]
             self.assertEqual(call[call.index('-h')+1], url)
             self.assertEqual('-ssl' in call, ssl)
+
+    def test_nuclei_states_explicitly_when_nothing_was_found(self):
+        for leaf in ('nuclei', 'cves'):
+            result = self.run_script(leaf)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            self.assertIn('SIN HALLAZGOS', result.stdout)
+            self.assertIn('no prueba ausencia', result.stdout)
+            self.assertNotIn('HALLAZGOS: ', result.stdout.replace('SIN HALLAZGOS', ''))
+
+    def test_nuclei_states_finding_count_when_something_matched(self):
+        for leaf in ('nuclei', 'cves'):
+            result = self.run_script(leaf, NUCLEI_HIT='1')
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            self.assertIn('HALLAZGOS: 1 coincidencia', result.stdout)
+            self.assertNotIn('SIN HALLAZGOS', result.stdout)
 
     def test_cve_output_is_consumed_by_report_engine(self):
         shutil.copytree(FW/'11_Reports/lib', self.fw/'11_Reports/lib')
@@ -345,9 +424,11 @@ assert result.findings[0].cve == 'CVE-2021-44228'
                 self.assertIn('NO DETERMINADO', result.stdout+result.stderr)
 
     def test_nikto_partial_failure_is_counted_by_orchestrator(self):
+        # zaproxy no está en el bin sintético: ZAP también falla en cada
+        # puerto, además del cero-resultado de Nikto: 2 × 2 puertos = 4.
         result = self.run_all(NIKTO_RESULT='zero')
         self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
-        self.assertIn('Fallidas: 2', result.stdout)
+        self.assertIn('Fallidas: 4', result.stdout)
 
     def test_ipv6_network_targets_rejected_before_invoking_any_tool(self):
         for name in ('smart', 'aggressive', 'nse', 'rustscan'):

@@ -1,5 +1,252 @@
 # AGENTS.md
 
+**Cierre de los 8 Minor diferidos del asistente IA, 2026-11-18 — integrado
+en `develop` (`b047d9f`, fast-forward local desde `e5793bd`), sin push:**
+los 8 Minor documentados en la nota anterior (y en
+`docs/RETOMAR-ASISTENTE-IA-MINORS-2026-11-18.md`) se cerraron con
+`subagent-driven-development` (7 tareas, cada una con implementador +
+revisor independientes) sobre un worktree en `.worktrees/`, rama
+`feat/minors-asistente-ia`. (1) `context._cap()` trata el aviso de
+procedencia (ahora `context.AVISO_RESUMEN_CARGADO`, movido desde
+`assistant.py` para que `_cap` lo conozca sin import circular;
+`assistant._AVISO_RESUMEN_CARGADO` queda como alias) como prefijo
+protegido: lo separa antes de recortar el resto y lo vuelve a anteponer
+sin que cuente contra `SUMMARY_CAP`, así que ya no se pierde en el primer
+plegado de un resumen largo (~1990+ caracteres). (2)
+`load_saved_summary()` lee con `seek` los últimos `SUMMARY_READ_BYTES` de
+un fichero más largo que ese tope, en vez de los primeros — gap aceptado
+documentado: en ese caso (solo ficheros editados a mano, >200 KB) la línea
+de cabecera puede perderse, porque solo se lee la cola. (3) Nuevo test
+sobre la `ErrorClient` ya existente confirma que `ask()` sin fragmentos
+intenta igual al modelo real y cae al respaldo determinista si
+`OllamaError`. (4) `menu.run()` sustituye `primera_vuelta` por una bandera
+dedicada (`aviso_resumen_mostrado`) que se consulta cada vuelta, no solo
+la primera: el aviso de "resumen recuperado" ya aparece aunque Ollama
+llegue a mitad de sesión. (5) `menu._summaries_dir(assistant, create=True)`
+gana el parámetro `create`; las comprobaciones de solo lectura
+(`_saved_summary_path`, usada por "olvidar" y por el aviso de "nueva
+conversación") pasan `create=False` y ya no crean `summaries/` de paso;
+guardar sigue creándolo. (6) Docstring de `assistant.py` y encabezado de
+`docs/ASISTENTE-IA-2026-11-17.md` actualizados a la opción 7. (7) Dos
+coberturas de test reforzadas: la pregunta llega de verdad al modelo sin
+fragmentos, y un nuevo e2e por la opción 4 confirma que tanto un marcador
+del resumen como el aviso de procedencia real llegan al cuerpo de la
+petición HTTP capturada. Revisión final independiente (subagente en Opus)
+sobre el diff completo (7 commits): 0 Critical, 0 Important, 5 Minor.
+Triaje: dos Minor eran reales y baratos, corregidos en una sola ola de
+arreglos antes del merge — `_nueva()` (opción 5) no limpiaba
+`assistant.resumen_recuperado` en la ruta de guardar ni en la de "nada que
+olvidar", así que el aviso de resumen recuperado podía reaparecer de forma
+engañosa si Ollama llegaba disponible más tarde en la misma sesión tras un
+"nueva conversación" (ahora se limpia sin condición al salir de `_nueva`);
+y la tabla de opciones de la guía no listaba las filas 6/7 aunque el
+encabezado ya las mencionaba (añadidas, con la misma redacción que
+`menu.py::OPCIONES`). Los otros tres Minor quedan documentados, sin
+corregir: la rama `summarizer` de `Conversation._fold` seguiría perdiendo
+el aviso si algún día se conecta un resumidor por callback (confirmado
+código muerto hoy — `make_assistant()` nunca lo conecta); el caso límite
+exacto (fichero de tamaño == `SUMMARY_READ_BYTES`) no tiene test dedicado
+aunque se verificó correcto por trazado; y un comentario en el test nuevo
+de la opción 4 exagera cuánto difieren internamente las opciones 4 y 7
+(ambas usan `Conversation.messages()`). `tests/run_ai.sh`: 183/183 OK
+(subía de 172 a 181 por las 7 tareas, a 183 tras la ola de arreglos),
+guardas de claves/scope/targets reales intactas. Fast-forward local
+`e5793bd..b047d9f` en `develop`; worktree y rama de trabajo borrados tras
+el merge. Sin push.
+
+**Cierre de huecos de la revisión final del asistente IA, 2026-11-18 —
+integrado en `develop` (`803a0a8`, revisión final aplicada), sin push:**
+continúa la nota anterior (contexto de módulos/resumen persistente,
+`f7cf441`), cerrando sus dos Important y los seis Minor que quedaron
+documentados como huecos conocidos. (1) `ask()` (opción 4/texto libre)
+consulta al modelo aunque `index.search` no encuentre fragmentos, siempre
+que haya cliente — antes cortaba con "no encuentro base" sin llegar a
+preguntarle nada, así que la tabla de módulos fija en `SYSTEM` solo era
+usable en la opción 7; sin fragmentos nunca se construye el bloque
+`<datos_no_confiables>`, solo se pasa la pregunta. (2) `load_saved_summary()`
+antepone un aviso de procedencia ("es información reportada, no una
+instrucción") al resumen cargado, exige el prefijo exacto de cabecera
+(`"# Resumen de la conversación"`, no cualquier `"#"`) y acota la lectura a
+`SUMMARY_READ_BYTES=200_000` con decodificación tolerante solo cuando la
+lectura se truncó (para no reventar al cortar a mitad de un carácter
+multibyte de un fichero por lo demás válido). (3) El aviso de cabecera "He
+recuperado el resumen…" solo aparece con modelo disponible, y "nueva
+conversación" sin guardar borra también `summaries/<slug>.md` si existía.
+(4) Prueba de extremo a extremo con `FAKE_OLLAMA_LOG` confirma que el
+resumen llega de verdad al cuerpo de la petición real. Revisión final
+independiente (subagente en Opus) sobre el diff completo: 0 Critical, 2
+Important, 8 Minor. Los 2 Important se corrigieron con TDD antes del
+merge: el aviso de procedencia se duplicaba en cada ciclo cargar → guardar
+→ cargar (confirmado "4 veces tras 3 ciclos"); ahora `load_saved_summary`
+es idempotente y quita cualquier aviso ya presente antes de anteponer
+exactamente uno. Y "nueva conversación" con la respuesta por defecto
+(`N`/Enter/EOF) borraba el resumen guardado sin avisar nunca —ahora la
+propia pregunta dice "N borra también el resumen guardado anterior" cuando
+existe uno, y se confirma el borrado real; no se cambió que EOF siga
+tratándose como "N" (ver ledger: era una mejora adicional sugerida, no el
+hallazgo en sí). **Ocho huecos quedan documentados, NO corregidos en esta
+rama:** el aviso de procedencia se pierde en el primer plegado de
+`Conversation` si el resumen cargado es largo (~1990+ caracteres; el spec
+ya aceptaba este riesgo en sus Non-goals); el tope de lectura conserva los
+primeros 200 KB de un fichero más largo editado a mano en vez de los
+últimos (solo afecta a ficheros que el programa no escribe, los suyos
+rondan 3-4 KB); `build_client()` casi nunca devuelve `None` en producción,
+así que el test "sin cliente" no cubre el caso real "Ollama parado" (falta
+un test con `OllamaError` real); el aviso de cabecera nunca aparece si el
+modelo pasa a estar disponible a mitad de sesión; el docstring de
+`assistant.py` sigue diciendo que sin fragmentos nunca se llama al modelo;
+la guía nueva menciona la opción 7 bajo un encabezado que solo lista
+hasta la 5/0 (y tampoco la 6, preexistente); faltan dos coberturas de test
+(que la pregunta llegue al modelo sin fragmentos, y que el aviso de Goal 2
+llegue en la petición real de la prueba de extremo a extremo); y "olvidar"
+un resumen crea de paso el directorio `summaries/` si no existía (inocuo).
+`tests/run_ai.sh`: 172/172 OK, guardas de claves/scope/targets reales
+intactas. Fast-forward local `f7cf441..bc040b6` en `develop`; worktree y
+rama de trabajo borrados tras el merge. Sin push.
+
+**Contexto de módulos y persistencia del resumen en el asistente IA,
+2026-11-18 — integrado en `develop` (`b17e54c`, revisión final aplicada),
+sin push:** cierra dos huecos sobre las opciones 6/7 fusionadas el mismo día.
+`00_Config/lib/ai/modules.py` (nuevo) fija una tabla de los 14 módulos 00-13
+(tecla, nombre, qué hace), inyectada en `SYSTEM` y `SYSTEM_LIBRE`
+(`prompts.py`): tanto la opción 4/texto libre como la opción 7 pueden
+responder directamente «¿qué hace el módulo 03?» o «¿con qué tecla…?» sin
+depender de que la búsqueda documental acierte. `assistant.load_saved_summary()`
+lee, quita la cabecera, redacta y recorta (reutilizando `context._cap`/
+`SUMMARY_CAP`) el resumen que la opción 5 ya guardaba en
+`summaries/<slug>.md` — antes se escribía pero nunca se volvía a leer;
+`make_assistant()` lo precarga como `Conversation.summary` cuando el
+objetivo de sesión tiene uno, y `menu.run()` lo anuncia una sola vez en el
+primer dibujado de la cabecera (bandera local, no se repite en redibujados).
+Revisión final independiente (subagente en Opus) sobre el diff completo de
+la rama: 0 Critical, 4 Important, 6 Minor. Tres Important corregidos con TDD
+antes del merge: (1) un resumen guardado con bytes no UTF-8 (editado a mano
+o corrupto) lanzaba `UnicodeDecodeError` sin capturar y tumbaba
+`make_assistant()` entero —incluidos los subcomandos deterministas
+`analizar`/`explicar-informe`/`borrador`, que ni usan el resumen—, ahora se
+captura junto a `OSError` y devuelve `None`; (2) los 5 tests de
+`test_ai_modules.py` eran funciones sueltas invisibles para
+`unittest discover` (el que usa `tests/run_ai.sh`: recogía 0 de esos tests),
+convertidos a `ModulesTests(unittest.TestCase)`; (3) `SYSTEM`/`SYSTEM_LIBRE`
+no dejaban claro que la tabla de módulos no necesita cita `[ruta:líneas]` ni
+cuenta como fragmento sin respaldo, aclarado en `_MODULOS_INTRO`. **Dos
+huecos quedan documentados, NO corregidos en esta rama:** `ask()` sigue
+devolviendo «no encuentro base» sin consultar al modelo cuando
+`index.search` no encuentra fragmentos, así que una pregunta de módulo en la
+opción 4/texto libre sin match documental no llega a usar la tabla (la
+opción 7 no tiene este problema, nunca pasa por `index.search`); arreglarlo
+de verdad cambia la condición de corte para TODAS las preguntas sin
+fragmentos, fuera del alcance de este pase. Y el resumen persistido se
+inyecta como mensaje `role: system` de confianza (mismo patrón ya aceptado
+del plegado en memoria dentro de una sesión), pero ahora ese contenido
+sobrevive entre aperturas: un texto tipo «ignora lo anterior…» que se colara
+en una respuesta guardada por la opción 5 reaparecería como instrucción de
+sistema en cada apertura futura para ese objetivo hasta borrar
+`summaries/<slug>.md` a mano; envolverlo en `<datos_no_confiables>` cambiaría
+el contrato de `Conversation.messages()` para todo uso, no solo el cargado
+de disco. Seis Minor diferidos sin dueño (prefijo de cabecera por
+subcadena, `read_text` sin tope de tamaño, aviso que sale también sin
+modelo disponible, sin forma de «olvidar» un resumen desde la interfaz,
+`docs/ASISTENTE-IA-2026-11-17.md` sin actualizar con la recuperación
+automática, falta un test de integración de extremo a extremo). `pytest`/
+`unittest` sobre el paquete `ai` (`tests/run_ai.sh`): 162/162 OK tras los
+fixes, guardas de claves/scope/targets reales intactas. Fast-forward local
+`de1a3fb..0365b92` en `develop`; worktree y rama de trabajo borrados tras el
+merge. Sin push.
+
+**Redacción en `report_engine.py`, 2026-11-18 — implementado en
+`feat/redaccion-informes`, sin integrar:** cierra la mitad corregible de la
+brecha anotada en la nota del asistente IA (abajo): `collect()`
+(`11_Reports/lib/engine.py`) ahora pasa cada hallazgo por
+`redact_findings()` (`11_Reports/lib/model.py`), que reutiliza tal cual
+`00_Config/lib/ai/redact.py::redact()` sin reimplementarlo. Cubre
+`findings.json` y los informes técnico/cliente por construcción, porque se
+aplica una sola vez antes de fusionar/ordenar hallazgos. `10_Evidence/`
+queda fuera **a propósito**, no por descuido: `00_Config/lib/evidence/package.py`
+es un paquete de custodia forense (hash SHA-256 por miembro, detección de
+modificación) y redactar su contenido rompería esa garantía; su categoría
+`credentials/` guarda secretos a propósito, no es un escape de información.
+Ver `docs/superpowers/specs/2026-11-18-redaccion-informes-design.md`
+(sección "Anti-goals") para el razonamiento completo. `code-review`
+independiente sobre la rama no encontró críticos; tres importantes
+corregidos con TDD antes del merge: (1) `00_Config/lib/automation/reporting.py::ENGINE_SOURCES`
+—la lista real de ficheros que el motor 11 declara como dependencia para
+el preflight de `09`— no incluía `00_Config/lib/ai/`, así que una
+instalación a la que le faltara ese módulo habría pasado el preflight y
+fallado recién al ejecutar; ya incluye `ai/__init__.py` y `ai/redact.py`.
+(2) `http_inject.py` formaba el extracto como `{param}={payload}`, y
+`redact()` trata literalmente `password=`/`token=`/etc. como un secreto:
+una inyección sobre un campo llamado así perdía el payload entero bajo
+`[REDACTADO]`. Reformateado a `parámetro «{param}» ← {payload}` para que
+el nombre del campo nunca preceda a `=`. (3) `--desde-json` no volvía a
+redactar; para un `findings.json` escrito antes de esta rama eso
+reintroducía el secreto en el informe re-renderizado — `redact()` es
+idempotente, así que `from_json` ahora redacta también, sin coste sobre
+un fichero ya limpio. Dos fixtures aisladas (`tests/reports_fixture.py`,
+`tests/test_reports_evidence_contract.py`) necesitaron añadir
+`00_Config/lib/ai/` a su copia/allowlist cerrada, porque `lib/model.py`
+ahora depende de ese módulo; `tests/automation_fixture.py` tiene el mismo
+síntoma de copia y **no** se tocó — pertenece al aislador de pruebas de
+`09_Automation` que esta misma nota restringe más abajo (requiere
+autorización explícita del controlador), así que queda como bloqueo
+conocido pendiente de esa autorización, no como algo ya resuelto o
+descartado por irrelevante. `tests/test_report_engine.py` sube a 88
+tests; `tests/run_reports_evidence.sh` rc=0 GUARD OK; `tests/run_reports.sh`
+mantiene sus mismos 2 fallos preexistentes del shim legacy (EXDEV entre el
+checkout y `/tmp` en esta máquina — confirmado idéntico en el commit base,
+no es una regresión de esta rama). Sin merge ni push.
+
+**Herramientas adicionales en la tecla `D`, 2026-11-18 — integrado en
+`develop` (revisión de código aplicada), sin push:** la opción `2` del menú de
+`D` instala/verifica `ollama` (+ catálogo de 4 modelos con guardrail de
+recursos: General, Qwen2.5-Coder oficial recomendado, Foundation-Sec-8B-
+Instruct de Cisco, DeepHat/WhiteRabbitNeo sin censura con aviso), `avml`
+(con token de GitHub opcional) y `nmap-vulners`; cada una con su propia
+confirmación literal (`OLLAMA_SI`/`AVML_SI`/`NMAP_VULNERS_SI`,
+`CONTINUAR_IGUAL` para forzar el guardrail de recursos). `lime` y
+`volatility` (v2) siguen solo informativos, sin cambios — `lime` cruzaría la
+decisión ya tomada en 08_Forensics de nunca cargar un módulo de kernel por
+cuenta propia, y `volatility` (v2) está descontinuado a favor de
+`volatility3`. De paso se corrigió un hallazgo de investigación: la ruta por
+defecto de `nmap-vulners` comprobaba `nmap-vulners.nse`, que no es el nombre
+real del script del proyecto (`vulners.nse`) — con el nombre antiguo la
+detección nunca habría reconocido una instalación hecha por el método
+oficial. Nuevo fichero `00_Config/lib/dependencies_models.bash`.
+`code-review high` sobre la rama no encontró hallazgos críticos; dos huecos
+de cobertura importantes (Review Focus del plan: `avml` ya instalado no debía
+reinstalar, y las dos ramas de fallo de la instalación de `ollama` no debían
+ofrecer el catálogo) se corrigieron con TDD antes de este merge, más un nit
+de estilo (`sudo nmap --script-updatedb` ya no descarta su `stderr`) y una
+inconsistencia del spec de diseño (comando de token de GitHub obsoleto).
+`tests/run_dependencies.sh` sube a 96 asserts (dobles de `curl`/`git`/`sudo`/
+`ollama`, nunca red/sudo reales) y `tests/run_smoke.sh` cubre la opción `2`
+del menú. Diseño en
+`docs/superpowers/specs/2026-11-17-dependencias-herramientas-design.md`
+y plan en `docs/superpowers/plans/2026-11-17-dependencias-herramientas.md`.
+Ninguna instalación real se ejecutó durante el desarrollo. Merge local
+`feat/dependencias-herramientas` → `develop`; sin push.
+
+**Asistente IA local, 2026-11-17 — integrado en `develop` (revisión de código
+aplicada), sin push:** tecla `I` del gestor (`00_Config/lib/ai_menu.bash`),
+núcleo en `00_Config/lib/ai/`, entrada `09_Automation/ai/ai_assistant.py`, guía
+`docs/ASISTENTE-IA-2026-11-17.md`. Aditivo y aislado: lee solo docs y resultados
+del objetivo, excluye/redacta secretos, nunca ejecuta nada; datos en
+`09_Automation/ai/data/` (ignorado por git). `code-review high` sobre la rama
+encontró 9 hallazgos; 8 corregidos con TDD (dos de seguridad: deny-list de
+salidas de fuerza bruta por nombre real de fichero, contraseña numérica tras
+`-p` sin redactar; cinco de corrección: pérdida de turnos al guardar resumen,
+excepción sin capturar en el cliente Ollama, config sin chequeo de tipos,
+mensaje de `estado` mezclando dos modelos, cabecera sin refrescar disponibilidad
+de Ollama en sesión; uno de integración: `ollama` ausente de la tecla `D`).
+**Pendiente, NO regresión de esta rama:** la redacción de secretos solo protege
+la ingestión del asistente; `report_engine.py` y el empaquetado de evidencia
+(`10_Evidence/`) no redactan nada sobre los mismos datos de `scans/` — brecha
+preexistente en otros módulos, sin dueño asignado todavía. Evidencia: `tests/run_ai.sh`
+119 tests rc0 con guardas intactas, `tests/run_smoke.sh` y `tests/run_dependencies.sh`
+(36 tests) sin fallos, con Ollama simulado. Sin validación operativa con un modelo
+real (no hay Ollama instalado en esta máquina) ni ejecución de las suites antiguas.
+Merge local `feat/asistente-ia-local` → `develop`; sin push.
+
 **Rectificación del cierre local, 2026-11-15 — NO APROBADO:** la nota anterior
 que declaraba Tasks1–6 completadas y revisión independiente por tarea era
 prematura. La revisión final propia sobre `d89a371` encontró defectos abiertos

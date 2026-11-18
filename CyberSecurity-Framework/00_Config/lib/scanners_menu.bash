@@ -6,7 +6,7 @@ source "$SCANNERS_MENU_DIR/scanner_runtime.bash"
 scanners_check_tools() {
     local tool
     echo '━━━ COMPROBACIÓN LOCAL — sin tráfico de red ━━━'
-    for tool in nmap masscan rustscan nikto nuclei burpsuite python3; do
+    for tool in nmap masscan rustscan nikto nuclei burpsuite zaproxy python3; do
         if command -v "$tool" >/dev/null 2>&1; then
             printf '  ✓ %s disponible\n' "$tool"
         else
@@ -120,6 +120,7 @@ scanners_menu() {
             3)
                 echo '  1. Nikto — servidor web (puede tardar varios minutos)'
                 echo '  2. Nuclei — plantillas HTTP medium/high/critical, máximo 10 peticiones/s'
+                echo '  3. ZAP — spider y pasivo (puede tardar varios minutos)'
                 echo '  0. Cancelar'
                 printf 'Herramienta: '
                 IFS= read -r web_choice || return 0
@@ -127,6 +128,7 @@ scanners_menu() {
                     0) continue ;;
                     1) tool=nikto; script=web_scanners/nikto/nikto_scan.sh ;;
                     2) tool=nuclei; script=web_scanners/nuclei/nuclei_scan.sh ;;
+                    3) tool=zaproxy; script=web_scanners/zap/zap_scan.sh ;;
                     *) echo 'Opción no válida.'; continue ;;
                 esac
                 scanner_require "$tool" || { pause; continue; }

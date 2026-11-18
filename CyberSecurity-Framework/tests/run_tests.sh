@@ -534,15 +534,15 @@ exit 0
 EOS
 chmod +x "$NSTUB/nmap" "$NSTUB/nuclei"
 
-rm -f "$FW/../scans/nmap/smart_ports_192.0.2.1".*
-rm -f "$FW/../scans/nuclei/nuclei_https___192.0.2.1.txt"
-PATH="$NSTUB:$PATH" bash "$FW/03_Scanners/network_scanners/nmap/nmap_smart.sh" 192.0.2.1 >/dev/null 2>&1
-PATH="$NSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/nuclei/nuclei_scan.sh" https://192.0.2.1 >/dev/null 2>&1
+# Raíz de scans temporal: los stubs nunca escriben en el scans/ real.
+NSCANS="$(mktemp -d)"
+SCANS_ROOT_DIR="$NSCANS" PATH="$NSTUB:$PATH" bash "$FW/03_Scanners/network_scanners/nmap/nmap_smart.sh" 192.0.2.1 >/dev/null 2>&1
+SCANS_ROOT_DIR="$NSCANS" PATH="$NSTUB:$PATH" bash "$FW/03_Scanners/web_scanners/nuclei/nuclei_scan.sh" https://192.0.2.1 >/dev/null 2>&1
 
-eq "nmap_smart: el nombre lleva el objetivo" "$(ls "$FW/../scans/nmap" | grep -c '^smart_ports_192\.0\.2\.1\.nmap')" "1"
-eq "nuclei: el nombre no cambia"             "$(ls "$FW/../scans/nuclei" | grep -c '^nuclei_https___192\.0\.2\.1\.txt')" "1"
+eq "nmap_smart: el nombre lleva el objetivo" "$(ls "$NSCANS/nmap" 2>/dev/null | grep -c '^smart_ports_192\.0\.2\.1\.nmap')" "1"
+eq "nuclei: el nombre no cambia"             "$(ls "$NSCANS/nuclei" 2>/dev/null | grep -c '^nuclei_https___192\.0\.2\.1\.txt')" "1"
 
-rm -f "$FW/../scans/nmap/smart_ports_192.0.2.1".* "$FW/../scans/nuclei/nuclei_https___192.0.2.1.txt"
+rm -rf "$NSCANS"
 rm -rf "$NSTUB"
 
 # ──────────────────────────────────────────────────────────
@@ -697,6 +697,21 @@ eq "run_all_scanners: no anuncia 'sin puertos web' cuando el sondeo falló" \
    "$(printf '%s' "$WOUT2" | grep -c 'No se encontraron puertos web abiertos')" "0"
 rm -f "$FW/../scans/nmap/errores.log"
 rm -rf "$WSTUB2"
+
+echo "=== run_all_scanners: encadena ZAP ==="
+ZRSTUB="$(mktemp -d)"
+for t in masscan nikto nuclei; do printf '#!/bin/bash\nexit 0\n' > "$ZRSTUB/$t"; chmod +x "$ZRSTUB/$t"; done
+cat > "$ZRSTUB/nmap" <<'EOS'
+#!/bin/bash
+case "$*" in
+    *"-p 80,443,8080,8443"*) echo "80/tcp open http"; exit 0 ;;
+    *) exit 0 ;;
+esac
+EOS
+chmod +x "$ZRSTUB/nmap"
+ZOUT=$(PATH="$ZRSTUB:$PATH" bash "$FW/03_Scanners/run_all_scanners.sh" prueba.example 2>&1)
+eq "run_all_scanners: intenta ZAP en el puerto web descubierto" "$(printf '%s' "$ZOUT" | grep -ci 'zaproxy')" "1"
+rm -rf "$FW/../scans/zap" "$ZRSTUB"
 
 # ──────────────────────────────────────────────────────────
 section "ffuf: contar hallazgos, no la url de la configuración"
@@ -1333,7 +1348,7 @@ eq "rate_limit: sin argumentos sale 1" "$RC" "1"
 OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/no-existe.req" 2>&1); RC=$?
 eq "rate_limit: petición ilegible sale 1" "$RC" "1"
 
-OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sin_campo.req" 2>&1); RC=$?
+OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sin_campo.req" 2>&1); RC=$?
 eq "rate_limit: sin campo de contraseña no adivina" "$(printf '%s' "$OUT" | grep -ci 'no se encontró.*contraseña\|campo de contraseña')" "1"
 eq "rate_limit: sin campo sale 1" "$RC" "1"
 
@@ -1342,7 +1357,7 @@ eq "rate_limit: sin Host y sin objetivo sale 1" "$RC" "1"
 
 # Dos campos que parecen contraseña: elige el primero y avisa del segundo
 printf 'POST /login-sin-freno HTTP/1.1\nHost: 127.0.0.1:18001\nContent-Type: application/json\n\n{"email":"a@b.c","password":"x","password2":"y"}' > "$TMPD/req_rl_dos.req"
-OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_INTENTOS=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_dos.req" 2>&1)
+OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http RATE_LIMIT_INTENTOS=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_dos.req" 2>&1)
 eq "rate_limit: avisa de un segundo campo de contraseña" "$(printf '%s' "$OUT" | grep -ci 'password2\|segundo campo')" "1"
 # Con la sonda implementada este caso envía una petición de verdad a 18001
 # (no escucha nadie: código 000) y deja sus ficheros: se limpian aquí para que
@@ -1366,7 +1381,7 @@ eq "rate_limit: por encima del tope sale 1" "$RC" "1"
 
 # Un intento con cero a la izquierda no es octal: «08» no revienta y «0310» no
 # se lee como 200 (octal), sino como 310, por encima del tope duro.
-OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sin_campo.req" 08 2>&1)
+OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sin_campo.req" 08 2>&1)
 eq "rate_limit: «08» no revienta la aritmética (base 10)" "$(printf '%s' "$OUT" | grep -ci 'value too great for base')" "0"
 eq "rate_limit: «08» se acepta y llega al campo de contraseña" "$(printf '%s' "$OUT" | grep -ci 'campo de contraseña')" "1"
 OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl.req" 0310 2>&1); RC=$?
@@ -1384,7 +1399,7 @@ if command -v python3 >/dev/null 2>&1; then
     rl_servidor || exit 1
     printf 'POST /login-sin-freno HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_sinfreno.req"
 
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno.req" 20 2>&1); RC=$?
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno.req" 20 2>&1); RC=$?
     RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
     RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
     eq "sonda: 20 intentos se registran" "$(($(wc -l < "$RLTSV") - 1))" "20"
@@ -1399,7 +1414,7 @@ if command -v python3 >/dev/null 2>&1; then
     mkdir -p "$TMPD/conf_dominios"
     printf 'scope:\n  domains:\n    - example.com\n' > "$TMPD/conf_dominios/scope.yaml"
     OUT=$(SESSION_CONFIG_DIR="$TMPD/conf_dominios" SESSION_SCOPE_FILE="$TMPD/conf_dominios/scope.yaml" \
-          RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno.req" 1 2>&1)
+          RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno.req" 1 2>&1)
     eq "sonda: el aviso de alcance habla de regla, no de fichero ilegible" "$(printf '%s' "$OUT" | grep -c 'no tiene una regla aplicable')" "1"
     eq "sonda: el aviso ya no dice ilegible" "$(printf '%s' "$OUT" | grep -ci 'ilegible')" "0"
 
@@ -1414,7 +1429,7 @@ section "rate_limit_probe: freno"
 if command -v python3 >/dev/null 2>&1; then
     rl_servidor || exit 1
     printf 'POST /login-freno HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_freno.req"
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_freno.req" 20 2>&1); RC=$?
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_freno.req" 20 2>&1); RC=$?
     RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
     RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
     eq "freno: veredicto FRENADO" "$(grep -c 'Veredicto: FRENADO' "$RLTXT")" "1"
@@ -1428,13 +1443,13 @@ if command -v python3 >/dev/null 2>&1; then
 
     # Ya frenado desde el primer intento: no se manda el segundo
     printf 'POST /login-freno-siempre HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_siempre.req"
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_siempre.req" 20 2>&1)
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_siempre.req" 20 2>&1)
     RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
     eq "freno: si ya frena, se para en el 1" "$(awk -F'\t' 'NR>1' "$RLTSV" | wc -l | tr -d ' ')" "1"
 
     # Un 503 con Retry-After también es un freno: se corta en el primer intento
     printf 'POST /login-503 HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_503.req"
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_503.req" 20 2>&1); RC=$?
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_503.req" 20 2>&1); RC=$?
     RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
     RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
     eq "freno: un 503 es FRENADO" "$(grep -c 'Veredicto: FRENADO' "$RLTXT")" "1"
@@ -1442,13 +1457,13 @@ if command -v python3 >/dev/null 2>&1; then
     eq "freno: el 503 sale 0" "$RC" "0"
 
     # Freno en el último (y único) intento planeado: no anuncia un intento más
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_503.req" 1 2>&1)
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_503.req" 1 2>&1)
     RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
     eq "freno: frenar en el último intento no anuncia uno más" "$(grep -c 'no se envió el intento 2' "$RLTXT")" "0"
 
     # Cuota agotada (X-RateLimit-Remaining: 0) sin 429/503: también es freno
     printf 'POST /login-cuota HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_cuota.req"
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_cuota.req" 20 2>&1); RC=$?
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_cuota.req" 20 2>&1); RC=$?
     RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
     RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
     eq "freno: la cuota a 0 es FRENADO" "$(grep -c 'Veredicto: FRENADO' "$RLTXT")" "1"
@@ -1457,19 +1472,19 @@ if command -v python3 >/dev/null 2>&1; then
 
     # Retry-After en fecha: se reporta literal, sin interpretarlo
     printf 'POST /login-freno-fecha HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_fecha.req"
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_fecha.req" 20 2>&1)
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_fecha.req" 20 2>&1)
     RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
     eq "freno: la fecha de Retry-After se copia tal cual" "$(grep -c '06 Nov 1994 08:49:37' "$RLTXT")" "1"
 
     # Código distinto del de rechazo sin ser freno: no se llama FRENADO
     printf 'POST /login-cambia HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_cambia.req"
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_cambia.req" 20 2>&1); RC=$?
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_cambia.req" 20 2>&1); RC=$?
     eq "freno: un 403 a mitad es NO DETERMINADO, no FRENADO" "$(printf '%s' "$OUT" | grep -c 'NO DETERMINADO')" "1"
     eq "freno: el cambio de código sale 1" "$RC" "1"
 
     # Un 2xx con credenciales falsas tampoco es SIN FRENO: es otro hallazgo
     printf 'POST /login-acepta HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_acepta.req"
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_acepta.req" 20 2>&1); RC=$?
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_acepta.req" 20 2>&1); RC=$?
     RLTSV=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.tsv" | head -1)
     eq "freno: un 200 con credenciales falsas es NO DETERMINADO" "$(printf '%s' "$OUT" | grep -c 'NO DETERMINADO')" "1"
     eq "freno: el 200 se avisa como otro hallazgo" "$(printf '%s' "$OUT" | grep -ci 'aceptado')" "1"
@@ -1477,7 +1492,7 @@ if command -v python3 >/dev/null 2>&1; then
     eq "freno: el 200 sale 1" "$RC" "1"
 
     printf 'POST /login-lento HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_lento.req"
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_lento.req" 12 2>&1)
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_lento.req" 12 2>&1)
     RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
     eq "freno: el retardo creciente cuenta como FRENADO" "$(grep -c 'Veredicto: FRENADO (por retardo)' "$RLTXT")" "1"
     # La columna de ms es la que sostiene el freno por retardo: si curl imprime
@@ -1487,19 +1502,19 @@ if command -v python3 >/dev/null 2>&1; then
     eq "freno: el último intento lento se midió (>100 ms)" "$(awk -F'\t' 'NR>1 { m=$3+0 } END { print (m > 100) ? "si" : "no" }' "$RLTSV")" "si"
 
     printf 'POST /login-caido HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_caido.req"
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_caido.req" 20 2>&1); RC=$?
-    eq "freno: conexión caída es NO DETERMINADO" "$(printf '%s' "$OUT" | grep -ci 'NO DETERMINADO')" "1"
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_caido.req" 20 2>&1); RC=$?
+    eq "freno: conexión caída falla el transporte, sin veredicto" "$(printf '%s' "$OUT" | grep -ci 'Falló el transporte completo')" "1"
     eq "freno: conexión caída sale 1" "$RC" "1"
 
     # Con menos de 10 intentos el freno por retardo no se evalúa y se dice
     printf 'POST /login-sin-freno HTTP/1.1\nHost: 127.0.0.1:%s\nContent-Type: application/json\n\n{"email":"ana@example.com","password":"x"}' "$RLPORT" > "$TMPD/req_rl_sinfreno5.req"
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno5.req" 5 2>&1)
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_sinfreno5.req" 5 2>&1)
     RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
     eq "freno: con menos de 10 intentos se avisa de que el retardo no se evaluó" "$(grep -c 'requiere ≥10 intentos' "$RLTXT")" "1"
 
     # Un login con la contraseña en la query no debe filtrarla al informe
     printf 'GET /safe?password=supersecreto HTTP/1.1\nHost: 127.0.0.1:%s\n\n' "$RLPORT" > "$TMPD/req_rl_query.req"
-    OUT=$(RATE_LIMIT_SI=1 bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_query.req" 5 2>&1)
+    OUT=$(RATE_LIMIT_SI=1 RATE_LIMIT_ESQUEMA=http bash "$FW/05_Exploitation/web/rate_limit_probe.sh" "$TMPD/req_rl_query.req" 5 2>&1)
     RLTXT=$(find "$FW/../scans/web" -name "rate_limit_127.0.0.1_$RLPORT.txt" | head -1)
     eq "freno: la contraseña real de la query no se filtra" "$(grep -c 'supersecreto' "$RLTXT")" "0"
     eq "freno: el target se redacta con ***" "$(grep -cF 'password=***' "$RLTXT")" "1"

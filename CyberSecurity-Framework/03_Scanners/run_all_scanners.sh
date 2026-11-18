@@ -55,6 +55,7 @@ if WEB_DISCOVERY=$(scanner_run "$OUTPUT_DIR/errores.log" nmap -Pn -p 80,443,8080
             url="$scheme://$URL_HOST:$port"
             run_child web_scanners/nikto/nikto_scan.sh "$url"
             run_child web_scanners/nuclei/nuclei_scan.sh "$url"
+            run_child web_scanners/zap/zap_scan.sh "$url"
         done
     fi
 else

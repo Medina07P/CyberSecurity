@@ -17,6 +17,9 @@ export SESSION_FILE="$SESION_TMP/.session"
 export HOME="$SESION_TMP/home"; mkdir -p "$HOME"
 export KEYS_FILE="$SESION_TMP/keys.yaml"
 export KEYS_HARVESTER_DIRS="$SESION_TMP/ht"
+# Asistente IA aislado: datos en temporal y configuración inexistente (valores por defecto)
+export AI_DATA_DIR="$SESION_TMP/ai-data"
+export AI_CONFIG="$SESION_TMP/ai-config-inexistente.yaml"
 trap 'rm -rf "$SESION_TMP"' EXIT
 
 fail=0
@@ -91,11 +94,15 @@ else
 fi
 
 echo ""
-echo "=== marcas en 06 ==="
+echo "=== marcas de generador ==="
 # 01_OSINT ya no tiene generadores: osint_harvester.sh se reescribía a sí mismo
-# y se materializó el 2026-10-31. Los generadores que quedan están en 06.
-out=$(printf '06\n9\n0\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
-printf '%s' "$out" | grep -qF "[generador]" && echo "  OK       aparece [generador] en 06" || { echo "  FALLO    sin [generador] en 06"; fail=$((fail+1)); }
+# y se materializó el 2026-10-31. Los dos que quedaban en 06 (ps_exec.sh,
+# linpeas.sh) se migraron aparte al patrón stable_cli.py (trabajo del
+# aislador09 descrito en AGENTS.md, sin aprobar) y ya no coinciden con la
+# huella cat>/mv -f que detecta params_is_generator; esta prueba no los toca.
+# El único generador real que queda es 04_Enumeration/web/deepseeenum_web.sh.
+out=$(printf '04\n11\n0\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
+printf '%s' "$out" | grep -qF "[generador]" && echo "  OK       aparece [generador] en 04 (deepseeenum_web.sh)" || { echo "  FALLO    sin [generador] en 04"; fail=$((fail+1)); }
 printf '%s' "$out" | grep -qF "[intrusiva]" && echo "  OK       aparece [intrusiva] en 06" || { echo "  FALLO    sin [intrusiva] en 06"; fail=$((fail+1)); }
 
 out=$(printf '00\n0\nQ\n' | timeout 20 bash ./cyber_framework.sh 2>&1)
@@ -116,6 +123,40 @@ run "menú: K abre el submenú"         'K\n0\nQ\n'     "CLAVES DE API"
 run "menú: K muestra el estado"       'K\n3\n0\nQ\n' "theHarvester"
 [[ -e "$KEYS_FILE" ]] && { echo "  FALLO    K no debe crear el registro"; fail=$((fail+1)); } \
     || echo "  OK       K no crea el registro"
+
+echo ""
+echo "=== dependencias: acción D ==="
+run "menú: D aparece"                 'Q\n'          "Dependencias"
+run "menú: D abre el submenú"         'D\n0\nQ\n'    "Instalar dependencias"
+run "menú: D 0 vuelve sin tocar nada" 'D\n0\nQ\n'    "DEPENDENCIAS"
+run "menú: D opción 2 aparece"        'D\n0\nQ\n'    "herramientas adicionales"
+run "menú: D 2 lista las tres sin instalar nada" 'D\n2\n0\n0\n' "nmap-vulners"
+
+# Con ollama/avml/nmap-vulners ya instalados, D 2 no debe ser un callejón sin
+# salida: debe ofrecer el catálogo de modelos en vez de solo decir que no
+# falta nada (bug: antes de este fix, una vez instalado todo una sola vez,
+# el menú nunca volvía a dar forma de pedir otro modelo).
+STUBDIR_D2="$(mktemp -d)"
+printf '#!/bin/sh\n' > "$STUBDIR_D2/ollama"; chmod +x "$STUBDIR_D2/ollama"
+printf '#!/bin/sh\n' > "$STUBDIR_D2/avml"; chmod +x "$STUBDIR_D2/avml"
+NVP_D2="$STUBDIR_D2/vulners.nse"; touch "$NVP_D2"
+out_d2=$(printf 'D\n2\n0\n0\nQ\n' | PATH="$STUBDIR_D2:$PATH" NMAP_VULNERS_PATH="$NVP_D2" \
+    timeout 20 bash ./cyber_framework.sh 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+if printf '%s' "$out_d2" | grep -qF "Catálogo de modelos para Ollama"; then
+    echo "  OK       menú: D 2 con todo instalado ofrece el catálogo de modelos"
+else
+    echo "  FALLO    menú: D 2 con todo instalado ofrece el catálogo de modelos"
+    printf '%s\n' "$out_d2" | tail -15 | sed 's/^/            /'
+    fail=$((fail+1))
+fi
+rm -rf "$STUBDIR_D2"
+
+echo ""
+echo "=== asistente IA: acción I ==="
+run "menú: I aparece"                 'Q\n'          "Asistente"
+run "menú: I abre el asistente"       'I\n0\nQ\n'    "Asistente del framework"
+run "menú: I EOF vuelve al gestor"    'I\n'          "Asistente"
+run "menú: opción inválida menciona I" 'zzz\n\nQ\n'  "K, D, I"
 
 echo ""
 echo "----------------------------------------"

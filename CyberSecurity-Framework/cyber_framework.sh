@@ -29,6 +29,9 @@ source "$LIB_DIR/wireless_menu.bash"
 source "$LIB_DIR/forensics_menu.bash"
 source "$LIB_DIR/automation_menu.bash"
 source "$LIB_DIR/evidence_menu.bash"
+source "$LIB_DIR/dependencies.bash"
+source "$LIB_DIR/dependencies_models.bash"
+source "$LIB_DIR/ai_menu.bash"
 
 # Colores
 RED='\033[0;31m'
@@ -484,7 +487,98 @@ run_module_scripts() {
                     sleep 1
                 fi
             else
-                execute_script "${scripts[$idx]}" "$module_dir"
+                # http_inject/rate_limit/sqlmap/web_login_bruteforce no deducen
+                # el esquema del puerto (443/8443 no acredita TLS) y aquí no hay
+                # slot para pedirlo: la opción por entorno queda fuera de la línea
+                # Uso: a propósito. Sin este empujón el script corta con
+                # "Selecciona X_ESQUEMA=..." y parece roto. Se pide una vez, solo
+                # para esta ejecución, y no se guarda ni se reutiliza en la
+                # siguiente selección.
+                local esquema_var="" esquema_val=""
+                case "${scripts[$idx]}" in
+                    */web/http_inject.sh) esquema_var=HTTP_INJECT_ESQUEMA ;;
+                    */web/rate_limit_probe.sh) esquema_var=RATE_LIMIT_ESQUEMA ;;
+                    */web/sqlmap_request.sh) esquema_var=SQLMAP_ESQUEMA ;;
+                    */web/web_login_bruteforce.sh) esquema_var=BRUTE_ESQUEMA ;;
+                esac
+                if [[ -n "$esquema_var" ]]; then
+                    echo ""
+                    echo -e "${YELLOW}ℹ️  Este script no deduce el esquema del puerto.${NC}"
+                    echo -ne "${BOLD}${WHITE}Esquema real del servicio http|https (Enter = no fijarlo): ${NC}"
+                    IFS= read -r esquema_val
+                    case "$esquema_val" in
+                        http|https|"") ;;
+                        *) echo -e "${RED}❌ Esquema no válido: '${esquema_val}'; se continúa sin fijarlo.${NC}"
+                           esquema_val="" ;;
+                    esac
+                fi
+                [[ -n "$esquema_var" && -n "$esquema_val" ]] && export "$esquema_var=$esquema_val"
+
+                # web_login_bruteforce.sh no tiene slot para el tope de
+                # intentos (BRUTE_MAX): es por entorno, igual que el esquema
+                # de arriba. Se pide una vez, solo para esta ejecución, y no
+                # se guarda ni se reutiliza en la siguiente selección. Enter
+                # deja el valor por defecto del script (200); no hay tope
+                # duro que el menú deba respetar.
+                local max_val=""
+                if [[ "${scripts[$idx]}" == */web/web_login_bruteforce.sh ]]; then
+                    echo ""
+                    echo -ne "${BOLD}${WHITE}Número de intentos (Enter = por defecto del script): ${NC}"
+                    IFS= read -r max_val
+                    if [[ -n "$max_val" ]] && ! [[ "$max_val" =~ ^[0-9]+$ && "$max_val" -ge 1 ]]; then
+                        echo -e "${RED}❌ Tiene que ser un entero > 0: '${max_val}'; se continúa con el valor por defecto.${NC}"
+                        max_val=""
+                    fi
+                fi
+                [[ -n "$max_val" ]] && export BRUTE_MAX="$max_val"
+
+                # Tipo de diccionario: tampoco tiene slot (es BRUTE_DICC_TIPO,
+                # por entorno). En combo el usuario lo trae cada línea
+                # (usuario:contraseña), así que el slot [usuario] genérico no
+                # tiene sentido y no se pregunta; se recogen fichero y
+                # diccionario a mano y se llama --prepared con solo esos dos.
+                # En claves sigue el camino genérico de siempre (pide
+                # fichero, diccionario y el [usuario] fijo opcional).
+                local dicc_tipo="" dicc_prepared=0 dicc_fichero="" dicc_diccionario="" dicc_cancelado=0
+                if [[ "${scripts[$idx]}" == */web/web_login_bruteforce.sh ]]; then
+                    echo ""
+                    echo -e "${BOLD}${WHITE}Tipo de diccionario:${NC}"
+                    echo "   1) claves — una contraseña por línea, mismo usuario en todos los intentos"
+                    echo "   2) combo  — una credencial por línea, usuario:contraseña (ej. prueba@gmail.com:123456)"
+                    echo -ne "${BOLD}${WHITE}Elige [1-2] (Enter = 1): ${NC}"
+                    IFS= read -r dicc_tipo
+                    case "$dicc_tipo" in
+                        ""|1) dicc_tipo="claves" ;;
+                        2) dicc_tipo="combo" ;;
+                        *)
+                            echo -e "${RED}❌ Opción no válida: '${dicc_tipo}'; se continúa con «claves».${NC}"
+                            dicc_tipo="claves"
+                            ;;
+                    esac
+                    if [[ "$dicc_tipo" == "combo" ]]; then
+                        dicc_prepared=1
+                        export BRUTE_DICC_TIPO=combo
+                        echo -ne "${BOLD}${WHITE}Ruta de la petición capturada .req (o «manual»): ${NC}"
+                        IFS= read -r dicc_fichero
+                        echo -ne "${BOLD}${WHITE}Ruta del diccionario combinado (usuario:contraseña): ${NC}"
+                        IFS= read -r dicc_diccionario
+                        if [[ -z "$dicc_fichero" || -z "$dicc_diccionario" ]]; then
+                            echo -e "${YELLOW}Cancelado: falta el fichero o el diccionario.${NC}"
+                            dicc_cancelado=1
+                        fi
+                    fi
+                fi
+
+                if (( dicc_cancelado )); then
+                    :
+                elif (( dicc_prepared )); then
+                    execute_script "${scripts[$idx]}" "$module_dir" --prepared "$dicc_fichero" "$dicc_diccionario"
+                else
+                    execute_script "${scripts[$idx]}" "$module_dir"
+                fi
+                [[ -n "$esquema_var" ]] && unset "$esquema_var"
+                [[ -n "$max_val" ]] && unset BRUTE_MAX
+                [[ -n "$dicc_tipo" ]] && unset BRUTE_DICC_TIPO
             fi
         else
             echo -e "${RED}❌ Opción inválida${NC}"
@@ -813,6 +907,8 @@ show_help() {
     echo -e "  ${GREEN}T${NC}   Cambiar objetivo"
     echo -e "  ${GREEN}R${NC}   Informe rápido (técnico, cliente o ambos)"
     echo -e "  ${GREEN}K${NC}   Claves de API (pide y guarda las que falten)"
+    echo -e "  ${GREEN}D${NC}   Dependencias (ver qué falta e instalarlo)"
+    echo -e "  ${GREEN}I${NC}   Asistente IA local (explica hallazgos y responde sobre el framework)"
     echo -e "  ${GREEN}0${NC}   Volver al menú principal"
     echo -e "  ${GREEN}Q${NC}   Salir"
     echo ""
@@ -864,6 +960,8 @@ main_menu() {
     echo -e "  ${CYAN}R ${NC}  ${WHITE}📊 Informe rápido${NC}"
     echo -e "  ${CYAN}T ${NC}  ${WHITE}🎯 Cambiar objetivo${NC} ${DIM}(actual: ${target:-sin definir})${NC}"
     echo -e "  ${CYAN}K ${NC}  ${WHITE}🔑 Claves de API${NC} ${DIM}($(keys_resumen_line))${NC}"
+    echo -e "  ${CYAN}D ${NC}  ${WHITE}📦 Dependencias${NC} ${DIM}($(dependencies_resumen_line))${NC}"
+    echo -e "  ${CYAN}I ${NC}  ${WHITE}🤖 Asistente IA${NC}"
     echo -e "  ${CYAN}? ${NC}  ${WHITE}📖 Ayuda y Comandos Útiles${NC}"
     echo -e "  ${CYAN}Q ${NC}  ${RED}Salir${NC}"
     echo ""
@@ -873,7 +971,7 @@ main_menu() {
         echo -e "  ${DIM}Siguiente paso sugerido:${NC} ${YELLOW}${next}${NC}"
     fi
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, R, T, K, ?, Q]: ${NC}"
+    echo -ne "${BOLD}${WHITE}➜ Selecciona un módulo [00-13, 99, R, T, K, D, I, ?, Q]: ${NC}"
 }
 
 # ─── Claves de API ───────────────────────────────────────────
@@ -982,6 +1080,92 @@ keys_menu() {
     pause
 }
 
+# ─── Dependencias ────────────────────────────────────────────
+
+dependencies_menu() {
+    local -a faltan
+    local eleccion seleccion i idx
+    local -a elegidos
+
+    clear_screen
+    echo -e "${CYAN}${BOLD}━━━ DEPENDENCIAS ━━━${NC}"
+    echo ""
+    dependencies_status
+    echo ""
+    mapfile -t faltan < <(dependencies_missing_with_package)
+    if [[ ${#faltan[@]} -eq 0 ]]; then
+        echo -e "  ${DIM}No falta nada instalable por apt.${NC}"
+    else
+        echo -e "${YELLOW}Paquetes que faltan e instalan por apt:${NC}"
+        for i in "${!faltan[@]}"; do
+            printf '  %d) %s\n' "$((i + 1))" "${faltan[$i]}"
+        done
+    fi
+    echo ""
+    echo -e "  ${GREEN}1${NC}) Instalar dependencias (elegir de la lista)"
+    echo -e "  ${GREEN}2${NC}) Instalar/verificar herramientas adicionales (Ollama, avml, nmap-vulners)"
+    echo -e "  ${GREEN}0${NC}) Volver al menú principal"
+    echo ""
+    echo -ne "${BOLD}➜ Elige una opción [0-2]: ${NC}"
+    if ! IFS= read -r eleccion; then
+        return 0
+    fi
+    case "$eleccion" in
+        0|'') return 0 ;;
+        1)
+            if [[ ${#faltan[@]} -eq 0 ]]; then
+                echo -e "${DIM}Nada que instalar.${NC}"; pause; return 0
+            fi
+            echo -ne "${BOLD}➜ Números a instalar (espacio entre varios, 'todas', 0 o ! cancela): ${NC}"
+            if ! IFS= read -r seleccion || [[ "$seleccion" == '0' || "$seleccion" == '!' || -z "$seleccion" ]]; then
+                pause; return 0
+            fi
+            local resuelto rc_resuelto
+            resuelto=$(dependencies_resolve_selection "$seleccion" "${faltan[@]}")
+            rc_resuelto=$?
+            if [[ $rc_resuelto -ne 0 ]]; then
+                echo -e "${RED}Selección inválida.${NC}"; pause; return 0
+            fi
+            elegidos=()
+            mapfile -t elegidos <<< "$resuelto"
+            dependencies_install "${elegidos[@]}"
+            ;;
+        2)
+            local -a extra; mapfile -t extra < <(dependencies_extra_missing)
+            if [[ ${#extra[@]} -eq 0 ]]; then
+                echo -e "${DIM}avml, ollama y nmap-vulners ya están instalados.${NC}"
+                if dependencies_binary_ok ollama; then
+                    dependencies_offer_model_catalog
+                fi
+                pause; return 0
+            fi
+            echo -e "${YELLOW}Herramientas adicionales que faltan:${NC}"
+            for i in "${!extra[@]}"; do
+                printf '  %d) %s (%s)\n' "$((i + 1))" "${extra[$i]}" "${DEPENDENCIES_NO_APT[${extra[$i]}]}"
+            done
+            echo -ne "${BOLD}➜ Números a instalar (espacio entre varios, 'todas', 0 o ! cancela): ${NC}"
+            if ! IFS= read -r seleccion || [[ "$seleccion" == '0' || "$seleccion" == '!' || -z "$seleccion" ]]; then
+                pause; return 0
+            fi
+            local resuelto_extra rc_resuelto_extra
+            resuelto_extra=$(dependencies_resolve_selection "$seleccion" "${extra[@]}")
+            rc_resuelto_extra=$?
+            if [[ $rc_resuelto_extra -ne 0 ]]; then
+                echo -e "${RED}Selección inválida.${NC}"; pause; return 0
+            fi
+            local -a elegidas_extra; mapfile -t elegidas_extra <<< "$resuelto_extra"
+            local herramienta funcion
+            for herramienta in "${elegidas_extra[@]}"; do
+                funcion="dependencies_install_${herramienta//-/_}"
+                "$funcion"
+            done
+            echo ""; dependencies_status
+            ;;
+        *) echo -e "${RED}❌ Opción inválida${NC}" ;;
+    esac
+    pause
+}
+
 # ─── Bucle Principal ─────────────────────────────────────────
 
 main() {
@@ -1019,6 +1203,8 @@ main() {
             R|r) quick_report ;;
             T|t) change_target ;;
             K|k) keys_menu ;;
+            D|d) dependencies_menu ;;
+            I|i) ai_menu ;;
             \?|\?\?|help|HELP|H|h) show_help ;;
             Q|q|salir|exit)
                 echo -e "\n${GREEN}👋 ¡Hasta luego!${NC}"
@@ -1027,7 +1213,7 @@ main() {
             "") : ;;
             *)
                 echo -e "\n${RED}❌ Opción inválida: '$choice'${NC}"
-                echo -e "${YELLOW}Prueba con 00-13, 99, R, T, K, ? o Q.${NC}"
+                echo -e "${YELLOW}Prueba con 00-13, 99, R, T, K, D, I, ? o Q.${NC}"
                 pause
                 ;;
         esac

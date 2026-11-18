@@ -438,6 +438,7 @@ class ReportIntegrationTests(Sandbox):
         for name in ('run_all_reports.sh', 'report_generator.sh', 'report_engine.py'):
             shutil.copy2(FW / '11_Reports' / name, directory / name)
         shutil.copytree(FW / '11_Reports/lib', directory / 'lib', ignore=shutil.ignore_patterns('__pycache__'))
+        shutil.copytree(FW / '00_Config/lib/ai', fw / '00_Config/lib/ai', ignore=shutil.ignore_patterns('__pycache__'))
         stub = put(fw, '10_Evidence/evidence_manager.sh', '#!/bin/bash\nprintf called > "${0%/*}/CALLED"\n')
         stub.chmod(0o700)
         put(directory, 'generated/other.invalid/informe_cliente.html', 'OLD')
