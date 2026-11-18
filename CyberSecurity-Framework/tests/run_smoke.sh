@@ -17,6 +17,9 @@ export SESSION_FILE="$SESION_TMP/.session"
 export HOME="$SESION_TMP/home"; mkdir -p "$HOME"
 export KEYS_FILE="$SESION_TMP/keys.yaml"
 export KEYS_HARVESTER_DIRS="$SESION_TMP/ht"
+# Asistente IA aislado: datos en temporal y configuración inexistente (valores por defecto)
+export AI_DATA_DIR="$SESION_TMP/ai-data"
+export AI_CONFIG="$SESION_TMP/ai-config-inexistente.yaml"
 trap 'rm -rf "$SESION_TMP"' EXIT
 
 fail=0
@@ -126,6 +129,13 @@ echo "=== dependencias: acción D ==="
 run "menú: D aparece"                 'Q\n'          "Dependencias"
 run "menú: D abre el submenú"         'D\n0\nQ\n'    "Instalar dependencias"
 run "menú: D 0 vuelve sin tocar nada" 'D\n0\nQ\n'    "DEPENDENCIAS"
+
+echo ""
+echo "=== asistente IA: acción I ==="
+run "menú: I aparece"                 'Q\n'          "Asistente"
+run "menú: I abre el asistente"       'I\n0\nQ\n'    "Asistente del framework"
+run "menú: I EOF vuelve al gestor"    'I\n'          "Asistente"
+run "menú: opción inválida menciona I" 'zzz\n\nQ\n'  "K, D, I"
 
 echo ""
 echo "----------------------------------------"

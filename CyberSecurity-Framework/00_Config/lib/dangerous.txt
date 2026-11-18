@@ -52,3 +52,4 @@
 08_Forensics/disk/file_carving.sh
 08_Forensics/timeline/timeline_creator.sh
 08_Forensics/run_all_forensics.sh
+09_Automation/ai/ai_assistant.py

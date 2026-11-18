@@ -27,11 +27,14 @@ printf '%s\n' "$out" | grep -qF 'Dependencias adicionales:' && ok "incluye el gr
 eq "nmap aparece una sola vez en el reporte" \
     "$(printf '%s\n' "$out" | grep -c -E '^  [✓✗] nmap$')" "1"
 printf '%s\n' "$out" | grep -qF 'avml (binario de GitHub' && ok "avml muestra el motivo" || ko "avml muestra el motivo"
+printf '%s\n' "$out" | grep -qF 'ollama' && ok "ollama aparece en el reporte de D" || ko "ollama aparece en el reporte de D"
+printf '%s\n' "$out" | grep -qF 'ollama (se instala con' && ok "ollama muestra el motivo (no es apt)" || ko "ollama muestra el motivo (no es apt)"
 
 echo "=== dependencies_missing_with_package ==="
 out=$(bash -c "export PATH='$TMPBIN'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_missing_with_package")
 eq "avml nunca aparece (sin paquete apt)" "$(printf '%s\n' "$out" | grep -c -F avml)" "0"
 eq "nmap-vulners nunca aparece (sin paquete apt)" "$(printf '%s\n' "$out" | grep -c -F nmap-vulners)" "0"
+eq "ollama nunca aparece (sin paquete apt)" "$(printf '%s\n' "$out" | grep -c -F ollama)" "0"
 eq "aircrack-ng aparece una sola vez aunque 3 binarios compartan el paquete" \
     "$(printf '%s\n' "$out" | grep -c -F aircrack-ng)" "1"
 eq "nmap aparece (binario ausente en el PATH cerrado de prueba)" \
