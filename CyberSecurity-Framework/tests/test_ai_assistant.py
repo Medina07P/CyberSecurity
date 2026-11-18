@@ -370,7 +370,7 @@ class LoadSavedSummaryTests(unittest.TestCase):
     def test_returns_body_when_header_missing(self):
         self._write_summary("10.0.0.5", "Texto sin cabecera.\n", header=False)
         out = asst.load_saved_summary(self.data, "10.0.0.5")
-        self.assertEqual(out, "Texto sin cabecera.")
+        self.assertEqual(out, asst._AVISO_RESUMEN_CARGADO + "Texto sin cabecera.")
 
     def test_returns_none_for_other_target_slug(self):
         self._write_summary("otro-objetivo", "Esto es de otro objetivo.\n")
@@ -390,7 +390,29 @@ class LoadSavedSummaryTests(unittest.TestCase):
         largo = "x" * (context.SUMMARY_CAP + 500)
         self._write_summary("10.0.0.5", largo)
         out = asst.load_saved_summary(self.data, "10.0.0.5")
-        self.assertLessEqual(len(out), context.SUMMARY_CAP)
+        self.assertTrue(out.startswith(asst._AVISO_RESUMEN_CARGADO))
+        cuerpo = out[len(asst._AVISO_RESUMEN_CARGADO):]
+        self.assertLessEqual(len(cuerpo), context.SUMMARY_CAP)
+
+    def test_keeps_first_line_if_it_is_not_the_real_header(self):
+        self._write_summary("10.0.0.5", "# Notas sobre SSH\nmás texto\n", header=False)
+        out = asst.load_saved_summary(self.data, "10.0.0.5")
+        self.assertIn("# Notas sobre SSH", out)
+
+    def test_prepends_provenance_notice(self):
+        self._write_summary("10.0.0.5", "Hablamos del puerto 22.\n")
+        out = asst.load_saved_summary(self.data, "10.0.0.5")
+        self.assertTrue(out.startswith(asst._AVISO_RESUMEN_CARGADO))
+        self.assertIn("puerto 22", out)
+
+    def test_truncated_long_file_does_not_raise_or_return_none(self):
+        # Fichero UTF-8 válido pero más largo que SUMMARY_READ_BYTES, hecho
+        # de caracteres de 3 bytes: al leer exactamente SUMMARY_READ_BYTES
+        # bytes se corta a mitad de un carácter (200000 % 3 == 2).
+        largo = "€" * 70000  # 210000 bytes > SUMMARY_READ_BYTES (200000)
+        self._write_summary("10.0.0.5", largo)
+        out = asst.load_saved_summary(self.data, "10.0.0.5")
+        self.assertIsNotNone(out)
 
 
 if __name__ == "__main__":
