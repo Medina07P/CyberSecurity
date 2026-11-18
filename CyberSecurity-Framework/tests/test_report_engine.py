@@ -1,4 +1,5 @@
 import json, os, sys, tempfile, unittest
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +51,32 @@ class ModelTests(unittest.TestCase):
     def test_json_roundtrip(self):
         f = self.mk("k")
         self.assertEqual(finding_from_dict(finding_to_dict(f)), f)
+
+
+from lib.model import redact_findings
+
+class RedactFindingsTests(unittest.TestCase):
+    def mk(self, extracto):
+        return Finding(rule="r", key="k", titulo="t", categoria="web",
+                       severidad="alta", confianza="confirmado", activo="h",
+                       tecnica="x", descripcion="d", impacto_cliente="i",
+                       recomendacion="r", esfuerzo="medio", cve=None, cvss=None,
+                       evidencia=[Evidence("a", 1, extracto)], referencias=[])
+
+    def test_redacts_secret_in_evidence_extracto(self):
+        out = redact_findings([self.mk("Authorization: Bearer abcdef1234567890ABCDEF")])
+        self.assertNotIn("abcdef1234567890ABCDEF", out[0].evidencia[0].extracto)
+        self.assertIn("[REDACTADO]", out[0].evidencia[0].extracto)
+
+    def test_leaves_non_secret_extracto_unchanged(self):
+        out = redact_findings([self.mk("200 OK (123b)")])
+        self.assertEqual(out[0].evidencia[0].extracto, "200 OK (123b)")
+
+    def test_finding_without_evidence_is_not_an_error(self):
+        f = self.mk("x")
+        f = replace(f, evidencia=[])
+        out = redact_findings([f])
+        self.assertEqual(out[0].evidencia, [])
 
 
 from lib.catalog import KNOWN_RULES, build
@@ -255,6 +282,21 @@ class CollectTests(unittest.TestCase):
                     f"Evidence path should be repo-relative: {f.evidencia[0].archivo}"
                 )
 
+    def test_collect_redacts_secret_from_raw_scan_output(self):
+        tmpdir = Path(tmp())
+        scans = tmpdir / "scans"
+        web = scans / "web"
+        web.mkdir(parents=True)
+        suf = "443_10.0.0.5"
+        (web / f"security_headers_{suf}.txt").write_text(
+            "Authorization: Bearer abcdef1234567890ABCDEF\n", encoding="utf-8")
+        (web / f"headers_{suf}.txt").write_text("HTTP/1.1 200 OK\n", encoding="utf-8")
+        c = collect(scans, tmpdir, "10.0.0.5")
+        extractos = [e.extracto for f in c.findings for e in f.evidencia]
+        self.assertTrue(extractos, "debe producir al menos un hallazgo con evidencia")
+        self.assertFalse(any("abcdef1234567890ABCDEF" in texto for texto in extractos))
+        self.assertTrue(any("[REDACTADO]" in texto for texto in extractos))
+
     def test_external_scans_dir_uses_relpath_not_basename(self):
         # Cuando --scans apunta a un directorio externo, la evidencia debe
         # contener la ruta relativa completa, no solo el nombre del fichero
@@ -344,6 +386,22 @@ class VerdictTests(unittest.TestCase):
             self.assertEqual(f.rule, "http_inject.sqli")
         keys = {f.key for f in r.findings}
         self.assertEqual(keys, {"sqli|127.0.0.1|id", "sqli|127.0.0.1|q", "sqli|127.0.0.1|t"})
+
+    def test_http_inject_payload_on_token_field_survives_redaction(self):
+        # El propio redact() trata "token=valor" como un secreto a tapar;
+        # sin este cuidado en el parser, la evidencia de una inyección sobre
+        # un campo llamado "token" (o password/api_key/secret/...) se
+        # perdería al redactar: justo el caso confirmado en revisión con
+        # token=<script>alert(1)</script> -> token=[REDACTADO].
+        tsv = "nivel\tparam\tclase\tpayload\tcodigo\ttamano\tms\tevidencia\n"
+        tsv += "FUERTE\ttoken\txss\t<script>alert(1)</script>\t200\t99\t12\tz\n"
+        path = write("web/http_inject_token_127.0.0.1.tsv", tsv)
+        write("web/http_inject_token_127.0.0.1/contexto.txt", "host=127.0.0.1\n")
+        r = http_inject.parse(path, ROOT)
+        redacted = redact_findings(r.findings)
+        extracto = redacted[0].evidencia[0].extracto
+        self.assertIn("<script>alert(1)</script>", extracto)
+        self.assertNotIn("[REDACTADO]", extracto)
 
     def test_sqlmap_verdicts(self):
         ok = "- Objetivo: 127.0.0.1:443 (https)\n- Veredicto: INYECTABLE (id): boolean-based blind\n"
@@ -566,6 +624,22 @@ class RenderTests(unittest.TestCase):
         c = self.collected(); data = to_json(c, {"cliente": "ACME"})
         c2, meta = from_json(data)
         self.assertEqual(len(c2.findings), 2); self.assertEqual(meta["cliente"], "ACME")
+
+    def test_from_json_redacts_a_pre_upgrade_findings_json(self):
+        # findings.json escritos antes de que collect() empezara a redactar
+        # (toda generación anterior a esta rama) siguen en disco con el
+        # secreto en claro; --desde-json no debe reintroducirlo al informe.
+        f = Finding(rule="headers.missing.csp", key="k", titulo="t", categoria="web",
+                    severidad="media", confianza="confirmado", activo="127.0.0.1",
+                    tecnica="headers", descripcion="d", impacto_cliente="i",
+                    recomendacion="r", esfuerzo="bajo", cve=None, cvss=None,
+                    evidencia=[Evidence("scans/web/headers_a.txt", 1,
+                                        "Authorization: Bearer abcdef1234567890ABCDEF")],
+                    referencias=[])
+        pre_upgrade = to_json(Collected([f], {}, [], [], [], True), {"cliente": "ACME"})
+        c2, _ = from_json(pre_upgrade)
+        self.assertNotIn("abcdef1234567890ABCDEF", c2.findings[0].evidencia[0].extracto)
+        self.assertIn("[REDACTADO]", c2.findings[0].evidencia[0].extracto)
 
     def test_client_no_determinado_never_claims_completion(self):
         collected = Collected(

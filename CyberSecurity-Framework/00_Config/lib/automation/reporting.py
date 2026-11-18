@@ -25,7 +25,8 @@ ENGINE_SOURCES = ('11_Reports/report_engine.py',
         'parsers/rate_limit', 'parsers/scanner_ports',
         'parsers/sqli_findings', 'parsers/sqlmap')) + tuple(
     '00_Config/lib/evidence/' + name + '.py'
-    for name in ('__init__', 'inventory', 'model', 'storage'))
+    for name in ('__init__', 'inventory', 'model', 'storage')) + tuple(
+    '00_Config/lib/ai/' + name + '.py' for name in ('__init__', 'redact'))
 REPORT_FILES = ('findings.json', 'informe_tecnico.md', 'informe_tecnico.html',
                 'informe_cliente.md', 'informe_cliente.html')
 
