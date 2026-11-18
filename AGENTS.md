@@ -13,15 +13,31 @@ es un paquete de custodia forense (hash SHA-256 por miembro, detección de
 modificación) y redactar su contenido rompería esa garantía; su categoría
 `credentials/` guarda secretos a propósito, no es un escape de información.
 Ver `docs/superpowers/specs/2026-11-18-redaccion-informes-design.md`
-(sección "Anti-goals") para el razonamiento completo. Dos fixtures
-aisladas (`tests/reports_fixture.py`, `tests/test_reports_evidence_contract.py`)
-necesitaron añadir `00_Config/lib/ai/` a su copia/allowlist cerrada, porque
-`lib/model.py` ahora depende de ese módulo; `tests/automation_fixture.py`
-tiene el mismo síntoma pero no se tocó — pertenece al aislador de
-`09_Automation` que esta misma nota restringe más abajo, y en esta máquina
-falla antes por un directorio de entorno ausente, sin relación con este
-cambio. `tests/test_report_engine.py` sube a 86 asserts;
-`tests/run_reports_evidence.sh` rc=0 GUARD OK; `tests/run_reports.sh`
+(sección "Anti-goals") para el razonamiento completo. `code-review`
+independiente sobre la rama no encontró críticos; tres importantes
+corregidos con TDD antes del merge: (1) `00_Config/lib/automation/reporting.py::ENGINE_SOURCES`
+—la lista real de ficheros que el motor 11 declara como dependencia para
+el preflight de `09`— no incluía `00_Config/lib/ai/`, así que una
+instalación a la que le faltara ese módulo habría pasado el preflight y
+fallado recién al ejecutar; ya incluye `ai/__init__.py` y `ai/redact.py`.
+(2) `http_inject.py` formaba el extracto como `{param}={payload}`, y
+`redact()` trata literalmente `password=`/`token=`/etc. como un secreto:
+una inyección sobre un campo llamado así perdía el payload entero bajo
+`[REDACTADO]`. Reformateado a `parámetro «{param}» ← {payload}` para que
+el nombre del campo nunca preceda a `=`. (3) `--desde-json` no volvía a
+redactar; para un `findings.json` escrito antes de esta rama eso
+reintroducía el secreto en el informe re-renderizado — `redact()` es
+idempotente, así que `from_json` ahora redacta también, sin coste sobre
+un fichero ya limpio. Dos fixtures aisladas (`tests/reports_fixture.py`,
+`tests/test_reports_evidence_contract.py`) necesitaron añadir
+`00_Config/lib/ai/` a su copia/allowlist cerrada, porque `lib/model.py`
+ahora depende de ese módulo; `tests/automation_fixture.py` tiene el mismo
+síntoma de copia y **no** se tocó — pertenece al aislador de pruebas de
+`09_Automation` que esta misma nota restringe más abajo (requiere
+autorización explícita del controlador), así que queda como bloqueo
+conocido pendiente de esa autorización, no como algo ya resuelto o
+descartado por irrelevante. `tests/test_report_engine.py` sube a 88
+tests; `tests/run_reports_evidence.sh` rc=0 GUARD OK; `tests/run_reports.sh`
 mantiene sus mismos 2 fallos preexistentes del shim legacy (EXDEV entre el
 checkout y `/tmp` en esta máquina — confirmado idéntico en el commit base,
 no es una regresión de esta rama). Sin merge ni push.
