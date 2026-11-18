@@ -77,6 +77,16 @@ class OllamaClient:
             return False
         return self.model in names or (self.model + ":latest") in names
 
+    def list_models(self):
+        """Nombres de los modelos ya descargados en este Ollama, o [] si no se
+        puede preguntar (servidor caído, respuesta inesperada...)."""
+        try:
+            r = self._http.get(self.endpoint + "/api/tags", timeout=min(self.timeout, 5), allow_redirects=False)
+            nombres = [m.get("name") for m in r.json().get("models", []) if m.get("name")]
+        except (requests.RequestException, ValueError, AttributeError):
+            return []
+        return sorted(nombres)
+
     def chat(self, messages, *, stream_to=None, keep_alive="5m"):
         payload = {"model": self.model, "messages": messages, "stream": True,
                    "keep_alive": keep_alive}

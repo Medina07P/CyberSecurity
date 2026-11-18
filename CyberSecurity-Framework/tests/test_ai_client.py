@@ -119,6 +119,20 @@ class ClientTests(unittest.TestCase):
             c.chat([{"role": "user", "content": "x"}])
         self.assertIn("ollama pull fake:1b", cm.exception.user_message)
 
+    def test_list_models_returns_sorted_names(self):
+        s = self.serve(extra_env={"FAKE_OLLAMA_MODELS": "zeta:1b,alpha:3b"})
+        c = OllamaClient(s.url, "alpha:3b")
+        self.assertEqual(c.list_models(), ["alpha:3b", "zeta:1b"])
+
+    def test_list_models_empty_when_no_models(self):
+        s = self.serve("no_model")
+        c = OllamaClient(s.url, "fake:1b")
+        self.assertEqual(c.list_models(), [])
+
+    def test_list_models_empty_without_server(self):
+        c = OllamaClient("http://127.0.0.1:1", "fake:1b")
+        self.assertEqual(c.list_models(), [])
+
     def test_truncated_stream_raises_ollama_error(self):
         s = self.serve("truncated")
         with self.assertRaises(OllamaError) as cm:

@@ -21,6 +21,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 MODE = os.environ.get('FAKE_OLLAMA_MODE', 'ok')
 LOG = os.environ.get('FAKE_OLLAMA_LOG')
 MODEL = os.environ.get('FAKE_OLLAMA_MODEL', 'fake:1b')
+# FAKE_OLLAMA_MODELS (coma-separado) anuncia varios modelos en /api/tags, para
+# probar el listado del selector sin tocar el modo de un solo modelo que ya
+# usan las demas pruebas.
+_MODELS_ENV = os.environ.get('FAKE_OLLAMA_MODELS')
+MODELS = [m for m in _MODELS_ENV.split(',') if m] if _MODELS_ENV else [MODEL]
 CHUNKS = ['Hola', ', ', 'mundo']
 
 
@@ -41,7 +46,7 @@ class Manejador(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.split('?')[0] != '/api/tags':
             return self._json(404, {'error': 'no encontrado'})
-        modelos = [] if MODE == 'no_model' else [{'name': MODEL}]
+        modelos = [] if MODE == 'no_model' else [{'name': m} for m in MODELS]
         self._json(200, {'models': modelos})
 
     def do_POST(self):
