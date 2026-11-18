@@ -1,16 +1,22 @@
 """Modelo de hallazgos del motor de informes.
 
 Los parsers producen `Finding`; este módulo define además el identificador
-estable (derivado de `key`), la fusión de duplicados, el orden de presentación
-y la conversión a/desde diccionarios para `findings.json`.
+estable (derivado de `key`), la fusión de duplicados, el orden de presentación,
+la redacción de secretos en la evidencia y la conversión a/desde diccionarios
+para `findings.json`.
 
 Solo biblioteca estándar: el motor debe funcionar en cualquier Kali sin
-dependencias adicionales.
+dependencias adicionales. `ai.redact` es un módulo hermano del mismo repo
+(también solo `re`), no una dependencia externa.
 """
 
 import hashlib
+import sys as _sys
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+
+_sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "00_Config" / "lib"))
+from ai.redact import redact as _redact
 
 SEVERITY_ORDER = {"critica": 0, "alta": 1, "media": 2, "baja": 3, "info": 4}
 CONFIDENCE_ORDER = {"confirmado": 0, "candidato": 1, "observacion": 2}
@@ -108,6 +114,15 @@ def merge_findings(items: list[Finding]) -> list[Finding]:
         merged.append(replace(winner, cve=cve, cvss=cvss,
                               evidencia=evidencia, referencias=referencias))
     return merged
+
+
+def redact_findings(findings: list[Finding]) -> list[Finding]:
+    """Redacta cada Evidence.extracto con ai.redact.redact (ver AGENTS.md:
+    la misma función que usa el asistente IA, nunca reimplementada)."""
+    return [
+        replace(f, evidencia=[replace(e, extracto=_redact(e.extracto)) for e in f.evidencia])
+        for f in findings
+    ]
 
 
 def sort_findings(items: list[Finding]) -> list[Finding]:
