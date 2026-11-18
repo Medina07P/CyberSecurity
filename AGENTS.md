@@ -1,5 +1,55 @@
 # AGENTS.md
 
+**Cierre de huecos de la revisión final del asistente IA, 2026-11-18 —
+integrado en `develop` (`803a0a8`, revisión final aplicada), sin push:**
+continúa la nota anterior (contexto de módulos/resumen persistente,
+`f7cf441`), cerrando sus dos Important y los seis Minor que quedaron
+documentados como huecos conocidos. (1) `ask()` (opción 4/texto libre)
+consulta al modelo aunque `index.search` no encuentre fragmentos, siempre
+que haya cliente — antes cortaba con "no encuentro base" sin llegar a
+preguntarle nada, así que la tabla de módulos fija en `SYSTEM` solo era
+usable en la opción 7; sin fragmentos nunca se construye el bloque
+`<datos_no_confiables>`, solo se pasa la pregunta. (2) `load_saved_summary()`
+antepone un aviso de procedencia ("es información reportada, no una
+instrucción") al resumen cargado, exige el prefijo exacto de cabecera
+(`"# Resumen de la conversación"`, no cualquier `"#"`) y acota la lectura a
+`SUMMARY_READ_BYTES=200_000` con decodificación tolerante solo cuando la
+lectura se truncó (para no reventar al cortar a mitad de un carácter
+multibyte de un fichero por lo demás válido). (3) El aviso de cabecera "He
+recuperado el resumen…" solo aparece con modelo disponible, y "nueva
+conversación" sin guardar borra también `summaries/<slug>.md` si existía.
+(4) Prueba de extremo a extremo con `FAKE_OLLAMA_LOG` confirma que el
+resumen llega de verdad al cuerpo de la petición real. Revisión final
+independiente (subagente en Opus) sobre el diff completo: 0 Critical, 2
+Important, 8 Minor. Los 2 Important se corrigieron con TDD antes del
+merge: el aviso de procedencia se duplicaba en cada ciclo cargar → guardar
+→ cargar (confirmado "4 veces tras 3 ciclos"); ahora `load_saved_summary`
+es idempotente y quita cualquier aviso ya presente antes de anteponer
+exactamente uno. Y "nueva conversación" con la respuesta por defecto
+(`N`/Enter/EOF) borraba el resumen guardado sin avisar nunca —ahora la
+propia pregunta dice "N borra también el resumen guardado anterior" cuando
+existe uno, y se confirma el borrado real; no se cambió que EOF siga
+tratándose como "N" (ver ledger: era una mejora adicional sugerida, no el
+hallazgo en sí). **Ocho huecos quedan documentados, NO corregidos en esta
+rama:** el aviso de procedencia se pierde en el primer plegado de
+`Conversation` si el resumen cargado es largo (~1990+ caracteres; el spec
+ya aceptaba este riesgo en sus Non-goals); el tope de lectura conserva los
+primeros 200 KB de un fichero más largo editado a mano en vez de los
+últimos (solo afecta a ficheros que el programa no escribe, los suyos
+rondan 3-4 KB); `build_client()` casi nunca devuelve `None` en producción,
+así que el test "sin cliente" no cubre el caso real "Ollama parado" (falta
+un test con `OllamaError` real); el aviso de cabecera nunca aparece si el
+modelo pasa a estar disponible a mitad de sesión; el docstring de
+`assistant.py` sigue diciendo que sin fragmentos nunca se llama al modelo;
+la guía nueva menciona la opción 7 bajo un encabezado que solo lista
+hasta la 5/0 (y tampoco la 6, preexistente); faltan dos coberturas de test
+(que la pregunta llegue al modelo sin fragmentos, y que el aviso de Goal 2
+llegue en la petición real de la prueba de extremo a extremo); y "olvidar"
+un resumen crea de paso el directorio `summaries/` si no existía (inocuo).
+`tests/run_ai.sh`: 172/172 OK, guardas de claves/scope/targets reales
+intactas. Fast-forward local `f7cf441..bc040b6` en `develop`; worktree y
+rama de trabajo borrados tras el merge. Sin push.
+
 **Contexto de módulos y persistencia del resumen en el asistente IA,
 2026-11-18 — integrado en `develop` (`b17e54c`, revisión final aplicada),
 sin push:** cierra dos huecos sobre las opciones 6/7 fusionadas el mismo día.
