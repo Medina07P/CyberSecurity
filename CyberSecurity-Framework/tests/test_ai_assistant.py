@@ -425,6 +425,13 @@ class LoadSavedSummaryTests(unittest.TestCase):
         out = asst.load_saved_summary(self.data, "10.0.0.5")
         self.assertIsNotNone(out)
 
+    def test_truncation_keeps_the_end_of_the_file_not_the_start(self):
+        marcador = "MARCADOR_FINAL_XYZ"
+        cuerpo = ("a" * (asst.SUMMARY_READ_BYTES + 5000)) + marcador
+        self._write_summary("10.0.0.5", cuerpo)
+        out = asst.load_saved_summary(self.data, "10.0.0.5")
+        self.assertIn(marcador, out)
+
     def test_aviso_does_not_accumulate_across_load_save_cycles(self):
         # Simula lo que hace menu.py: el texto cargado (ya con aviso) se
         # vuelve a guardar bajo la misma cabecera real cuando el usuario
