@@ -52,7 +52,7 @@ declare -ga DEPENDENCIES_ORDER=(
 dependencies_binary_ok() {
     local binario="$1"
     if [[ "$binario" == 'nmap-vulners' ]]; then
-        [[ -f "${NMAP_VULNERS_PATH:-/usr/share/nmap/scripts/nmap-vulners.nse}" ]]
+        [[ -f "${NMAP_VULNERS_PATH:-/usr/share/nmap/scripts/vulners.nse}" ]]
         return $?
     fi
     command -v "$binario" >/dev/null 2>&1
