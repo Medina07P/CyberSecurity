@@ -288,9 +288,16 @@ def run(stdin, stdout, assistant_factory):
     estando a la espera de una opción (en ``readline``) sale con código 0.
     """
     assistant = assistant_factory()
+    primera_vuelta = True
     while True:
         try:
             status = _model_status(assistant)
+            if primera_vuelta:
+                if getattr(assistant, "resumen_recuperado", False):
+                    stdout.write(
+                        "He recuperado el resumen de tu conversación anterior "
+                        "sobre «%s».\n" % assistant.target)
+                primera_vuelta = False
             _header(stdout, assistant, status)
             try:
                 linea = stdin.readline()

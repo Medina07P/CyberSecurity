@@ -44,7 +44,7 @@ sys.path.insert(0, str(_REAL_FW / "00_Config" / "lib"))
 try:
     from ai import config, hardware, menu, sources          # noqa: E402
     from ai import index as index_mod                        # noqa: E402
-    from ai.assistant import Assistant                        # noqa: E402
+    from ai.assistant import Assistant, load_saved_summary     # noqa: E402
     from ai.context import Conversation                        # noqa: E402
     from ai.index import Index                                  # noqa: E402
     from ai.ollama_client import OllamaClient, OllamaError      # noqa: E402
@@ -125,6 +125,11 @@ def make_assistant(fw, cfg, idx, target, client):
                         literal_turns=cfg["turnos_literales"])
     asis = Assistant(fw, client, idx, conv, target, top_k=cfg["top_k"])
     asis.data_dir = str(data_dir())
+    if target:
+        resumen = load_saved_summary(asis.data_dir, sources.slug(target))
+        if resumen:
+            conv.summary = resumen
+            asis.resumen_recuperado = True
     return asis
 
 
