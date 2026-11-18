@@ -24,6 +24,19 @@ eq "el código usa vulners.nse como ruta por defecto" "$?" "0"
 grep -q 'nmap-vulners\.nse' "$FW/00_Config/lib/dependencies.bash"
 eq "el código ya no menciona nmap-vulners.nse" "$?" "1"
 
+echo "=== dependencies_extra_missing ==="
+# NMAP_VULNERS_PATH se fija siempre: la ruta por defecto puede existir de
+# verdad en la máquina (nmap ya trae vulners.nse en algunos paquetes).
+out=$(NMAP_VULNERS_PATH="$TMPBIN/no-existe.nse" bash -c "export PATH='$TMPBIN'; export NMAP_VULNERS_PATH='$TMPBIN/no-existe.nse'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_extra_missing")
+eq "ollama aparece (ausente en el PATH cerrado)" "$(printf '%s\n' "$out" | grep -c -F ollama)" "1"
+eq "avml aparece (ausente en el PATH cerrado)" "$(printf '%s\n' "$out" | grep -c -F avml)" "1"
+eq "nmap-vulners aparece (ausente en el PATH cerrado)" "$(printf '%s\n' "$out" | grep -c -F nmap-vulners)" "1"
+eq "exactamente 3 líneas" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "3"
+touch "$TMPBIN/ollama"; chmod +x "$TMPBIN/ollama"
+out=$(NMAP_VULNERS_PATH="$TMPBIN/no-existe.nse" bash -c "export PATH='$TMPBIN'; export NMAP_VULNERS_PATH='$TMPBIN/no-existe.nse'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_extra_missing")
+eq "ollama ya no aparece si está en PATH" "$(printf '%s\n' "$out" | grep -c -F ollama)" "0"
+rm -f "$TMPBIN/ollama"
+
 echo "=== dependencies_status ==="
 out=$(bash -c "export PATH='$TMPBIN'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_status")
 printf '%s\n' "$out" | grep -qF '03_Scanners:' && ok "incluye el grupo 03_Scanners" || ko "incluye el grupo 03_Scanners"
