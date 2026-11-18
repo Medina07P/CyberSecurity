@@ -169,7 +169,9 @@ confiar en que lo escribió bien.
   reimplementar el parseo. Si no hay clave guardada, pregunta una vez,
   explícitamente opcional, si quiere darla para evitar el límite de 60
   peticiones/hora sin autenticar; si la escribe, se persiste con el mismo
-  comando que ya existe (`api_keys.py poner github GITHUB_API <valor>`),
+  comando que ya existe (`api_keys.py poner theharvester github.key --stdin`
+  — el campo real bajo la herramienta `theharvester`, no `poner github
+  GITHUB_API <valor>` como decía una redacción anterior de este párrafo),
   no con un almacenamiento propio — nunca se imprime el valor, igual que ya
   garantiza `api_keys.py` para todas las claves. Un Enter la omite sin más
   preguntas y la llamada sigue anónima.
