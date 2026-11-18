@@ -33,10 +33,21 @@ def _read(path: Path) -> dict:
 
 
 def load(path: Path | None = None) -> dict:
-    """Defaults sobrescritos por el fichero; tolera fichero ausente o inválido."""
+    """Defaults sobrescritos por el fichero; tolera fichero ausente, inválido o
+    con un valor mal tipado (se ignora esa clave, nunca revienta más adelante
+    con un TypeError críptico al construir el asistente)."""
     cfg = dict(DEFAULTS)
-    cfg.update({k: v for k, v in _read(Path(path) if path else default_path()).items()
-                if k in DEFAULTS})
+    for k, v in _read(Path(path) if path else default_path()).items():
+        if k not in DEFAULTS:
+            continue
+        default = DEFAULTS[k]
+        # bool es subclase de int: no aceptar 0/1 donde se espera un
+        # interruptor, ni un booleano donde se espera un número.
+        if isinstance(default, bool):
+            if isinstance(v, bool):
+                cfg[k] = v
+        elif isinstance(v, type(default)) and not isinstance(v, bool):
+            cfg[k] = v
     return cfg
 
 

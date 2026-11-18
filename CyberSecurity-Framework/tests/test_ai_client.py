@@ -117,6 +117,12 @@ class ClientTests(unittest.TestCase):
             OllamaClient(s.url, "fake:1b").chat([{"role": "user", "content": "x"}])
         self.assertNotIn("Traceback", cm.exception.user_message)
 
+    def test_malformed_message_field_raises_ollama_error(self):
+        s = self.serve("bad_message")
+        with self.assertRaises(OllamaError) as cm:
+            OllamaClient(s.url, "fake:1b").chat([{"role": "user", "content": "x"}])
+        self.assertNotIn("Traceback", cm.exception.user_message)
+
     def test_unload_sends_keep_alive_zero(self):
         import json
         s = self.serve()

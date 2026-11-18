@@ -45,20 +45,27 @@ def _recommendation():
 
 
 def _model_status(assistant):
-    """(disponible, nombre_modelo, marca, lineas_de_lo_que_falta)."""
+    """(disponible, nombre_modelo, marca, lineas_de_lo_que_falta).
+
+    Sondeo en vivo (``is_up``/``has_model`` son una petición local rápida):
+    si el usuario arranca Ollama a mitad de sesión sin cerrar el menú, la
+    cabecera lo refleja en la siguiente vuelta en vez de quedar pegada al
+    estado que había al abrir el asistente.
+    """
     client = assistant.client
-    if client is None:
-        rec = _recommendation()
-        faltan = [
-            "No hay un modelo de lenguaje disponible; respondo buscando en la "
-            "documentación y los resultados y citando su origen.",
-            INSTALA_OLLAMA,
-            "Modelo recomendado para esta máquina: %s (%s). %s" % (
-                rec.model, rec.size_label, rec.reason),
-            "Descárgalo con:  %s" % rec.pull_command,
-        ]
-        return False, rec.model, "✗", faltan
-    return True, client.model, "✔", []
+    if client is not None and client.is_up() and client.has_model():
+        return True, client.model, "✔", []
+    rec = _recommendation()
+    modelo = client.model if client is not None else rec.model
+    faltan = [
+        "No hay un modelo de lenguaje disponible; respondo buscando en la "
+        "documentación y los resultados y citando su origen.",
+        INSTALA_OLLAMA,
+        "Modelo recomendado para esta máquina: %s (%s). %s" % (
+            rec.model, rec.size_label, rec.reason),
+        "Descárgalo con:  %s" % rec.pull_command,
+    ]
+    return False, modelo, "✗", faltan
 
 
 def _writer(stdout):
@@ -197,9 +204,9 @@ def run(stdin, stdout, assistant_factory):
     estando a la espera de una opción (en ``readline``) sale con código 0.
     """
     assistant = assistant_factory()
-    status = _model_status(assistant)
     while True:
         try:
+            status = _model_status(assistant)
             _header(stdout, assistant, status)
             try:
                 linea = stdin.readline()
