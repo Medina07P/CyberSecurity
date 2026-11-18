@@ -476,5 +476,29 @@ class DocumentationTests(unittest.TestCase):
             self.assertIn("Asistente", (repo / name).read_text(encoding="utf-8"), name)
 
 
+NOTICE_MARK = "He recuperado el resumen"
+
+
+class SummaryRecoveryTests(CliBase):
+    # self.data es la ruta que _env() ya expone como AI_DATA_DIR; se escribe
+    # directamente ahí, sin leer variables de entorno.
+
+    def test_menu_shows_recovered_summary_notice_once(self):
+        resumen_dir = self.data / "summaries"
+        resumen_dir.mkdir(parents=True)
+        (resumen_dir / ("%s.md" % SLUG)).write_text(
+            "# Resumen de la conversación — objetivo: %s\n\n"
+            "Hablamos de puertos abiertos en el objetivo.\n" % TARGET,
+            encoding="utf-8")
+        p = self.run_cli([], stdin_text="   \n0\n", server="ok")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(p.stdout.count(NOTICE_MARK), 1)
+
+    def test_menu_no_notice_without_saved_summary(self):
+        p = self.run_cli([], stdin_text="   \n0\n", server="ok")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn(NOTICE_MARK, p.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
