@@ -56,7 +56,10 @@ SYSTEM_LIBRE = (
 
 _MODULOS_INTRO = ("Estos son los módulos del framework y qué hace cada uno "
                   "(información fija del propio framework, no un dato del "
-                  "objetivo de la persona):\n")
+                  "objetivo de la persona). Puedes usar esta tabla "
+                  "libremente para responder sobre qué hace un módulo o qué "
+                  "tecla usar, sin necesitar citar una fuente [ruta:líneas] "
+                  "ni tratarla como un fragmento sin respaldo:\n")
 
 SYSTEM = SYSTEM + "\n" + _MODULOS_INTRO + modules.modules_context_block()
 SYSTEM_LIBRE = SYSTEM_LIBRE + "\n" + _MODULOS_INTRO + modules.modules_context_block()
