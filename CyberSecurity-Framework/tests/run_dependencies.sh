@@ -137,6 +137,103 @@ out=$(PATH="$STUBDIR:$PATH" NMAP_VULNERS_PATH="$NVP" bash -c "source '$FW/00_Con
 eq "ya presente: no vuelve a clonar" "$(printf '%s\n' "$out" | grep -c -F clone)" "0"
 rm -rf "$STUBDIR"
 
+echo "=== dependencies_github_token ==="
+KEYSFILE="$(mktemp)"
+out=$(KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_github_token")
+eq "sin registro: cadena vacía" "$out" ""
+printf 'version: 1\ntheharvester:\n  github:\n    key: tok-de-prueba\n' > "$KEYSFILE"
+out=$(KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_github_token")
+eq "registro con clave: la devuelve" "$out" "tok-de-prueba"
+rm -f "$KEYSFILE"
+
+echo "=== dependencies_offer_github_token ==="
+KEYSDIR="$(mktemp -d)"
+KEYSFILE="$KEYSDIR/registro.yaml"
+printf '\n' | KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_offer_github_token"
+out=$(KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_github_token")
+eq "Enter vacío: no guarda nada" "$out" ""
+printf 'tok-nuevo\n' | KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_offer_github_token"
+out=$(KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_github_token")
+eq "valor escrito: queda guardado" "$out" "tok-nuevo"
+printf 'otro\n' | KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_offer_github_token"
+out=$(KEYS_FILE="$KEYSFILE" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_github_token")
+eq "ya había token: no vuelve a preguntar/sobrescribir" "$out" "tok-nuevo"
+rm -rf "$KEYSDIR"
+
+echo "=== dependencies_avml_release / dependencies_install_avml ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+export STUBDIR CALLS
+cat > "$STUBDIR/sudo" <<'EOF'
+#!/bin/sh
+echo "sudo $*" >> "$CALLS"
+if [ "$1" = "install" ]; then
+    prev2=""; prev1=""
+    for a in "$@"; do prev2="$prev1"; prev1="$a"; done
+    if [ "$prev1" = "/usr/local/bin/avml" ]; then
+        cp "$prev2" "$STUBDIR/avml" 2>/dev/null
+        chmod +x "$STUBDIR/avml" 2>/dev/null
+    fi
+    exit 0
+fi
+exec "$@"
+EOF
+chmod +x "$STUBDIR/sudo"
+cat > "$STUBDIR/curl" <<'EOF'
+#!/bin/sh
+echo "curl $*" >> "$CALLS"
+out=""; prev=""
+for a in "$@"; do
+    [ "$prev" = "-o" ] && out="$a"
+    prev="$a"
+done
+last=""
+for a in "$@"; do last="$a"; done
+case "$last" in
+    *releases/latest*)
+        cat "${CURL_JSON_FILE:-/dev/null}"
+        exit 0
+        ;;
+esac
+if [ -n "$out" ]; then
+    cat > "$out" <<'INNER'
+#!/bin/sh
+case "$1" in
+  --help) printf 'avml 0.0.0-test\nUSAGE:\n    avml <FILENAME>\n' ;;
+esac
+exit 0
+INNER
+    chmod +x "$out"
+    exit 0
+fi
+exit 1
+EOF
+chmod +x "$STUBDIR/curl"
+
+cat > "$STUBDIR/fixture.json" <<'JSON'
+{"tag_name": "v0.99.0", "assets": [{"name": "avml", "browser_download_url": "https://example.invalid/avml"}]}
+JSON
+out=$(CURL_JSON_FILE="$STUBDIR/fixture.json" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_avml_release")
+eq "tag y URL del asset avml" "$out" "v0.99.0|https://example.invalid/avml"
+
+cat > "$STUBDIR/sin-asset.json" <<'JSON'
+{"tag_name": "v0.99.0", "assets": [{"name": "avml-arm64", "browser_download_url": "https://example.invalid/arm"}]}
+JSON
+CURL_JSON_FILE="$STUBDIR/sin-asset.json" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_avml_release" >/dev/null 2>&1
+eq "sin asset avml: rc 1" "$?" "1"
+
+rm -f "$CALLS"
+printf 'no\n' | CURL_JSON_FILE="$STUBDIR/fixture.json" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_avml" >/dev/null 2>&1
+eq "confirmación negada: rc 1" "$?" "1"
+[[ -s "$CALLS" ]] && ko "confirmación negada: no debía invocar curl/sudo" || ok "confirmación negada: no invocó nada"
+
+printf 'AVML_SI\n\n' | CURL_JSON_FILE="$STUBDIR/fixture.json" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_avml" >/dev/null 2>&1
+eq "confirmado: instala y verifica, rc 0" "$?" "0"
+grep -q -F 'releases/latest' "$CALLS" && ok "consultó la API de releases" || ko "consultó la API de releases"
+grep -q -F '/usr/local/bin/avml' "$CALLS" && ok "instaló en /usr/local/bin/avml" || ko "instaló en /usr/local/bin/avml"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
 echo "=== dependencies_resolve_selection ==="
 FALTAN3=(paquete-a paquete-b paquete-c)
 out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_resolve_selection todas '${FALTAN3[0]}' '${FALTAN3[1]}' '${FALTAN3[2]}'")
