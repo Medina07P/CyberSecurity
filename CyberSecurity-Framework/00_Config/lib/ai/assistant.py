@@ -4,7 +4,9 @@ Opciones del menú guiado:
 
 - ``ask`` (opción 4): pregunta libre. Recupera fragmentos de documentación y
   resultados (siempre hay documentación, incluso sin objetivo) y responde
-  citando fuentes. Sin fragmentos no se llama al modelo.
+  citando fuentes. Sin fragmentos, si hay cliente, igual se consulta al
+  modelo (sin bloque de datos citados); solo sin cliente cae al respaldo
+  determinista de «no encuentro base».
 - ``understand_results`` (opción 1): explica ``findings.json`` del objetivo.
 - ``explain_report`` (opción 2): explica el informe generado; si falta o está
   obsoleto, remite a la tecla R.

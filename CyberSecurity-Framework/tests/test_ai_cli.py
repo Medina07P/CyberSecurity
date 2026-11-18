@@ -485,6 +485,17 @@ class DocumentationTests(unittest.TestCase):
         for needle in ("recupera", "módulos del framework"):
             self.assertIn(needle, text)
 
+    def test_documentation_heading_for_module_table_lists_option_7(self):
+        repo = FW.parent
+        guide = repo / "docs" / "ASISTENTE-IA-2026-11-17.md"
+        text = guide.read_text(encoding="utf-8")
+        idx = text.index("módulos del framework")
+        section = text[:idx]
+        encabezado = [
+            linea for linea in section.splitlines() if linea.startswith("## ")
+        ][-1]
+        self.assertIn("7", encabezado)
+
 
 NOTICE_MARK = "He recuperado el resumen"
 
