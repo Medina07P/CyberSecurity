@@ -112,14 +112,25 @@ class AssistantTests(unittest.TestCase):
                 self.assertRegex(s, r".+:\d+-\d+$")
             self.assertTrue(any("nmap_%s" % SLUG in s for s in ans.sources))
 
-    def test_no_chunks_says_no_basis_without_calling_model(self):
+    def test_no_chunks_without_client_says_no_basis(self):
         with tempfile.TemporaryDirectory() as d:
-            client = FakeClient()
-            a, _ = make_assistant(Path(d), client=client)
+            a, _ = make_assistant(Path(d), client=None)
             ans = a.ask("zzqqxx plughh wumpus")
-            self.assertEqual(client.calls, [])
             self.assertFalse(ans.used_model)
             self.assertIn("base", ans.text.lower())
+
+    def test_no_chunks_with_client_still_calls_model(self):
+        with tempfile.TemporaryDirectory() as d:
+            client = FakeClient(reply="El módulo 11 genera los informes con la tecla R.")
+            a, _ = make_assistant(Path(d), client=client)
+            ans = a.ask("zzqqxx plughh wumpus")
+            self.assertTrue(client.calls, "el modelo debía ser llamado igualmente")
+            self.assertTrue(ans.used_model)
+            # Sin fragmentos, no debe haber bloque de datos no confiables:
+            # prompts.OPEN aparece siempre en SYSTEM (describe la convención),
+            # así que lo que delata un bloque real es el aviso de
+            # build_messages que solo se añade cuando chunks no está vacío.
+            self.assertNotIn("Fragmentos disponibles", all_text(client))
 
     def test_greeting_does_not_search_or_call_model(self):
         with tempfile.TemporaryDirectory() as d:
