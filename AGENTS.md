@@ -1,5 +1,59 @@
 # AGENTS.md
 
+**Cierre de los 8 Minor diferidos del asistente IA, 2026-11-18 — integrado
+en `develop` (`b047d9f`, fast-forward local desde `e5793bd`), sin push:**
+los 8 Minor documentados en la nota anterior (y en
+`docs/RETOMAR-ASISTENTE-IA-MINORS-2026-11-18.md`) se cerraron con
+`subagent-driven-development` (7 tareas, cada una con implementador +
+revisor independientes) sobre un worktree en `.worktrees/`, rama
+`feat/minors-asistente-ia`. (1) `context._cap()` trata el aviso de
+procedencia (ahora `context.AVISO_RESUMEN_CARGADO`, movido desde
+`assistant.py` para que `_cap` lo conozca sin import circular;
+`assistant._AVISO_RESUMEN_CARGADO` queda como alias) como prefijo
+protegido: lo separa antes de recortar el resto y lo vuelve a anteponer
+sin que cuente contra `SUMMARY_CAP`, así que ya no se pierde en el primer
+plegado de un resumen largo (~1990+ caracteres). (2)
+`load_saved_summary()` lee con `seek` los últimos `SUMMARY_READ_BYTES` de
+un fichero más largo que ese tope, en vez de los primeros — gap aceptado
+documentado: en ese caso (solo ficheros editados a mano, >200 KB) la línea
+de cabecera puede perderse, porque solo se lee la cola. (3) Nuevo test
+sobre la `ErrorClient` ya existente confirma que `ask()` sin fragmentos
+intenta igual al modelo real y cae al respaldo determinista si
+`OllamaError`. (4) `menu.run()` sustituye `primera_vuelta` por una bandera
+dedicada (`aviso_resumen_mostrado`) que se consulta cada vuelta, no solo
+la primera: el aviso de "resumen recuperado" ya aparece aunque Ollama
+llegue a mitad de sesión. (5) `menu._summaries_dir(assistant, create=True)`
+gana el parámetro `create`; las comprobaciones de solo lectura
+(`_saved_summary_path`, usada por "olvidar" y por el aviso de "nueva
+conversación") pasan `create=False` y ya no crean `summaries/` de paso;
+guardar sigue creándolo. (6) Docstring de `assistant.py` y encabezado de
+`docs/ASISTENTE-IA-2026-11-17.md` actualizados a la opción 7. (7) Dos
+coberturas de test reforzadas: la pregunta llega de verdad al modelo sin
+fragmentos, y un nuevo e2e por la opción 4 confirma que tanto un marcador
+del resumen como el aviso de procedencia real llegan al cuerpo de la
+petición HTTP capturada. Revisión final independiente (subagente en Opus)
+sobre el diff completo (7 commits): 0 Critical, 0 Important, 5 Minor.
+Triaje: dos Minor eran reales y baratos, corregidos en una sola ola de
+arreglos antes del merge — `_nueva()` (opción 5) no limpiaba
+`assistant.resumen_recuperado` en la ruta de guardar ni en la de "nada que
+olvidar", así que el aviso de resumen recuperado podía reaparecer de forma
+engañosa si Ollama llegaba disponible más tarde en la misma sesión tras un
+"nueva conversación" (ahora se limpia sin condición al salir de `_nueva`);
+y la tabla de opciones de la guía no listaba las filas 6/7 aunque el
+encabezado ya las mencionaba (añadidas, con la misma redacción que
+`menu.py::OPCIONES`). Los otros tres Minor quedan documentados, sin
+corregir: la rama `summarizer` de `Conversation._fold` seguiría perdiendo
+el aviso si algún día se conecta un resumidor por callback (confirmado
+código muerto hoy — `make_assistant()` nunca lo conecta); el caso límite
+exacto (fichero de tamaño == `SUMMARY_READ_BYTES`) no tiene test dedicado
+aunque se verificó correcto por trazado; y un comentario en el test nuevo
+de la opción 4 exagera cuánto difieren internamente las opciones 4 y 7
+(ambas usan `Conversation.messages()`). `tests/run_ai.sh`: 183/183 OK
+(subía de 172 a 181 por las 7 tareas, a 183 tras la ola de arreglos),
+guardas de claves/scope/targets reales intactas. Fast-forward local
+`e5793bd..b047d9f` en `develop`; worktree y rama de trabajo borrados tras
+el merge. Sin push.
+
 **Cierre de huecos de la revisión final del asistente IA, 2026-11-18 —
 integrado en `develop` (`803a0a8`, revisión final aplicada), sin push:**
 continúa la nota anterior (contexto de módulos/resumen persistente,
