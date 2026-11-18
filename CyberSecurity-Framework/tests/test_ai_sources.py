@@ -110,6 +110,16 @@ class DiscoverTests(Base):
         d = self.docs()
         self.assertEqual(list(d), ["../scans/nmap/nmap_h.txt"])
 
+    def test_real_bruteforce_output_filenames_denied(self):
+        # Nombres reales que escriben los leaves (no coinciden con
+        # BRUTEFORCE_TOOL_DIRS por directorio ni por prefijo exacto de stem).
+        w(self.repo / "scans/web/bruteforce_192.0.2.10.tsv", "wrong-1\tOK")
+        w(self.repo / "scans/network/ssh_bruteforce_192.0.2.10.txt", "pass found")
+        w(self.repo / "scans/network/ftp_bruteforce_192.0.2.10.txt", "pass found")
+        w(self.repo / "scans/nmap/nmap_h.txt", "ok")
+        d = self.docs()
+        self.assertEqual(list(d), ["../scans/nmap/nmap_h.txt"])
+
     def test_redaction_applied_in_discover_even_across_cut(self):
         w(self.repo / "scans/nmap/nmap_h.txt", "password=hunter2\n")
         d = self.docs()
@@ -183,6 +193,10 @@ class RedactExtraTests(unittest.TestCase):
     def test_port_flags_intact(self):
         t = "nmap -p 80,443 -p- -p 1-1024 -p T:80 -sV host"
         self.assertEqual(redact.redact(t), t)
+
+    def test_numeric_password_after_dash_p_redacted(self):
+        self.chk("hydra -l admin -p 123456 ssh://10.0.0.1",
+                 ["123456"], ["ssh://10.0.0.1"])
 
     def test_cookies_and_auth_schemes(self):
         self.chk("Cookie: session=abcDEF123456; x=y", ["abcDEF123456", "x=y"])

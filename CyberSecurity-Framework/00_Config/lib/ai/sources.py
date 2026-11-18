@@ -102,7 +102,12 @@ def _brute_path(parts) -> bool:
         return True
     low = fn.lower()
     stem = low.split(".")[0]
-    return any(stem == t or stem.startswith(t + "_") for t in BRUTEFORCE_TOOL_DIRS)
+    if any(stem == t or stem.startswith(t + "_") for t in BRUTEFORCE_TOOL_DIRS):
+        return True
+    # Los nombres de salida reales (bruteforce_<slug>.tsv, ssh_bruteforce_...,
+    # ftp_bruteforce_...) no están en BRUTEFORCE_TOOL_DIRS; el stem solo puede
+    # contener los marcadores (no el directorio, ya cubierto arriba).
+    return any(m in stem for m in BRUTEFORCE_MARKERS)
 
 
 def _read(path: str, limit: int) -> Optional[str]:
