@@ -326,6 +326,7 @@ out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Conf
 eq "4 filas" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "4"
 printf '%s\n' "$out" | grep -q -F 'qwen|' && ok "incluye qwen" || ko "incluye qwen"
 printf '%s\n' "$out" | grep -qi 'sin censura' && ok "DeepHat avisa sin censura" || ko "DeepHat avisa sin censura"
+printf '%s\n' "$out" | grep -qi 'sin GPU.*más pequeño\|más pequeño.*sin GPU' && ok "general avisa de CPU sin GPU y modelo más pequeño" || ko "general avisa de CPU sin GPU y modelo más pequeño"
 
 out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_model_sizes qwen")
 eq "qwen tiene 6 tamaños" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "6"

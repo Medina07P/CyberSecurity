@@ -58,6 +58,14 @@ class ClientTests(unittest.TestCase):
                                             stream_to=got.append)
         self.assertEqual(got, ["Hola", ", ", "mundo"])
 
+    def test_default_timeout_allows_slow_cpu_only_hardware(self):
+        # Medido el 2026-11-18 contra qwen2.5:3b real en CPU sin GPU: un prompt
+        # realista con 4 fragmentos tardó ~96.7s (~3 tok/s en generación). 120s
+        # se queda corto para una respuesta algo más larga; 300s da margen.
+        s = self.serve()
+        c = OllamaClient(s.url, "fake:1b")
+        self.assertEqual(c.timeout, 300)
+
     def test_remote_endpoint_rejected_without_flag(self):
         with self.assertRaises(OllamaError):
             OllamaClient("http://192.0.2.1:11434", "m")

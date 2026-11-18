@@ -133,6 +133,12 @@ configuración; `AI_FRAMEWORK_ROOT` es solo para pruebas.
   comprueba con `ollama list`.
 - **Responde despacio:** en CPU un modelo de 3B puede tardar decenas de segundos por
   respuesta y uno de 7B mucho más. Prueba un modelo más pequeño o respuestas más cortas.
+  Medido el 2026-11-18 contra `qwen2.5:3b` real en Kali sin GPU (4 núcleos, bajo presión
+  de memoria): ~3 tokens/s de generación, ~96.7s para una respuesta de 283 tokens con 4
+  fragmentos de contexto. El timeout del cliente (`00_Config/lib/ai/ollama_client.py`)
+  es de 300s por eso; si aun así corta, baja a un modelo más pequeño que 3B
+  (tecla `D` → opción 2 → catálogo → `llama3.2:1b` o `qwen2.5-coder:0.5b`/`1.5b`) en vez
+  de alargar la espera más.
 - **No hay objetivo:** pulsa `T` en el gestor y fija uno.
 - **El informe está desfasado o falta:** pulsa `R` para regenerarlo y repite.
 
@@ -142,8 +148,10 @@ configuración; `AI_FRAMEWORK_ROOT` es solo para pruebas.
 - Los borradores llevan un aviso de revisión humana; no los entregues sin revisar.
 - El asistente no ejecuta herramientas ni comandos por ti, ni siquiera si se lo pides.
 - No sustituye al motor de informes (`R`) ni valida que un hallazgo sea real.
-- No se ha validado de forma operativa con un modelo real de Ollama; las pruebas usan un
-  Ollama simulado.
+- Las pruebas automatizadas siguen usando un Ollama simulado. El 2026-11-18 se midió
+  latencia real contra `qwen2.5:3b` en Kali sin GPU (ver «Responde despacio» arriba),
+  pero eso no es una validación operativa completa del asistente ni de la calidad de
+  sus respuestas sobre datos reales.
 
 ## Pruebas
 

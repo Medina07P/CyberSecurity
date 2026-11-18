@@ -28,7 +28,7 @@ declare -gA DEPENDENCIES_MODEL_CATALOG=(
 declare -ga DEPENDENCIES_MODEL_ROW_ORDER=(general qwen foundation deephat)
 
 dependencies_model_rows() {
-    printf 'general|General (según esta máquina)|Modelo generalista recomendado por el asistente de IA según RAM/GPU; sin entrenamiento específico de seguridad.\n'
+    printf 'general|General (según esta máquina)|Modelo generalista recomendado por el asistente de IA según RAM/GPU; sin entrenamiento específico de seguridad. Sin GPU, medido en la práctica: ~3 tokens/s en CPU incluso con el tamaño 3B — sin GPU, prueba un modelo más pequeño (1B/qwen 0.5B-1.5B) antes de pedir respuestas largas.\n'
     printf 'qwen|Qwen2.5-Coder (oficial, recomendado)|Modelo de código de Alibaba, librería oficial de Ollama; benchmarks de seguridad ofensiva lo señalan por encima de los modelos etiquetados de seguridad. Apache-2.0 salvo el tamaño 3B.\n'
     printf 'foundation|Foundation-Sec-8B-Instruct (Cisco)|Especialista real en ciberseguridad: preentrenado con datos de seguridad por Cisco Foundation AI, Apache-2.0. Tamaño fijo ~8B.\n'
     printf 'deephat|DeepHat / WhiteRabbitNeo (comunidad)|Proyecto de investigación en seguridad presentado sin censura a propósito (barreras de seguridad quitadas deliberadamente); no es una subida oficial de una empresa.\n'
