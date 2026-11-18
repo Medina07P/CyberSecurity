@@ -1,5 +1,27 @@
 # AGENTS.md
 
+**Herramientas adicionales en la tecla `D`, 2026-11-17 — implementado en
+`feat/dependencias-herramientas`, sin integrar:** la opción `2` del menú de
+`D` instala/verifica `ollama` (+ catálogo de 4 modelos con guardrail de
+recursos: General, Qwen2.5-Coder oficial recomendado, Foundation-Sec-8B-
+Instruct de Cisco, DeepHat/WhiteRabbitNeo sin censura con aviso), `avml`
+(con token de GitHub opcional) y `nmap-vulners`; cada una con su propia
+confirmación literal (`OLLAMA_SI`/`AVML_SI`/`NMAP_VULNERS_SI`,
+`CONTINUAR_IGUAL` para forzar el guardrail de recursos). `lime` y
+`volatility` (v2) siguen solo informativos, sin cambios — `lime` cruzaría la
+decisión ya tomada en 08_Forensics de nunca cargar un módulo de kernel por
+cuenta propia, y `volatility` (v2) está descontinuado a favor de
+`volatility3`. De paso se corrigió un hallazgo de investigación: la ruta por
+defecto de `nmap-vulners` comprobaba `nmap-vulners.nse`, que no es el nombre
+real del script del proyecto (`vulners.nse`) — con el nombre antiguo la
+detección nunca habría reconocido una instalación hecha por el método
+oficial. Nuevo fichero `00_Config/lib/dependencies_models.bash`; `tests/run_dependencies.sh`
+sube a 86 asserts (dobles de `curl`/`git`/`sudo`/`ollama`, nunca red/sudo
+reales) y `tests/run_smoke.sh` cubre la opción `2` del menú. Diseño en
+`docs/superpowers/specs/2026-11-17-dependencias-herramientas-design.md`
+y plan en `docs/superpowers/plans/2026-11-17-dependencias-herramientas.md`.
+Ninguna instalación real se ejecutó durante el desarrollo; sin merge ni push.
+
 **Asistente IA local, 2026-11-17 — implementado en `feat/asistente-ia-local`,
 NO integrado:** tecla `I` del gestor (`00_Config/lib/ai_menu.bash`), núcleo en
 `00_Config/lib/ai/`, entrada `09_Automation/ai/ai_assistant.py`, guía
