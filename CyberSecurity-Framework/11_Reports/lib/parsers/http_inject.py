@@ -151,7 +151,11 @@ def parse(path: Path, repo_root: Path) -> ParseResult:
         payload = (fila.get("payload") or "").strip()
         codigo = (fila.get("codigo") or "").strip()
         tamano = (fila.get("tamano") or "").strip()
-        extracto = f"{param}={payload} → {codigo} ({tamano}b)"
+        # Nunca "param=payload": si param es un nombre como "password" o
+        # "token", esa forma es justo lo que redact() reconoce como secreto
+        # y tapa el payload entero (evidencia de la inyección), no un dato
+        # sensible real.
+        extracto = f"parámetro «{param}» ← {payload} → {codigo} ({tamano}b)"
 
         findings.append(build(
             rule,

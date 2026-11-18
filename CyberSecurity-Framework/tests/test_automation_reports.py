@@ -610,5 +610,14 @@ class ReportGenerationTests(unittest.TestCase):
                 report_generation(run, 'report', 'example.test', rc)
 
 
+class EngineSourcesTests(unittest.TestCase):
+    """No fixture, no sandbox: a plain assertion on the declared dependency list."""
+
+    def test_includes_ai_redact_now_imported_by_lib_model(self):
+        from automation.reporting import ENGINE_SOURCES
+        self.assertIn('00_Config/lib/ai/__init__.py', ENGINE_SOURCES)
+        self.assertIn('00_Config/lib/ai/redact.py', ENGINE_SOURCES)
+
+
 if __name__ == '__main__':
     unittest.main()
