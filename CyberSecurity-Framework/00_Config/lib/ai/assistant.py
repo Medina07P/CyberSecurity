@@ -188,7 +188,7 @@ def load_saved_summary(data_dir, slug: Optional[str]) -> Optional[str]:
         if not path.is_file() or path.is_symlink():
             return None
         texto = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
     lineas = texto.splitlines()
     if lineas and lineas[0].startswith("#"):

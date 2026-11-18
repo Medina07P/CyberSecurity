@@ -376,6 +376,10 @@ class LoadSavedSummaryTests(unittest.TestCase):
         self._write_summary("otro-objetivo", "Esto es de otro objetivo.\n")
         self.assertIsNone(asst.load_saved_summary(self.data, "10.0.0.5"))
 
+    def test_returns_none_when_file_is_not_valid_utf8(self):
+        (self.summaries / "10.0.0.5.md").write_bytes(b"\xff\xfe\x00\xe9no es utf-8")
+        self.assertIsNone(asst.load_saved_summary(self.data, "10.0.0.5"))
+
     def test_redacts_secret_in_loaded_body(self):
         self._write_summary("10.0.0.5", "La contraseña es password=SuperSecreto123\n")
         out = asst.load_saved_summary(self.data, "10.0.0.5")
