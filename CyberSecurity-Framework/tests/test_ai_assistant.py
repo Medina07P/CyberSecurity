@@ -131,6 +131,8 @@ class AssistantTests(unittest.TestCase):
             # así que lo que delata un bloque real es el aviso de
             # build_messages que solo se añade cuando chunks no está vacío.
             self.assertNotIn("Fragmentos disponibles", all_text(client))
+            # La propia pregunta debe llegar al modelo en el cuerpo real.
+            self.assertIn("zzqqxx plughh wumpus", all_text(client))
 
     def test_no_chunks_with_real_client_error_falls_back_to_no_basis(self):
         with tempfile.TemporaryDirectory() as d:
