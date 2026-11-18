@@ -194,8 +194,12 @@ def load_saved_summary(data_dir, slug: Optional[str]) -> Optional[str]:
         if not path.is_file() or path.is_symlink():
             return None
         with open(path, "rb") as f:
-            datos = f.read(SUMMARY_READ_BYTES)
-        truncado = len(datos) == SUMMARY_READ_BYTES
+            f.seek(0, os.SEEK_END)
+            tamano = f.tell()
+            truncado = tamano > SUMMARY_READ_BYTES
+            f.seek(-SUMMARY_READ_BYTES if truncado else 0,
+                   os.SEEK_END if truncado else os.SEEK_SET)
+            datos = f.read()
         texto = datos.decode("utf-8", errors=("replace" if truncado else "strict"))
     except (OSError, UnicodeDecodeError):
         return None
