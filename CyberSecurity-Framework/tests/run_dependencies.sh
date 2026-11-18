@@ -1,7 +1,9 @@
 #!/bin/bash
-# Pruebas de 00_Config/lib/dependencies.bash — aisladas, sin red ni sudo/apt reales.
+# Pruebas de 00_Config/lib/dependencies.bash y dependencies_models.bash —
+# aisladas, sin red ni sudo/apt reales.
 FW="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$FW/00_Config/lib/dependencies.bash"
+source "$FW/00_Config/lib/dependencies_models.bash"
 pasan=0; fallan=0
 ok()  { echo "  ok   $1"; pasan=$((pasan+1)); }
 ko()  { echo "  FALLO $1"; fallan=$((fallan+1)); }
@@ -256,6 +258,30 @@ out=$(PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash
 eq "ya presente: no vuelve a pedir confirmación ni a invocar curl" "$out" "ollama ya está instalado."
 rm -rf "$STUBDIR"
 unset STUBDIR CALLS
+
+echo "=== dependencies_models ==="
+out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_model_rows")
+eq "4 filas" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "4"
+printf '%s\n' "$out" | grep -q -F 'qwen|' && ok "incluye qwen" || ko "incluye qwen"
+printf '%s\n' "$out" | grep -qi 'sin censura' && ok "DeepHat avisa sin censura" || ko "DeepHat avisa sin censura"
+
+out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_model_sizes qwen")
+eq "qwen tiene 6 tamaños" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "6"
+
+out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_model_lookup qwen 7b")
+eq "lookup qwen:7b" "$out" "4.7|8|qwen2.5-coder:7b"
+
+bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_model_lookup qwen 128b" >/dev/null 2>&1
+eq "tamaño inexistente: rc 1" "$?" "1"
+
+MEMINFO_FALSO="$(mktemp)"; printf 'MemAvailable:  3774320 kB\n' > "$MEMINFO_FALSO"
+out=$(DEPENDENCIES_MEMINFO_PATH="$MEMINFO_FALSO" bash -c "export DEPENDENCIES_MEMINFO_PATH; source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_general_model_size")
+eq "~3,6 GiB libres recomienda 3b" "$out" "3b"
+out=$(DEPENDENCIES_MEMINFO_PATH="$MEMINFO_FALSO" bash -c "export DEPENDENCIES_MEMINFO_PATH; source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_mem_check 3")
+eq "3,6 GiB libres sí alcanza para 3 GiB: rc 0" "$?" "0"
+out=$(DEPENDENCIES_MEMINFO_PATH="$MEMINFO_FALSO" bash -c "export DEPENDENCIES_MEMINFO_PATH; source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_mem_check 14")
+eq "3,6 GiB libres NO alcanza para 14 GiB: rc 1" "$?" "1"
+rm -f "$MEMINFO_FALSO"
 
 echo "=== dependencies_resolve_selection ==="
 FALTAN3=(paquete-a paquete-b paquete-c)
