@@ -425,6 +425,16 @@ class LoadSavedSummaryTests(unittest.TestCase):
         out = asst.load_saved_summary(self.data, "10.0.0.5")
         self.assertIsNotNone(out)
 
+    def test_aviso_does_not_accumulate_across_load_save_cycles(self):
+        # Simula lo que hace menu.py: el texto cargado (ya con aviso) se
+        # vuelve a guardar bajo la misma cabecera real cuando el usuario
+        # elige "guardar resumen" en una conversación nueva.
+        self._write_summary("10.0.0.5", "Hablamos de puertos abiertos.\n")
+        for _ in range(3):
+            cargado = asst.load_saved_summary(self.data, "10.0.0.5")
+            self._write_summary("10.0.0.5", cargado)
+        self.assertEqual(cargado.count(asst._AVISO_RESUMEN_CARGADO), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

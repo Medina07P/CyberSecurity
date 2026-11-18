@@ -544,6 +544,14 @@ class SummaryRecoveryTests(CliBase):
         p = self.run_cli([], stdin_text="5\nN\n0\n", server="ok")
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertFalse(path.exists())
+        self.assertIn("N borra también el resumen guardado anterior", p.stdout)
+        self.assertIn("Resumen guardado anterior borrado.", p.stdout)
+
+    def test_new_conversation_prompt_does_not_warn_without_a_saved_summary(self):
+        p = self.run_cli([], stdin_text="5\nN\n0\n", server="ok")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("N borra también el resumen guardado anterior", p.stdout)
+        self.assertNotIn("Resumen guardado anterior borrado.", p.stdout)
 
 
 if __name__ == "__main__":
