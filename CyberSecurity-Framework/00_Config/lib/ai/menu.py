@@ -41,8 +41,7 @@ INSTALA_OLLAMA = ("Para usar el modelo, instala Ollama desde ollama.com y "
 
 def _recommendation():
     mem = hardware.read_mem_available_gib()
-    gpu = hardware.has_nvidia_gpu()
-    return hardware.recommend_model(mem, gpu)
+    return hardware.recommend_model(mem, hardware.has_nvidia_gpu(), hardware.has_amd_gpu())
 
 
 def _model_status(assistant):
