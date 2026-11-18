@@ -234,6 +234,29 @@ grep -q -F '/usr/local/bin/avml' "$CALLS" && ok "instaló en /usr/local/bin/avml
 rm -rf "$STUBDIR"
 unset STUBDIR CALLS
 
+echo "=== dependencies_install_ollama ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+cat > "$STUBDIR/curl" <<EOF
+#!/bin/sh
+echo "curl \$*" >> "$CALLS"
+printf 'touch "%s/ollama"; chmod +x "%s/ollama"\n' "$STUBDIR" "$STUBDIR"
+EOF
+chmod +x "$STUBDIR/curl"
+
+printf 'no\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_ollama" >/dev/null 2>&1
+eq "confirmación negada: rc 1" "$?" "1"
+[[ -x "$STUBDIR/ollama" ]] && ko "confirmación negada: no debía instalar ollama" || ok "confirmación negada: no instaló ollama"
+
+printf 'OLLAMA_SI\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_ollama" >/dev/null 2>&1
+eq "confirmado: rc 0 y ollama queda en PATH" "$?" "0"
+[[ -x "$STUBDIR/ollama" ]] && ok "ollama quedó instalado" || ko "ollama no quedó instalado"
+
+out=$(PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_ollama" 2>&1)
+eq "ya presente: no vuelve a pedir confirmación ni a invocar curl" "$out" "ollama ya está instalado."
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
 echo "=== dependencies_resolve_selection ==="
 FALTAN3=(paquete-a paquete-b paquete-c)
 out=$(bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_resolve_selection todas '${FALTAN3[0]}' '${FALTAN3[1]}' '${FALTAN3[2]}'")
