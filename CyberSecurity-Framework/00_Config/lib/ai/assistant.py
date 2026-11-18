@@ -328,10 +328,14 @@ class Assistant:
         if _is_greeting(set(tokenize(q))):
             return Answer(_SALUDO_RESPUESTA)
         chunks = self.index.search(q, k=self.top_k, target=self.slug)
+        no_basis = ("No encuentro base en la documentación ni en los "
+                   "resultados para responder a eso. Prueba a reformular "
+                   "la pregunta o fija un objetivo con la tecla T.")
         if not chunks:
-            return Answer("No encuentro base en la documentación ni en los "
-                          "resultados para responder a eso. Prueba a reformular "
-                          "la pregunta o fija un objetivo con la tecla T.")
+            if self.client is None:
+                return Answer(no_basis)
+            return self._model(q, [], [], stream_to, use_history=True,
+                               deterministic_text=no_basis)
         srcs = _cites(chunks)
         if self.client is None:
             return Answer(_fragments_text(chunks), sources=srcs)
