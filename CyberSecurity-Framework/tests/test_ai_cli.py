@@ -15,6 +15,8 @@ import time
 import unittest
 from pathlib import Path
 
+import yaml
+
 FW = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FW / "00_Config" / "lib"))
 
@@ -30,11 +32,13 @@ FINDING_TITLE = "Puerto 22 abierto (SSH)"
 class FakeOllama:
     """Lanza tests/fixtures/ollama_fake.py en 127.0.0.1 y expone su URL."""
 
-    def __init__(self, mode="ok", model="fake:1b", port=0):
+    def __init__(self, mode="ok", model="fake:1b", port=0, models=None):
         self.tmp = tempfile.TemporaryDirectory()
         ready = os.path.join(self.tmp.name, "ready")
         env = dict(os.environ, FAKE_OLLAMA_MODE=mode, FAKE_OLLAMA_MODEL=model,
                    PYTHONDONTWRITEBYTECODE="1")
+        if models:
+            env["FAKE_OLLAMA_MODELS"] = ",".join(models)
         self.proc = subprocess.Popen(
             [sys.executable, str(FAKE), str(port), ready], env=env)
         for _ in range(200):
@@ -125,10 +129,11 @@ class CliBase(unittest.TestCase):
             env.pop(n, None)
         return env
 
-    def run_cli(self, args, stdin_text="", server="ok", model="fake:1b", timeout=40):
+    def run_cli(self, args, stdin_text="", server="ok", model="fake:1b", timeout=40,
+                models=None):
         srv = None
         if server is not None:
-            srv = FakeOllama(mode=server, model=model)
+            srv = FakeOllama(mode=server, model=model, models=models)
             self.addCleanup(srv.stop)
             self._write_config(srv.url, model)
         else:
@@ -154,6 +159,46 @@ class MenuTests(CliBase):
         p = self.run_cli(["1"] and [], stdin_text="1\n0\n", server="no_model")
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertIn(FINDING_TITLE, p.stdout)
+
+    def test_opcion_6_lista_y_elige_modelo_por_numero(self):
+        p = self.run_cli([], stdin_text="6\n2\n0\n", server="ok",
+                         model="fake:1b", models=["fake:1b", "otro:3b"])
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("1) fake:1b (actual)", p.stdout)
+        self.assertIn("2) otro:3b", p.stdout)
+        self.assertIn("Modelo configurado: otro:3b", p.stdout)
+        self.assertEqual(
+            yaml.safe_load(self.config_path.read_text(encoding="utf-8"))["modelo"],
+            "otro:3b")
+
+    def test_opcion_6_vacio_cancela_sin_tocar_config(self):
+        p = self.run_cli([], stdin_text="6\n\n0\n", server="ok",
+                         model="fake:1b", models=["fake:1b", "otro:3b"])
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("Sin cambios.", p.stdout)
+        self.assertEqual(
+            yaml.safe_load(self.config_path.read_text(encoding="utf-8"))["modelo"],
+            "fake:1b")
+
+    def test_opcion_6_nombre_manual_sin_servidor(self):
+        # Sin modelo disponible: igual se puede fijar uno a mano para la
+        # próxima vez (p. ej. uno que se piensa descargar ya mismo).
+        p = self.run_cli([], stdin_text="6\notro:3b\n0\n", server="no_model")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("No se pudo listar modelos instalados", p.stdout)
+        self.assertIn("Modelo configurado: otro:3b", p.stdout)
+        self.assertEqual(
+            yaml.safe_load(self.config_path.read_text(encoding="utf-8"))["modelo"],
+            "otro:3b")
+
+    def test_opcion_6_numero_fuera_de_rango(self):
+        p = self.run_cli([], stdin_text="6\n9\n0\n", server="ok",
+                         model="fake:1b", models=["fake:1b", "otro:3b"])
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("Número fuera de rango; sin cambios.", p.stdout)
+        self.assertEqual(
+            yaml.safe_load(self.config_path.read_text(encoding="utf-8"))["modelo"],
+            "fake:1b")
 
     def test_free_text_is_a_question(self):
         p = self.run_cli([], stdin_text="que es nmap\n0\n", server="no_model")

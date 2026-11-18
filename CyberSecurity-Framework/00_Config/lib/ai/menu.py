@@ -22,7 +22,7 @@ import os
 import stat
 from pathlib import Path
 
-from . import hardware
+from . import config, hardware
 
 TITULO = "🤖 Asistente del framework"
 OPCIONES = (
@@ -31,6 +31,7 @@ OPCIONES = (
     " 3) Ayudarme a redactar el informe",
     " 4) Tengo una duda / no sé cómo hacer algo",
     " 5) Empezar conversación nueva",
+    " 6) Elegir modelo de IA",
     " 0) Volver",
 )
 CANCELADA = "\n(Respuesta cancelada. Volvemos al menú.)"
@@ -146,6 +147,52 @@ def _nueva(assistant, stdin, stdout):
     stdout.flush()
 
 
+def _elegir_modelo(assistant, stdin, stdout):
+    """Lista los modelos ya descargados en Ollama y persiste el elegido en la
+    configuración; si hay un cliente activo, el cambio aplica ya mismo, sin
+    reabrir el asistente."""
+    client = assistant.client
+    actual = client.model if client is not None else _recommendation().model
+    stdout.write("Modelo configurado ahora mismo: %s\n" % actual)
+    instalados = client.list_models() if client is not None else []
+    if instalados:
+        stdout.write("Modelos instalados en Ollama:\n")
+        for i, nombre in enumerate(instalados, 1):
+            marca = " (actual)" if nombre == actual else ""
+            stdout.write("  %d) %s%s\n" % (i, nombre, marca))
+        stdout.write("Elige un número de la lista, escribe el nombre de otro "
+                     "modelo ya descargado o deja la línea vacía para cancelar: ")
+    else:
+        stdout.write("No se pudo listar modelos instalados (Ollama no responde "
+                     "o no tiene ninguno descargado). Escribe el nombre exacto "
+                     "de un modelo ya descargado (ollama pull <modelo>) o deja "
+                     "la línea vacía para cancelar: ")
+    stdout.flush()
+    respuesta = (stdin.readline() or "").strip()
+    if not respuesta:
+        stdout.write("Sin cambios.\n")
+        return
+    nuevo = respuesta
+    if respuesta.isdigit():
+        indice = int(respuesta)
+        if 1 <= indice <= len(instalados):
+            nuevo = instalados[indice - 1]
+        else:
+            stdout.write("Número fuera de rango; sin cambios.\n")
+            return
+    if nuevo == actual:
+        stdout.write("Ya estaba configurado ese modelo.\n")
+        return
+    try:
+        config.save_model(nuevo)
+    except OSError:
+        stdout.write("No se pudo guardar la configuración; sin cambios.\n")
+        return
+    if client is not None:
+        client.model = nuevo
+    stdout.write("Modelo configurado: %s\n" % nuevo)
+
+
 def _answer_free(assistant, stdout, pregunta):
     return assistant.ask(pregunta, stream_to=_writer(stdout))
 
@@ -223,6 +270,8 @@ def run(stdin, stdout, assistant_factory):
                 return 0
             if bajo == "nueva" or texto == "5":
                 _nueva(assistant, stdin, stdout)
+            elif texto == "6":
+                _elegir_modelo(assistant, stdin, stdout)
             elif texto in ("1", "2", "3", "4"):
                 _run_option(assistant, stdin, stdout, texto)
             else:
