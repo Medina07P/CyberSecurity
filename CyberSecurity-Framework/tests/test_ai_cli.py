@@ -21,6 +21,8 @@ import yaml
 FW = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FW / "00_Config" / "lib"))
 
+from ai import context  # noqa: E402
+
 SCRIPT = FW / "09_Automation" / "ai" / "ai_assistant.py"
 FAKE = FW / "tests" / "fixtures" / "ollama_fake.py"
 
@@ -544,6 +546,34 @@ class SummaryRecoveryTests(CliBase):
         self.assertEqual(p.returncode, 0, p.stderr)
         body = json.loads(log_path.read_text())
         self.assertIn(marcador, json.dumps(body))
+
+    def test_recovered_summary_reaches_the_model_via_free_question(self):
+        # A diferencia de la opción 7 (chat_libre), la opción 4 (ask()) usa
+        # el Conversation.summary precargado por make_assistant(), no un
+        # turno más dentro del bucle de chat_libre. Cubre que el aviso de
+        # procedencia (context.AVISO_RESUMEN_CARGADO) viaja también por ese
+        # camino hasta el cuerpo real de la petición al modelo.
+        resumen_dir = self.data / "summaries"
+        resumen_dir.mkdir(parents=True)
+        marcador = "MARCADOR-RESUMEN-OPCION4-9123"
+        (resumen_dir / ("%s.md" % SLUG)).write_text(
+            "# Resumen de la conversación — objetivo: %s\n\n%s\n"
+            % (TARGET, marcador), encoding="utf-8")
+        log_path = Path(self.base.name) / "chat4.json"
+        p = self.run_cli([], stdin_text="4\n¿qué hace nmap?\n0\n", server="ok",
+                         log=log_path)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        body = json.loads(log_path.read_text())
+        # ensure_ascii=False: el aviso lleva acentos, y el JSON del log los
+        # deja como \uXXXX — con ensure_ascii=True (el valor por defecto de
+        # json.dumps) la comparación de texto literal nunca encontraría el
+        # aviso aunque haya llegado igual.
+        dump = json.dumps(body, ensure_ascii=False)
+        self.assertIn(marcador, dump)
+        # El aviso de PROCEDENCIA (assistant.py / context.py), no el de
+        # CABECERA de menu.py ("He recuperado el resumen..."), que es solo UI
+        # y nunca se manda al modelo.
+        self.assertIn(context.AVISO_RESUMEN_CARGADO.strip(), dump)
 
     def test_new_conversation_without_saving_forgets_saved_summary_on_disk(self):
         resumen_dir = self.data / "summaries"
