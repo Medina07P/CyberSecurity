@@ -56,6 +56,16 @@ class ContextTests(unittest.TestCase):
         self.assertLessEqual(len(c.summary), context.SUMMARY_CAP)
         self.assertIn("198", c.summary)  # lo más reciente se conserva
 
+    def test_cap_preserves_provenance_prefix_after_fold(self):
+        c = Conversation(max_tokens=100000, literal_turns=2)
+        aviso = context.AVISO_RESUMEN_CARGADO
+        c.summary = aviso + "y" * (context.SUMMARY_CAP - 10)
+        fill(c, 6, size=50)  # fuerza al menos un _fold con literal_turns=2
+        self.assertTrue(c.summary.startswith(aviso))
+        sin_aviso = c.summary[len(aviso):]
+        self.assertLessEqual(len(sin_aviso), context.SUMMARY_CAP)
+        self.assertEqual(c.summary.count(aviso), 1)
+
     def test_usage_percent_grows_and_warns_at_80(self):
         c = Conversation(max_tokens=100, literal_turns=50)
         self.assertEqual(c.usage_percent(), 0)
