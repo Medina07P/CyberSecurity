@@ -1,6 +1,13 @@
 #!/bin/bash
 # Datos y comprobaciones de dependencias. Solo lo carga el gestor (tecla D).
 
+_dependencies_self="${BASH_SOURCE[0]:-$0}"
+_dependencies_self_dir="${_dependencies_self%/*}"
+[[ "$_dependencies_self_dir" != "$_dependencies_self" ]] || _dependencies_self_dir='.'
+DEPENDENCIES_LIB_DIR="$(cd "$_dependencies_self_dir" && pwd)"
+unset _dependencies_self _dependencies_self_dir
+declare -ga DEPENDENCIES_EXTRA_ORDER=(ollama avml nmap-vulners)
+
 declare -gA DEPENDENCIES_MAP=(
     [nmap]=nmap [masscan]=masscan [rustscan]=rustscan [nikto]=nikto
     [nuclei]=nuclei [burpsuite]=burpsuite [python3]=python3
@@ -127,6 +134,13 @@ dependencies_resolve_selection() {
         fi
     done
     printf '%s\n' "${elegidos[@]}"
+}
+
+dependencies_extra_missing() {
+    local binario
+    for binario in "${DEPENDENCIES_EXTRA_ORDER[@]}"; do
+        dependencies_binary_ok "$binario" || printf '%s\n' "$binario"
+    done
 }
 
 # Resumen de una línea para el menú principal (mismo rol que keys_resumen_line)
