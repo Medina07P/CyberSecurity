@@ -129,6 +129,8 @@ echo "=== dependencias: acción D ==="
 run "menú: D aparece"                 'Q\n'          "Dependencias"
 run "menú: D abre el submenú"         'D\n0\nQ\n'    "Instalar dependencias"
 run "menú: D 0 vuelve sin tocar nada" 'D\n0\nQ\n'    "DEPENDENCIAS"
+run "menú: D opción 2 aparece"        'D\n0\nQ\n'    "herramientas adicionales"
+run "menú: D 2 lista las tres sin instalar nada" 'D\n2\n0\n0\n' "nmap-vulners"
 
 echo ""
 echo "=== asistente IA: acción I ==="

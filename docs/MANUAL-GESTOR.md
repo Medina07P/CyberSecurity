@@ -643,6 +643,87 @@ Ollama y solución de problemas en `docs/ASISTENTE-IA-2026-11-17.md`.
 
 ---
 
+## Dependencias
+
+La tecla `D` abre un reporte de qué herramientas usa el framework y están
+presentes o no, agrupadas por módulo, más dos opciones para instalar lo que
+falta:
+
+```
+  D) 📦 Dependencias (N paquetes por apt)
+     1) Instalar dependencias (elegir de la lista)
+     2) Instalar/verificar herramientas adicionales (Ollama, avml, nmap-vulners)
+     0) Volver al menú principal
+```
+
+- **Opción `1`** instala por `apt` (con `sudo apt-get install -y`, una sola
+  confirmación escribiendo `instalar`) los paquetes de la lista que
+  correspondan a binarios ausentes; nunca repite un paquete ya cubierto por
+  otro binario del mismo paquete (p. ej. los tres binarios de
+  `aircrack-ng`).
+- **Opción `2`** cubre tres herramientas que **no** se instalan por `apt` y
+  que hasta ahora solo aparecían documentadas en el reporte:
+  - **Ollama**: ejecuta su instalador oficial
+    (`curl -fsSL https://ollama.com/install.sh | sh`), que puede pedir la
+    contraseña de `sudo` por su cuenta e instala un servicio en segundo
+    plano. Confirmación: escribir `OLLAMA_SI`. Si Ollama queda disponible
+    (recién instalado o ya presente de antes), se ofrece además un
+    **catálogo de 4 modelos**, cada uno con su descripción honesta en el
+    propio menú — nunca solo un nombre:
+    1. **General**: el modelo que ya recomienda el asistente de IA (tecla
+       `I`) según la RAM/GPU de esta máquina. Sin entrenamiento específico
+       de seguridad.
+    2. **Qwen2.5-Coder** (librería **oficial** de Ollama, Alibaba):
+       recomendación principal del catálogo. No es un modelo "de
+       ciberseguridad", pero los benchmarks prácticos de seguridad
+       ofensiva lo señalan por encima de los modelos etiquetados de
+       seguridad. Apache-2.0 en todos los tamaños salvo el de 3B (licencia
+       Qwen Research, más restrictiva).
+    3. **Foundation-Sec-8B-Instruct** (Cisco Foundation AI): el único
+       especialista real en ciberseguridad del catálogo, preentrenado con
+       datos de seguridad, Apache-2.0. Tamaño fijo ~8B.
+    4. **DeepHat / WhiteRabbitNeo** (comunidad): proyecto de investigación
+       en seguridad presentado **sin censura a propósito** (las barreras
+       de seguridad del modelo están quitadas deliberadamente). No es una
+       subida oficial de una empresa; se ofrece igual, con este aviso
+       siempre visible antes de confirmar.
+
+    Antes de lanzar la descarga de cualquiera de los cuatro, el gestor
+    compara la RAM libre de la máquina contra lo que ese tamaño necesita.
+    Si no alcanza, **no descarga nada**: muestra el error con las cifras
+    reales (libre vs. necesaria) y deja elegir otro tamaño. Para forzarlo
+    a sabiendas de que puede ir muy lento o colgarse, escribe
+    `CONTINUAR_IGUAL` cuando se pregunte; cualquier otra entrada cancela
+    solo esa descarga en concreto, no el resto del menú.
+  - **avml** (adquisición de memoria, usado por el módulo forense): descarga
+    el binario de las *releases* de GitHub (`microsoft/avml`) a
+    `/usr/local/bin/avml` con `sudo`. Confirmación: escribir `AVML_SI`. **No
+    hay suma de verificación oficial publicada** para este binario: la
+    integridad depende de HTTPS y del dominio de GitHub, no de una firma —
+    el propio mensaje de confirmación lo dice. Si ya tienes un token de
+    GitHub guardado (tecla `K`), se usa para evitar el límite de 60
+    peticiones/hora sin autenticar; si no, se pregunta una vez, de forma
+    explícitamente opcional (Enter para omitir, nunca se imprime el valor).
+  - **nmap-vulners** (script NSE usado por el módulo de escáneres): clona
+    `vulnersCom/nmap-vulners` de GitHub y copia `vulners.nse` a
+    `/usr/share/nmap/scripts/` con `sudo`, y ejecuta
+    `sudo nmap --script-updatedb` al terminar. Confirmación: escribir
+    `NMAP_VULNERS_SI`.
+
+  Cada una de las tres pide su propia confirmación con un texto distinto
+  (riesgo y tamaño de *esa* descarga en concreto) — nunca una sola palabra
+  que autorice las tres a la vez. Al terminar, vuelve a mostrar el reporte
+  completo para que veas el resultado (✓/✗) sin salir del menú.
+
+- **`lime` y `volatility` (v2) siguen solo informativos**, exactamente como
+  antes: no tienen entrada en la opción `2`. `lime` es un módulo de kernel
+  que se compila contra el kernel exacto de cada máquina — automatizarlo
+  cruzaría la decisión ya tomada en el módulo forense de nunca cargar un
+  módulo de kernel por cuenta propia. `volatility` (v2) está descontinuado a
+  favor de `volatility3`, que la opción `1` ya instala por `apt`.
+
+---
+
 ## Claves de API
 
 Las herramientas de OSINT y de reconocimiento leen sus claves de API de ficheros y bases
