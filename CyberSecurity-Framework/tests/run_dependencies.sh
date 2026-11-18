@@ -250,12 +250,14 @@ printf 'no\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/depende
 eq "confirmación negada: rc 1" "$?" "1"
 [[ -x "$STUBDIR/ollama" ]] && ko "confirmación negada: no debía instalar ollama" || ok "confirmación negada: no instaló ollama"
 
-printf 'OLLAMA_SI\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_ollama" >/dev/null 2>&1
+printf 'OLLAMA_SI\n0\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" >/dev/null 2>&1
 eq "confirmado: rc 0 y ollama queda en PATH" "$?" "0"
 [[ -x "$STUBDIR/ollama" ]] && ok "ollama quedó instalado" || ko "ollama no quedó instalado"
 
-out=$(PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_install_ollama" 2>&1)
-eq "ya presente: no vuelve a pedir confirmación ni a invocar curl" "$out" "ollama ya está instalado."
+out=$(printf '0\n' | PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" 2>&1)
+eq "ya presente: no vuelve a pedir confirmación ni a invocar curl" "$(printf '%s\n' "$out" | grep -c -F 'curl')" "0"
+printf '%s\n' "$out" | grep -qF 'ollama ya está instalado.' && ok "ya presente: lo dice" || ko "ya presente: lo dice"
+printf '%s\n' "$out" | grep -qF 'Catálogo de modelos para Ollama' && ok "ya presente: ofrece el catálogo" || ko "ya presente: ofrece el catálogo"
 rm -rf "$STUBDIR"
 unset STUBDIR CALLS
 
@@ -282,6 +284,55 @@ eq "3,6 GiB libres sí alcanza para 3 GiB: rc 0" "$?" "0"
 out=$(DEPENDENCIES_MEMINFO_PATH="$MEMINFO_FALSO" bash -c "export DEPENDENCIES_MEMINFO_PATH; source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_mem_check 14")
 eq "3,6 GiB libres NO alcanza para 14 GiB: rc 1" "$?" "1"
 rm -f "$MEMINFO_FALSO"
+
+echo "=== dependencies_offer_model_catalog ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+cat > "$STUBDIR/ollama" <<EOF
+#!/bin/sh
+echo "ollama \$*" >> "$CALLS"
+case "\$1" in
+    pull)
+        rc="\${OLLAMA_PULL_RC:-0}"
+        if [ "\$rc" = "0" ]; then
+            echo "\$2" >> "$STUBDIR/pulled.txt"
+        fi
+        exit "\$rc"
+        ;;
+    list)
+        [ -f "$STUBDIR/pulled.txt" ] && cat "$STUBDIR/pulled.txt"
+        exit 0
+        ;;
+esac
+exit 0
+EOF
+chmod +x "$STUBDIR/ollama"
+
+MEMINFO_BAJO="$(mktemp)"; printf 'MemAvailable:  3774320 kB\n' > "$MEMINFO_BAJO"  # ~3,6 GiB
+
+# Declinar el catálogo: no es un fallo.
+printf '0\n' | DEPENDENCIES_MEMINFO_PATH="$MEMINFO_BAJO" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_offer_model_catalog" >/dev/null 2>&1
+eq "declinar el catálogo: rc 0" "$?" "0"
+[[ -f "$STUBDIR/pulled.txt" ]] && ko "declinar: no debía descargar nada" || ok "declinar: no descargó nada"
+
+# Elegir qwen:14b con solo 3,6 GiB libres: el guardrail bloquea sin forzar.
+printf '2\n14b\nno\n' | DEPENDENCIES_MEMINFO_PATH="$MEMINFO_BAJO" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_offer_model_catalog" >/dev/null 2>&1
+eq "guardrail sin forzar: rc 0 (cancela el pull, no la pieza)" "$?" "0"
+[[ -f "$STUBDIR/pulled.txt" ]] && ko "guardrail sin forzar: no debía llegar a ollama pull" || ok "guardrail sin forzar: no llegó a ollama pull"
+
+# Elegir qwen:3b (sí entra en 3,6 GiB): pull directo sin aviso de guardrail.
+printf '2\n3b\n' | DEPENDENCIES_MEMINFO_PATH="$MEMINFO_BAJO" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_offer_model_catalog" >/dev/null 2>&1
+eq "entra en RAM libre: rc 0" "$?" "0"
+grep -q -F 'qwen2.5-coder:3b' "$STUBDIR/pulled.txt" && ok "hizo ollama pull qwen2.5-coder:3b" || ko "hizo ollama pull qwen2.5-coder:3b"
+rm -f "$STUBDIR/pulled.txt"; : > "$CALLS"
+
+# Forzar qwen:14b con CONTINUAR_IGUAL: sí llega a ollama pull.
+printf '2\n14b\nCONTINUAR_IGUAL\n' | DEPENDENCIES_MEMINFO_PATH="$MEMINFO_BAJO" PATH="$STUBDIR:$PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_offer_model_catalog" >/dev/null 2>&1
+eq "forzado: rc 0" "$?" "0"
+grep -q -F 'qwen2.5-coder:14b' "$STUBDIR/pulled.txt" && ok "forzado llega a ollama pull" || ko "forzado llega a ollama pull"
+rm -f "$STUBDIR/pulled.txt" "$MEMINFO_BAJO"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
 
 echo "=== dependencies_resolve_selection ==="
 FALTAN3=(paquete-a paquete-b paquete-c)

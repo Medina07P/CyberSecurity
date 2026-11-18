@@ -69,3 +69,61 @@ print(f"{disponible:.1f}")
 sys.exit(0 if disponible >= necesaria else 1)
 ' "$1"
 }
+
+dependencies_pull_model() {
+    local pull_id="$1"
+    printf 'Descargando %s con Ollama...\n' "$pull_id" >&2
+    if ! ollama pull "$pull_id"; then
+        printf 'La descarga del modelo falló.\n' >&2; return 1
+    fi
+    if ! ollama list 2>/dev/null | grep -qF "$pull_id"; then
+        printf 'El modelo se descargó pero no aparece en «ollama list».\n' >&2; return 1
+    fi
+    printf 'Modelo %s disponible.\n' "$pull_id" >&2
+}
+
+dependencies_offer_model_catalog() {
+    printf 'Catálogo de modelos para Ollama:\n' >&2
+    local fila etiqueta descripcion i=0
+    local -a filas=()
+    while IFS='|' read -r fila etiqueta descripcion; do
+        i=$((i + 1)); filas+=("$fila")
+        printf '  %d) %s — %s\n' "$i" "$etiqueta" "$descripcion" >&2
+    done < <(dependencies_model_rows)
+    printf '  0) No descargar ningún modelo ahora\n' >&2
+    printf 'Elige una opción [0-%d]: ' "$i" >&2
+    local eleccion; IFS= read -r eleccion
+    [[ "$eleccion" =~ ^[0-9]+$ ]] && (( eleccion >= 1 && eleccion <= i )) || return 0
+    fila="${filas[$((eleccion - 1))]}"
+
+    local tamano
+    if [[ "$fila" == 'general' ]]; then
+        tamano=$(dependencies_general_model_size)
+    else
+        local -a tamanos; mapfile -t tamanos < <(dependencies_model_sizes "$fila")
+        if [[ ${#tamanos[@]} -eq 1 ]]; then
+            tamano="${tamanos[0]}"
+        else
+            local j=0
+            for j in "${!tamanos[@]}"; do printf '  %s\n' "${tamanos[$j]}" >&2; done
+            printf 'Tamaño (de los listados arriba): ' >&2
+            IFS= read -r tamano
+        fi
+    fi
+    local datos; datos=$(dependencies_model_lookup "$fila" "$tamano") || {
+        printf 'Combinación de modelo/tamaño no reconocida.\n' >&2; return 0
+    }
+    local gb="${datos%%|*}"
+    local resto="${datos#*|}"
+    local ram="${resto%%|*}"
+    local pull_id="${resto#*|}"
+
+    local disponible; disponible=$(dependencies_mem_check "$ram")
+    if [[ $? -ne 0 ]]; then
+        printf 'Este modelo (%s GB, necesita ~%s GiB libres) no entra en la RAM libre de esta máquina (~%s GiB).\n' "$gb" "$ram" "$disponible" >&2
+        printf 'Escribe CONTINUAR_IGUAL para forzarlo a sabiendas (puede ir muy lento o colgarse); cualquier otra entrada cancela solo esta descarga: ' >&2
+        local forzar; IFS= read -r forzar
+        [[ "$forzar" == 'CONTINUAR_IGUAL' ]] || { printf 'Descarga de modelo cancelada; puedes elegir otro tamaño.\n' >&2; return 0; }
+    fi
+    dependencies_pull_model "$pull_id"
+}
