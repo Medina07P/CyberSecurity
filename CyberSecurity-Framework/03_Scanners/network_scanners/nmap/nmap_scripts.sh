@@ -19,4 +19,4 @@ for i in "${!CATEGORIES[@]}"; do
 done
 scanner_run "$OUTPUT_DIR/errores.log" nmap -Pn --script smb-os-discovery,smb-security-mode,smtp-commands \
     -p "$PORTS" "$TARGET" -oN "$OUTPUT_DIR/specific_${SLUG}.txt" || exit 1
-echo "✅ Scripts ejecutados en puertos $PORTS. Resultados: $OUTPUT_DIR"
+echo "✔ Scripts ejecutados en puertos $PORTS. Resultados: $OUTPUT_DIR"

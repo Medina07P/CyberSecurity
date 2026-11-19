@@ -96,20 +96,20 @@ echo ""
 # ─── 2. PING SWEEP (si es IP) ─────────────────────────────
 if [[ "$IS_IP" == true ]]; then
     log_sep
-    log_info "📡 Ejecutando Ping Sweep en ${NETWORK}.0/24..."
+    log_info "Ejecutando Ping Sweep en ${NETWORK}.0/24..."
     
     echo "  Escaneando hosts activos..."
     for i in {1..254}; do
         IP="${NETWORK}.$i"
         if ping -c 1 -W 1 "$IP" &>/dev/null; then
-            echo -e "  ${GREEN}✅${NC} $IP - Activo"
+            echo -e "  ${GREEN}✔${NC} $IP - Activo"
             echo "$IP|$(date)|ping" >> "host_discovery/hosts_activos.txt"
         fi
     done
     
     if [[ -f "host_discovery/hosts_activos.txt" ]]; then
         TOTAL_HOSTS=$(wc -l < "host_discovery/hosts_activos.txt")
-        log_ok "✅ $TOTAL_HOSTS hosts activos encontrados"
+        log_ok "✔ $TOTAL_HOSTS hosts activos encontrados"
     fi
     echo ""
 fi
@@ -117,7 +117,7 @@ fi
 # ─── 3. DNS ENUMERATION (si es dominio) ────────────────────
 if [[ "$IS_DOMAIN" == true ]]; then
     log_sep
-    log_info "🌐 Ejecutando DNS Enumeration para $TARGET..."
+    log_info "Ejecutando DNS Enumeration para $TARGET..."
     
     # Registros básicos
     echo "  → Consultando registros DNS..."
@@ -131,7 +131,7 @@ if [[ "$IS_DOMAIN" == true ]]; then
     for ns in $(dig +short NS "$TARGET" 2>/dev/null); do
         dig "@$ns" "$TARGET" AXFR 2>/dev/null > "dns/zone_transfer_${TARGET}.txt"
         if [[ -s "dns/zone_transfer_${TARGET}.txt" ]]; then
-            log_warn "⚠️ Transferencia de zona POSIBLE desde $ns"
+            log_warn "⚠ Transferencia de zona POSIBLE desde $ns"
         fi
     done
     
@@ -140,18 +140,18 @@ if [[ "$IS_DOMAIN" == true ]]; then
     SUBDOMAINS=("www" "mail" "ftp" "admin" "api" "dev" "test" "staging" "prod" "backup" "dns" "ns1" "ns2" "pop" "smtp" "imap" "webmail" "cpanel" "whm" "blog" "shop" "store" "app" "mobile" "remote" "vpn")
     for sub in "${SUBDOMAINS[@]}"; do
         if dig +short "$sub.$TARGET" 2>/dev/null | grep -qE '^[0-9]+'; then
-            echo -e "    ${GREEN}✅${NC} $sub.$TARGET"
+            echo -e "    ${GREEN}✔${NC} $sub.$TARGET"
             echo "$sub.$TARGET|$(dig +short "$sub.$TARGET" 2>/dev/null)" >> "dns/subdominios_encontrados.txt"
         fi
     done
     
-    log_ok "✅ DNS Enumeration completada"
+    log_ok "✔ DNS Enumeration completada"
     echo ""
 fi
 
 # ─── 4. FINGERPRINTING ─────────────────────────────────────
 log_sep
-log_info "🔍 Ejecutando Fingerprinting en $TARGET..."
+log_info "Ejecutando Fingerprinting en $TARGET..."
 
 # Escaneo de puertos y servicios
 if [[ "$IS_IP" == true ]]; then
@@ -178,12 +178,12 @@ if [[ -f "fingerprinting/nmap_${TARGET}.txt" ]]; then
     grep -E "^[0-9]+/tcp.*open.*http" "fingerprinting/nmap_${TARGET}.txt" | cut -d'/' -f1 > "fingerprinting/puertos_web.txt"
 fi
 
-log_ok "✅ Fingerprinting completado"
+log_ok "✔ Fingerprinting completado"
 echo ""
 
 # ─── 5. WEB SCREENSHOTS ────────────────────────────────────
 log_sep
-log_info "📸 Capturando screenshots web..."
+log_info "Capturando screenshots web..."
 
 if [[ -f "fingerprinting/puertos_web.txt" ]]; then
     while read -r port; do
@@ -196,15 +196,15 @@ if [[ -f "fingerprinting/puertos_web.txt" ]]; then
         if command -v cutycapt &>/dev/null; then
             cutycapt --url="$URL" --out="screenshots/${TARGET}_${port}.png" 2>/dev/null
             if [[ -f "screenshots/${TARGET}_${port}.png" ]]; then
-                log_ok "    ✅ Screenshot guardado"
+                log_ok "    ✔ Screenshot guardado"
             fi
         elif command -v wkhtmltoimage &>/dev/null; then
             wkhtmltoimage "$URL" "screenshots/${TARGET}_${port}.png" 2>/dev/null
             if [[ -f "screenshots/${TARGET}_${port}.png" ]]; then
-                log_ok "    ✅ Screenshot guardado"
+                log_ok "    ✔ Screenshot guardado"
             fi
         else
-            log_warn "    ⚠️ No hay herramienta de captura (instalar cutycapt o wkhtmltopdf)"
+            log_warn "    ⚠ No hay herramienta de captura (instalar cutycapt o wkhtmltopdf)"
         fi
     done < "fingerprinting/puertos_web.txt"
 else
@@ -214,7 +214,7 @@ echo ""
 
 # ─── 6. SCAN DE VULNERABILIDADES (RÁPIDO) ──────────────────
 log_sep
-log_info "🔬 Escaneo rápido de vulnerabilidades..."
+log_info "Escaneo rápido de vulnerabilidades..."
 
 echo "  → Ejecutando scripts NSE de vulnerabilidades..."
 if [[ -f "fingerprinting/puertos_web.txt" ]]; then
@@ -224,7 +224,7 @@ if [[ -f "fingerprinting/puertos_web.txt" ]]; then
     # Extraer CVEs encontrados
     grep -E "CVE-[0-9]{4}-[0-9]{4,}" "scans/vuln_scan.txt" > "scans/cves_encontrados.txt"
     if [[ -s "scans/cves_encontrados.txt" ]]; then
-        log_warn "⚠️ Se encontraron CVEs potenciales"
+        log_warn "⚠ Se encontraron CVEs potenciales"
         cat "scans/cves_encontrados.txt"
     else
         log_ok "No se encontraron CVEs obvios"
@@ -235,22 +235,22 @@ echo ""
 # ─── 7. WHOIS (si es dominio) ─────────────────────────────
 if [[ "$IS_DOMAIN" == true ]]; then
     log_sep
-    log_info "📋 Consultando WHOIS para $TARGET..."
+    log_info "Consultando WHOIS para $TARGET..."
     whois "$TARGET" > "whois/whois_${TARGET}.txt" 2>/dev/null
     
     # Extraer información relevante
     grep -E "Registrar|Creation|Expir|Name Server|Registrant" "whois/whois_${TARGET}.txt" > "whois/whois_resumen_${TARGET}.txt" 2>/dev/null
-    log_ok "✅ WHOIS consultado"
+    log_ok "✔ WHOIS consultado"
     echo ""
 fi
 
 # ─── 8. RESUMEN FINAL ──────────────────────────────────────
 log_sep
 echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  ✅ AUTO RECON COMPLETADO${NC}"
+echo -e "${GREEN}  ✔ AUTO RECON COMPLETADO${NC}"
 echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"
 echo ""
-echo "📊 RESUMEN DE RESULTADOS:"
+echo "RESUMEN DE RESULTADOS:"
 echo "  Objetivo: $TARGET"
 echo "  IP: ${TARGET_IP:-N/A}"
 echo "  Fecha: $(date)"
@@ -258,23 +258,23 @@ echo ""
 
 # Mostrar estadísticas
 if [[ -f "host_discovery/hosts_activos.txt" ]]; then
-    echo "  📡 Hosts activos: $(wc -l < host_discovery/hosts_activos.txt)"
+    echo "  Hosts activos: $(wc -l < host_discovery/hosts_activos.txt)"
 fi
 
 if [[ -f "fingerprinting/servicios.txt" ]]; then
-    echo "  🔌 Puertos abiertos: $(wc -l < fingerprinting/servicios.txt)"
+    echo "  Puertos abiertos: $(wc -l < fingerprinting/servicios.txt)"
 fi
 
 if [[ -f "fingerprinting/os_detection.txt" ]]; then
-    echo "  💻 SO detectado: $(cat fingerprinting/os_detection.txt)"
+    echo "  SO detectado: $(cat fingerprinting/os_detection.txt)"
 fi
 
 if [[ -f "scans/cves_encontrados.txt" ]]; then
-    echo "  🚨 CVEs potenciales: $(wc -l < scans/cves_encontrados.txt)"
+    echo "  CVEs potenciales: $(wc -l < scans/cves_encontrados.txt)"
 fi
 
 echo ""
-echo "📁 Resultados guardados en: $OUTPUT_DIR"
+echo "▪ Resultados guardados en: $OUTPUT_DIR"
 echo ""
 echo "Para ver la estructura: tree -L 2 \"$OUTPUT_DIR\""
 echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"

@@ -30,12 +30,12 @@ mapfile -t IPS < <(python3 -I -B "$LIB/recon_targets.py" "$NETWORK" "$RANGE"; rc
 PARSE_RC="$(cat "$_RCFILE" 2>/dev/null)"
 rm -f "$_RCFILE"
 if [[ "$PARSE_RC" != "0" || ${#IPS[@]} -eq 0 ]]; then
-    echo "❌ Objetivo o rango no válido: '$NETWORK' ${RANGE:+($RANGE)}"
+    echo "✖ Objetivo o rango no válido: '$NETWORK' ${RANGE:+($RANGE)}"
     exit 1
 fi
 
 if ! command -v ping >/dev/null 2>&1; then
-    echo "❌ 'ping' no está disponible en el sistema"
+    echo "✖ 'ping' no está disponible en el sistema"
     exit 1
 fi
 
@@ -43,11 +43,11 @@ DISPLAY_NETWORK="$NETWORK"
 if [[ "$NETWORK" == */24 ]]; then
     DISPLAY_NETWORK="${NETWORK%.*}.0/24"
 fi
-echo "🔍 Escaneando: $DISPLAY_NETWORK ${RANGE:+($RANGE)}"
+echo "Escaneando: $DISPLAY_NETWORK ${RANGE:+($RANGE)}"
 echo "────────────────────────────────────────"
 
 if ! mkdir -p "$OUTPUT_DIR"; then
-    echo "❌ No se pudo preparar el directorio de resultados" >&2
+    echo "✖ No se pudo preparar el directorio de resultados" >&2
     exit 1
 fi
 
@@ -58,31 +58,31 @@ for IP in "${IPS[@]}"; do
     PING_RC=$?
     if [[ "$PING_RC" -eq 0 ]]; then
         if ! printf '%s|%s|ping\n' "$IP" "$(date)" >> "$OUTPUT"; then
-            echo "❌ No se pudo guardar el resultado de esta ejecución" >&2
+            echo "✖ No se pudo guardar el resultado de esta ejecución" >&2
             exit 1
         fi
-        echo "  ✅ $IP - Activo"
+        echo "  ✔ $IP - Activo"
         FOUND=$((FOUND + 1))
         # Resolver hostname
         HOST=$(host "$IP" 2>/dev/null | head -1 | awk '{print $NF}')
         [[ -n "$HOST" ]] && echo "    ↳ $HOST"
     elif [[ "$PING_RC" -ne 1 ]]; then
-        echo "  ⚠️  $IP - Error de backend ping (rc=$PING_RC)"
+        echo "  ⚠  $IP - Error de backend ping (rc=$PING_RC)"
         BACKEND_ERROR=1
     else
-        echo "  ❌ $IP - Inactivo"
+        echo "  ✖ $IP - Inactivo"
     fi
 done
 
 echo "────────────────────────────────────────"
 if [[ "$BACKEND_ERROR" -ne 0 ]]; then
-    echo "❌ Error de backend durante el barrido"
+    echo "✖ Error de backend durante el barrido"
     exit 1
 fi
 if [[ "$FOUND" -gt 0 ]]; then
-    echo "✅ $FOUND hosts activos encontrados en esta ejecución"
-    echo "📁 Archivo diario acumulado (incluye históricos): $OUTPUT"
+    echo "✔ $FOUND hosts activos encontrados en esta ejecución"
+    echo "▪ Archivo diario acumulado (incluye históricos): $OUTPUT"
 else
-    echo "⚠️  No se encontraron hosts activos"
-    echo "📁 Sin resultados que guardar en: $OUTPUT"
+    echo "⚠  No se encontraron hosts activos"
+    echo "▪ Sin resultados que guardar en: $OUTPUT"
 fi

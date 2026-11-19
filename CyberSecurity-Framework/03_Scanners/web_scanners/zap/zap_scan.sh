@@ -8,7 +8,7 @@ source "$SCANS_LIB/scanner_runtime.bash"
 [[ -n "$URL" ]] || { echo 'Uso: ./zap_scan.sh <URL>'; exit 1; }
 scanner_url "$URL" && scanner_require zaproxy || exit 1
 python3 -c 'import zapv2' >/dev/null 2>&1 || {
-    echo '❌ Falta python3-zapv2 (paquete python-owasp-zap-v2.4).' >&2
+    echo '✖ Falta python3-zapv2 (paquete python-owasp-zap-v2.4).' >&2
     exit 1
 }
 
@@ -40,7 +40,7 @@ while (( $(date +%s) < LIMITE_ARRANQUE )); do
     sleep 0.5
 done
 if (( LISTO == 0 )); then
-    echo '❌ ZAP no respondió en 30s; abortando.' >&2
+    echo '✖ ZAP no respondió en 30s; abortando.' >&2
     exit 1
 fi
 
@@ -50,12 +50,12 @@ INFORME="$OUTPUT_DIR/zap_${SLUG}.txt"
 
 ZAP_DRIVER_ARGS=(--host 127.0.0.1 --port "$PUERTO" --url "$URL" --salida "$INFORME")
 [[ -n "${ZAP_MAX_SEG:-}" ]] && ZAP_DRIVER_ARGS+=(--max-seg "$ZAP_MAX_SEG")
-echo "🔬 ZAP: $URL (spider + pasivo; puede tardar varios minutos)"
+echo "ZAP: $URL (spider + pasivo; puede tardar varios minutos)"
 python3 "$SCANS_LIB/zap/zap_driver.py" "${ZAP_DRIVER_ARGS[@]}"
 rc=$?
 if (( rc != 0 )); then
-    echo "❌ ZAP no completó la evaluación. NO DETERMINADO. Revisa: $INFORME" >&2
+    echo "✖ ZAP no completó la evaluación. NO DETERMINADO. Revisa: $INFORME" >&2
     exit 1
 fi
-echo "✅ Ejecución completada."
-echo "📁 Resultados: $INFORME"
+echo "✔ Ejecución completada."
+echo "▪ Resultados: $INFORME"

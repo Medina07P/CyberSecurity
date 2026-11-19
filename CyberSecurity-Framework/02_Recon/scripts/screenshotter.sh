@@ -23,21 +23,21 @@ PROTO="http"
 [[ "$PORT" == "443" || "$PORT" == "8443" ]] && PROTO="https"
 URL="${PROTO}://${TARGET}:${PORT}"
 
-echo "📸 Capturando screenshot de: $URL"
+echo "Capturando screenshot de: $URL"
 
 # Usar cutycapt (si está instalado)
 if command -v cutycapt &>/dev/null; then
     cutycapt --url="$URL" --out="$OUTPUT_DIR/${TARGET}_${PORT}.png" 2>/dev/null
-    echo "  ✅ Screenshot guardado: $OUTPUT_DIR/${TARGET}_${PORT}.png"
+    echo "  ✔ Screenshot guardado: $OUTPUT_DIR/${TARGET}_${PORT}.png"
 # Usar wkhtmltoimage
 elif command -v wkhtmltoimage &>/dev/null; then
     wkhtmltoimage "$URL" "$OUTPUT_DIR/${TARGET}_${PORT}.png" 2>/dev/null
-    echo "  ✅ Screenshot guardado: $OUTPUT_DIR/${TARGET}_${PORT}.png"
+    echo "  ✔ Screenshot guardado: $OUTPUT_DIR/${TARGET}_${PORT}.png"
 # Usar gnome-screenshot (alternativa)
 elif command -v gnome-screenshot &>/dev/null; then
-    echo "  ⚠️ Usando gnome-screenshot (manual)"
+    echo "  ⚠ Usando gnome-screenshot (manual)"
     gnome-screenshot -w
 else
-    echo "  ❌ No hay herramienta de captura disponible"
+    echo "  ✖ No hay herramienta de captura disponible"
     echo "  Instala: sudo apt install cutycapt wkhtmltopdf"
 fi

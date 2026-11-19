@@ -83,7 +83,7 @@ def main(argv=None):
             if args.wordlist:
                 args.wordlist = str(Path(args.wordlist).resolve())
                 load_wordlist(args.wordlist, domain, limits.dns_candidates)
-                print(f'⚠️ Fuerza bruta DNS sobre {domain}: hasta 1.000 candidatos, 5 consultas/s, 120 s. Solo con autorización.', file=sys.stderr)
+                print(f'⚠ Fuerza bruta DNS sobre {domain}: hasta 1.000 candidatos, 5 consultas/s, 120 s. Solo con autorización.', file=sys.stderr)
                 print('Escribe DNS_SI para confirmar: ', end='', file=sys.stderr, flush=True)
                 if sys.stdin.readline().strip() != 'DNS_SI':
                     raise ValueError('Fuerza bruta DNS cancelada; no se consultó el objetivo')
@@ -92,7 +92,7 @@ def main(argv=None):
         explicit_output = getattr(args, 'output', '')
         output = Path(explicit_output).resolve() if explicit_output else MODULE / default_dirs[args.command]
         if explicit_output:
-            print(f'ℹ️ Salida explícita: {output}; puede no estar ignorada por git.', file=sys.stderr)
+            print(f'ℹ Salida explícita: {output}; puede no estar ignorada por git.', file=sys.stderr)
         run = Run(company if args.command == 'social' else args.target, output, limits)
         if args.command != 'metadata':
             registry = Path(os.environ.get('KEYS_FILE', FRAMEWORK / '00_Config/credentials/api-keys.yaml'))
@@ -101,7 +101,7 @@ def main(argv=None):
             keys = load_credentials(registry, dirs)
             run.secrets.extend(keys.values())
             client = HttpClient(limits)
-        print(f'🔍 OSINT: {run.target}')
+        print(f'OSINT: {run.target}')
         if args.command in ('all', 'domains'):
             collect_tool(run, 'whois', domain)
             collect_tool(run, 'whatweb', domain)
@@ -110,7 +110,7 @@ def main(argv=None):
             discover_emails(run, client, domain, keys)
         if args.command in ('all', 'social'):
             if args.command == 'all' and not args.company:
-                print(f'ℹ️ Sin nombre de empresa: se busca el dominio completo ({domain}), no su primera etiqueta.')
+                print(f'ℹ Sin nombre de empresa: se busca el dominio completo ({domain}), no su primera etiqueta.')
             discover_social(run, client, company, domain, keys)
         if args.command in ('all', 'subdomains', 'domains'):
             if args.command == 'subdomains' and args.wordlist:
@@ -122,16 +122,16 @@ def main(argv=None):
         if file:
             collect_metadata(run, file)
         elif args.command == 'all':
-            print('ℹ️ Metadatos omitidos: no se proporcionó archivo local.')
+            print('ℹ Metadatos omitidos: no se proporcionó archivo local.')
         destination = write_run(run)
         print((destination/'resumen.txt').read_text(encoding='utf-8'), end='')
         code = exit_code(run.results)
-        print('✅ OSINT completado (consulta la cobertura de fuentes).' if code == 0 else '⚠️ OSINT parcial o sin fuentes utilizables; consulta errores y cobertura.')
+        print('✔ OSINT completado (consulta la cobertura de fuentes).' if code == 0 else '⚠ OSINT parcial o sin fuentes utilizables; consulta errores y cobertura.')
         print(f'Resultados: {destination}')
         print(f'Errores y omisiones: {destination / "errores.log"}')
         return code
     except (ValueError, OSError) as exc:
-        print(f'❌ {exc}', file=sys.stderr)
+        print(f'✖ {exc}', file=sys.stderr)
         return 2
 
 

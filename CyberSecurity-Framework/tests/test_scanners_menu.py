@@ -219,7 +219,7 @@ class ScannersTest(unittest.TestCase):
         result = self.run_all(FAIL_TOOL='nikto')
         self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
         self.assertIn('Fallidas: 4', result.stdout)
-        self.assertNotIn('✅ ESCANEOS COMPLETADOS', result.stdout)
+        self.assertNotIn('✔ ESCANEOS COMPLETADOS', result.stdout)
 
     def test_orchestrator_discovery_failure_stops_web(self):
         result = self.run_all(FAIL_TOOL='nmap')
@@ -259,7 +259,7 @@ class ScannersTest(unittest.TestCase):
             with self.subTest(name=name):
                 result = self.run_script(name, FAIL_TOOL='all')
                 self.assertNotEqual(result.returncode, 0, result.stdout)
-                self.assertNotIn('✅', result.stdout)
+                self.assertNotIn('✔', result.stdout)
 
     def test_smart_does_not_reuse_stale_ports_after_failure(self):
         output = self.root/'scans/nmap'; output.mkdir(parents=True)
@@ -420,7 +420,7 @@ assert result.findings[0].cve == 'CVE-2021-44228'
             with self.subTest(mode=mode):
                 result = self.run_script('nikto', NIKTO_RESULT=mode)
                 self.assertNotEqual(result.returncode, 0, result.stdout+result.stderr)
-                self.assertNotIn('✅', result.stdout)
+                self.assertNotIn('✔', result.stdout)
                 self.assertIn('NO DETERMINADO', result.stdout+result.stderr)
 
     def test_nikto_partial_failure_is_counted_by_orchestrator(self):
