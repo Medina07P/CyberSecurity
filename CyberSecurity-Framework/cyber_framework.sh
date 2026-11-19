@@ -903,7 +903,7 @@ show_help() {
     echo -e "  todos los scripts que piden un host. Si defines varios en"
     echo -e "  ${DIM}00_Config/targets.txt${NC}, te los ofrece como lista."
     echo ""
-    echo -e "${YELLOW} ATAJOS:${NC}"
+    echo -e "${YELLOW}ATAJOS:${NC}"
     echo -e "  ${GREEN}T${NC}   Cambiar objetivo"
     echo -e "  ${GREEN}R${NC}   Informe rápido (técnico, cliente o ambos)"
     echo -e "  ${GREEN}K${NC}   Claves de API (pide y guarda las que falten)"
