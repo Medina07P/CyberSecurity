@@ -17,7 +17,7 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "🔓 Craqueando handshake..."
+echo "Craqueando handshake..."
 echo "────────────────────────────────────────"
 echo " ARCHIVO: $HANDSHAKE"
 echo " WORDLIST: $WORDLIST"
@@ -25,13 +25,13 @@ echo ""
 
 # Verificar archivo
 if [[ ! -f "$HANDSHAKE" ]]; then
-    echo "❌ Archivo no encontrado: $HANDSHAKE"
+    echo "✖ Archivo no encontrado: $HANDSHAKE"
     exit 1
 fi
 
 # Verificar wordlist
 if [[ ! -f "$WORDLIST" ]]; then
-    echo "❌ Wordlist no encontrada: $WORDLIST"
+    echo "✖ Wordlist no encontrada: $WORDLIST"
     echo " → Usando wordlist por defecto..."
     WORDLIST="/usr/share/wordlists/rockyou.txt"
 fi
@@ -41,6 +41,6 @@ if command -v aircrack-ng &>/dev/null; then
     echo " → Ejecutando aircrack-ng..."
     aircrack-ng -w "$WORDLIST" -b "$HANDSHAKE" 2>/dev/null | tee "$OUTPUT_DIR/crack_$(date +%Y%m%d).txt"
 else
-    echo "❌ aircrack-ng no instalado"
+    echo "✖ aircrack-ng no instalado"
     echo " Instalar con: sudo apt install aircrack-ng"
 fi

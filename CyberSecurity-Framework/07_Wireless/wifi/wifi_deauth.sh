@@ -18,7 +18,7 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "💥 Ataque de desautenticación"
+echo "Ataque de desautenticación"
 echo "────────────────────────────────────────"
 echo " INTERFACE: $INTERFACE"
 echo " BSSID: $BSSID"

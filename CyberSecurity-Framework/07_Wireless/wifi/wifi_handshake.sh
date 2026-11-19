@@ -19,10 +19,10 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "🔑 Capturando handshake en: $INTERFACE"
+echo "Capturando handshake en: $INTERFACE"
 echo "────────────────────────────────────────"
-echo " ⚠️ Necesitas airodump-ng instalado"
-echo " ⚠️ Debes conocer el BSSID y canal de la red"
+echo " ⚠ Necesitas airodump-ng instalado"
+echo " ⚠ Debes conocer el BSSID y canal de la red"
 echo ""
 
 echo " 1. Primero, escanea redes:"
@@ -37,4 +37,4 @@ echo ""
 echo " 4. Verificar handshake:"
 echo " aircrack-ng -J $OUTPUT_DIR/handshake-01.cap"
 echo ""
-echo "📁 Capturas guardadas en: $OUTPUT_DIR"
+echo "▪ Capturas guardadas en: $OUTPUT_DIR"

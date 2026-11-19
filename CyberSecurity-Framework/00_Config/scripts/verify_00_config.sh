@@ -21,10 +21,10 @@ echo "════════════════════════�
 # ─── FUNCIÓN PARA VERIFICAR ARCHIVOS ──────────────────────
 check_file() {
     if [[ -f "$CONFIG_DIR/$1" ]]; then
-        echo "  ✅ OK: $1"
+        echo "  ✔ OK: $1"
         return 0
     else
-        echo "  ❌ FALTA: $1"
+        echo "  ✖ FALTA: $1"
         ERROR_COUNT=$((ERROR_COUNT + 1))
         return 1
     fi
@@ -32,10 +32,10 @@ check_file() {
 
 check_file_in() {
     if [[ -f "$CONFIG_DIR/$1/$2" ]]; then
-        echo "  ✅ OK: $1/$2"
+        echo "  ✔ OK: $1/$2"
         return 0
     else
-        echo "  ❌ FALTA: $1/$2"
+        echo "  ✖ FALTA: $1/$2"
         ERROR_COUNT=$((ERROR_COUNT + 1))
         return 1
     fi
@@ -44,26 +44,26 @@ check_file_in() {
 # ─── EJECUTAR VERIFICACIONES ──────────────────────────────
 
 echo ""
-echo "📁 Archivos en raíz de 00_Config:"
+echo "▪ Archivos en raíz de 00_Config:"
 check_file "README.md"
 check_file "scope.yaml"
 check_file "targets.txt"
 check_file ".gitignore"
 
 echo ""
-echo "📁 wordlists/:"
+echo "▪ wordlists/:"
 check_file_in "wordlists" "custom.lst"
 check_file_in "wordlists" "users.txt"
 check_file_in "wordlists" "passwords.txt"
 check_file_in "wordlists" "directories.txt"
 
 echo ""
-echo "📁 credentials/:"
+echo "▪ credentials/:"
 check_file_in "credentials" "README.md"
 check_file_in "credentials" ".gitkeep"
 
 echo ""
-echo "📁 scripts/:"
+echo "▪ scripts/:"
 check_file_in "scripts" "validate_config.sh"
 check_file_in "scripts" "parse_targets.py"
 check_file_in "scripts" "verify_00_config.sh"
@@ -74,25 +74,25 @@ echo "────────────────────────�
 # ─── ESTADÍSTICAS ──────────────────────────────────────────
 
 TOTAL_FILES=$(find "$CONFIG_DIR" -type f \( -name "*.txt" -o -name "*.yaml" -o -name "*.md" -o -name "*.sh" -o -name "*.py" -o -name ".gitignore" -o -name ".gitkeep" \) 2>/dev/null | wc -l)
-echo "📊 Total archivos en 00_Config: $TOTAL_FILES"
+echo "Total archivos en 00_Config: $TOTAL_FILES"
 
 echo ""
-echo "📊 Estadísticas de wordlists:"
+echo "Estadísticas de wordlists:"
 for f in custom.lst users.txt passwords.txt directories.txt; do
     if [[ -f "$CONFIG_DIR/wordlists/$f" ]]; then
         LINES=$(wc -l < "$CONFIG_DIR/wordlists/$f" 2>/dev/null)
-        echo "  📄 $f: $LINES líneas"
+        echo "  $f: $LINES líneas"
     fi
 done
 
 echo ""
 if [[ $ERROR_COUNT -eq 0 ]]; then
-    echo "✅ Verificación completada"
+    echo "✔ Verificación completada"
 else
-    echo "❌ Verificación completada con $ERROR_COUNT errores"
+    echo "✖ Verificación completada con $ERROR_COUNT errores"
 fi
 
 # ─── MOSTRAR RUTA COMPLETA ─────────────────────────────────
 echo ""
-echo "📂 Ruta completa: $CONFIG_DIR"
+echo "▪ Ruta completa: $CONFIG_DIR"
 exit "$((ERROR_COUNT > 0))"

@@ -188,7 +188,7 @@ def special_options(sources):
     prompts = set(re.findall(r'resp=\$\(wz_ask "([^"\n]+)"', wizard))
     prompt_contract = {
         '¿Añadir a la lista actual (1) o empezar una nueva (2)? (0 = salir)',
-        '⚠️  Ya existe ${host}:${puerto}. ¿Añadir igualmente? (s/n)',
+        '⚠  Ya existe ${host}:${puerto}. ¿Añadir igualmente? (s/n)',
         '¿Otro objetivo? (s/n)', '¿Correcto? (s/n)',
         '¿Escribir ${#WZ_LINES[@]} objetivo(s)? (s/n)',
     }

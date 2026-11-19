@@ -19,7 +19,7 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "📡 Escaneando redes WiFi en: $INTERFACE"
+echo "Escaneando redes WiFi en: $INTERFACE"
 echo "────────────────────────────────────────"
 
 # Poner interfaz en modo monitor
@@ -34,8 +34,8 @@ sudo iw dev "$INTERFACE" scan 2>/dev/null | grep -E "SSID:|BSS|signal|channel" |
 
 # Mostrar resumen
 echo ""
-echo "📊 Resumen de redes encontradas:"
+echo "Resumen de redes encontradas:"
 grep "SSID:" "$OUTPUT_DIR/wifi_scan_$(date +%Y%m%d).txt" | sort -u
 
 echo ""
-echo "📁 Resultados guardados en: $OUTPUT_DIR/wifi_scan_$(date +%Y%m%d).txt"
+echo "▪ Resultados guardados en: $OUTPUT_DIR/wifi_scan_$(date +%Y%m%d).txt"

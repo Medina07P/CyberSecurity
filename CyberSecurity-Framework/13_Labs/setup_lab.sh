@@ -34,7 +34,7 @@ case "$TYPE" in
         exec "$SCRIPT_DIR/cloud/cloud_setup.sh" "$@"
         ;;
     *)
-        echo "❌ Tipo no válido: $TYPE"
+        echo "✖ Tipo no válido: $TYPE"
         echo "Tipos: htb, thm, ad, web, cloud"
         exit 1
         ;;

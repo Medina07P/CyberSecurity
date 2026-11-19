@@ -24,7 +24,7 @@ from pathlib import Path
 
 from . import config, hardware
 
-TITULO = "🤖 Asistente del framework"
+TITULO = "Asistente del framework"
 OPCIONES = (
     " 1) Entender mis resultados",
     " 2) Explicarme el informe",
