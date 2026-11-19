@@ -26,12 +26,12 @@ else
         TARGETS="127.0.0.1"
     fi
 fi
-echo "🎯 Objetivos: $TARGETS"
+echo "◎ Objetivos: $TARGETS"
 echo ""
 for script in scripts/*.sh scripts/*.py; do
     if [[ -f "$script" && "$script" != "run_all"* ]]; then
         echo ""
-        echo "▶️  Ejecutando: $script"
+        echo "▶  Ejecutando: $script"
         echo "────────────────────────────────────────────────"
         for target in $TARGETS; do
             echo "  → Objetivo: $target"
@@ -44,4 +44,4 @@ for script in scripts/*.sh scripts/*.py; do
     fi
 done
 echo ""
-echo "✅ Reconocimiento completado"
+echo "✔ Reconocimiento completado"

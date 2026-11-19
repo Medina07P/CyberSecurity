@@ -656,7 +656,7 @@ class CliTests(unittest.TestCase):
         self.env['OSINT_FIXTURE_MODE'] = 'blocked'
         result = self.launch('run_all_osint.sh', 'example.test')
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertNotIn('✅ OSINT completado', result.stdout)
+        self.assertNotIn('✔ OSINT completado', result.stdout)
         self.assertIn('BLOQUEADA', result.stdout)
         self.assertIn('HTTP 403', next(self.root.rglob('errores.log')).read_text())
 
@@ -664,7 +664,7 @@ class CliTests(unittest.TestCase):
         self.env['OSINT_FIXTURE_MODE'] = 'wildcard-fail'
         result = self.launch('scripts/subdomain_finder.sh', 'example.test', self.root/'output')
         self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
-        self.assertNotIn('✅ OSINT completado', result.stdout)
+        self.assertNotIn('✔ OSINT completado', result.stdout)
         data = json.loads(self.artifacts()[0].read_text())
         states = {r['source']: r['status'] for r in data['sources']}
         self.assertEqual(states['crtsh_exact'], 'ok')

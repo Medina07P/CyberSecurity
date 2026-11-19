@@ -9,10 +9,10 @@ source "$SCANS_LIB/scanner_runtime.bash"
 scanner_url "$URL" && scanner_require nuclei || exit 1
 OUTPUT_DIR=$(scans_dir nuclei) || exit 1
 SLUG=$(scans_slug "$URL")
-echo "🔬 Nuclei: $URL; HTTP, severidades critical/high/medium, máximo 10 peticiones/s"
+echo "Nuclei: $URL; HTTP, severidades critical/high/medium, máximo 10 peticiones/s"
 scanner_run "$OUTPUT_DIR/errores.log" nuclei -u "$URL" -severity critical,high,medium \
     -type http -rl 10 -c 2 -duc -ni -nc -o "$OUTPUT_DIR/nuclei_${SLUG}.txt" || exit 1
 # El segundo pase duplicaba muchas plantillas CVE; existe una entrada CVE dedicada.
-echo "✅ Ejecución completada."
+echo "✔ Ejecución completada."
 scanner_nuclei_summary "$OUTPUT_DIR/nuclei_${SLUG}.txt" || exit 1
-echo "📁 Resultados: $OUTPUT_DIR/nuclei_${SLUG}.txt"
+echo "▪ Resultados: $OUTPUT_DIR/nuclei_${SLUG}.txt"

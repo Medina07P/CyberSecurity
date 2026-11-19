@@ -13,7 +13,7 @@ if [[ -z "$DOMAIN" ]]; then
     exit 1
 fi
 
-echo "🌐 Enumerando DNS para: $DOMAIN"
+echo "Enumerando DNS para: $DOMAIN"
 
 # Crear directorio de salida junto al módulo, no en el cwd
 MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,7 +35,7 @@ echo "  → Buscando subdominios comunes..."
 SUBDOMAINS=("www" "mail" "ftp" "admin" "api" "dev" "test" "staging" "prod" "backup" "dns" "ns1" "ns2" "pop" "smtp" "imap")
 for sub in "${SUBDOMAINS[@]}"; do
     if dig +short "$sub.$DOMAIN" 2>/dev/null | grep -qE '^[0-9]+'; then
-        echo "    ✅ $sub.$DOMAIN existe"
+        echo "    ✔ $sub.$DOMAIN existe"
         echo "$sub.$DOMAIN|$(dig +short "$sub.$DOMAIN" 2>/dev/null)" >> "$OUTPUT_DIR/subdominios_encontrados.txt"
     fi
 done
@@ -46,4 +46,4 @@ for ip in $(dig +short "$DOMAIN" 2>/dev/null); do
     host "$ip" 2>/dev/null >> "$OUTPUT_DIR/reverse_${DOMAIN}.txt"
 done
 
-echo "✅ DNS enumeration completada"
+echo "✔ DNS enumeration completada"
