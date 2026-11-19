@@ -1259,7 +1259,7 @@ def pedir(herramienta, campo=None):
         if valor == "-":
             poner_valor(reg, herramienta, c, "-")
             borrados.append(c)
-            print(f" {herramienta}/{c}: borrada")
+            print(f"{herramienta}/{c}: borrada")
         else:
             poner_valor(reg, herramienta, c, valor)
             largo = len(_valor_registro(reg.get(herramienta, {}), c))
@@ -1392,7 +1392,7 @@ def main():
         guardar_registro(reg)
         borrada = valor.strip() == "-"
         if borrada:
-            print(f" {args.herramienta}/{args.campo}: borrada")
+            print(f"{args.herramienta}/{args.campo}: borrada")
         else:
             print(
                 f"✔ {args.herramienta}/{args.campo}: "
