@@ -185,7 +185,7 @@ Reglas de adaptador:
   stdout y acabaría en un log o en el historial.
 - Entrada vacía = dejar como está. `-` = borrar. Cualquier otra cosa = guardar (se recortan
   espacios de los extremos; un salto de línea o un NUL se rechazan con código 1).
-- Confirmación sin revelar: `✅ theharvester/dehashed: definida (32 caracteres)`.
+- Confirmación sin revelar: `✔ theharvester/dehashed: definida (32 caracteres)`.
 - Al guardar se escribe primero el registro y después se materializa sola esa herramienta;
   si el adaptador falla, se avisa por stderr y el registro queda escrito (código 3).
 

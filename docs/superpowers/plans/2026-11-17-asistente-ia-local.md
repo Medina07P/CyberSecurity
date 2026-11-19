@@ -174,7 +174,7 @@ Cada línea tiene su prueba en la tarea indicada.
 
 - [ ] **Step 1: Write the failing test** en `run_smoke.sh`: `menú: I aparece` (`'Q\n'` → "Asistente"), `menú: I abre el asistente` (`'I\n0\nQ\n'` → "Asistente del framework"), `menú: I EOF vuelve al gestor` (`'I\n'` seguido de EOF no cuelga), `menú: opción inválida menciona I` (el texto incluye `K, D, I`).
 - [ ] **Step 2: Run** `bash tests/run_smoke.sh` con `SESSION_FILE`/`SESSION_SCOPE_FILE`/`SESSION_TARGETS_FILE` apuntando a temporales (como hace la propia suite) → los casos nuevos FALLAN.
-- [ ] **Step 3: Implement** la función y los cambios en el gestor siguiendo el patrón exacto de `D|d) dependencies_menu ;;`. La línea del menú: `I  🤖 Asistente IA` con `(modelo: …)` solo si es barato de calcular (no llamar a Ollama al pintar el menú principal).
+- [ ] **Step 3: Implement** la función y los cambios en el gestor siguiendo el patrón exacto de `D|d) dependencies_menu ;;`. La línea del menú: `I  Asistente IA` con `(modelo: …)` solo si es barato de calcular (no llamar a Ollama al pintar el menú principal).
 - [ ] **Step 4: Run** `bash tests/run_smoke.sh` → todos ok; `bash -n` de `cyber_framework.sh` y `ai_menu.bash` capturando stderr (debe estar vacío); `python3 -m py_compile` de todos los `.py` nuevos.
 - [ ] **Step 5: Commit** `feat(ai): tecla I en el gestor`.
 

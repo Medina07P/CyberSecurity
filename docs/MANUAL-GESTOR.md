@@ -650,7 +650,7 @@ presentes o no, agrupadas por módulo, más dos opciones para instalar lo que
 falta:
 
 ```
-  D) 📦 Dependencias (N paquetes por apt)
+  D) Dependencias (N paquetes por apt)
      1) Instalar dependencias (elegir de la lista)
      2) Instalar/verificar herramientas adicionales (Ollama, avml, nmap-vulners)
      0) Volver al menú principal
@@ -738,7 +738,7 @@ pegar claves en una línea de argumentos. Desde `00`, la opción `0` vuelve al
 módulo de configuración; desde `K`, vuelve al menú principal.
 
 ```
-  K) 🔑 Claves de API  (6 herramientas · N con claves · M vacías)
+  K) Claves de API  (6 herramientas · N con claves · M vacías)
      1) Pedir las claves que falten en cada herramienta
      2) Pedir las claves de una herramienta
      3) Ver el estado detallado

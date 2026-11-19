@@ -72,7 +72,7 @@
   ```
 
 - [ ] **Step 2: Verificar rojo.** `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_wireless_runtime.py' -v`; debe fallar por bibliotecas ausentes/contrato no implementado, no por una herramienta real.
-- [ ] **Step 3: Implementar las interfaces.** Usar mktemp/atomic replace, nombres seguros, umask privada, timestamps UTC de inicio y resumen estructurado separado del cuerpo. Hash de destino determinista + id aleatorio; distinguir rc de pasos y resultado de finish. `classify` solo reconoce kinds definidos por hojas de Tasks 3–5 con fixtures probatorios, no patrones genéricos como «✅» o «password». Los indicadores de evidencia son distintos del estado operativo y cobertura.
+- [ ] **Step 3: Implementar las interfaces.** Usar mktemp/atomic replace, nombres seguros, umask privada, timestamps UTC de inicio y resumen estructurado separado del cuerpo. Hash de destino determinista + id aleatorio; distinguir rc de pasos y resultado de finish. `classify` solo reconoce kinds definidos por hojas de Tasks 3–5 con fixtures probatorios, no patrones genéricos como «✔» o «password». Los indicadores de evidencia son distintos del estado operativo y cobertura.
 - [ ] **Step 4: Verificar verde.** Repetir unittest; `bash -n 00_Config/lib/wireless_runtime.bash` con stderr vacío; validar AST Python sin generar bytecode. Esperado: código 0, permisos 700/600 y ningún cambio fuera del temporal.
 - [ ] **Step 5: Commit explícito.** Solo los cuatro archivos de Task 1, después de inspeccionar diff: `feat(07): add private typed wireless evidence runtime`.
 

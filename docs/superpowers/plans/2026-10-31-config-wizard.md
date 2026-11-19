@@ -254,8 +254,8 @@ Requisitos exactos que la prueba fija:
 - Antes de preguntar el modo, mostrar los objetivos actuales (tabla simple leyendo `$TARGETS_FILE`; si no existe, decir que está vacía).
 - Modo: `1` añadir, `2` lista nueva, `0` salir; cualquier otra respuesta se repite.
 - Orden de preguntas y valores por defecto entre corchetes: `host` (vacío = terminar), `puerto`, `protocolo [<defecto>]` (si no hay defecto, es obligatorio), `descripción [<protocolo>]`, `prioridad [M]`. **Un campo vacío se sustituye por su defecto antes de validar**, así que `wz_valid_text` nunca ve la descripción vacía cuando hay protocolo.
-- Rechazo (mensaje `❌ … no válido` y repetir la pregunta): puerto, protocolo/descripción con `|`, prioridad fuera de `C/A/M/B`, host que no pase `validate_target`.
-- Duplicado (ya en `$TARGETS_FILE` o repetido en `WZ_LINES`): `⚠️  Ya existe … ¿añadir igualmente? (s/n) [n]`; `n` no añade y pasa a "¿otro objetivo?".
+- Rechazo (mensaje `✖ … no válido` y repetir la pregunta): puerto, protocolo/descripción con `|`, prioridad fuera de `C/A/M/B`, host que no pase `validate_target`.
+- Duplicado (ya en `$TARGETS_FILE` o repetido en `WZ_LINES`): `⚠  Ya existe … ¿añadir igualmente? (s/n) [n]`; `n` no añade y pasa a "¿otro objetivo?".
 - Confirmación de la línea: `  → <host>|<puerto>|<proto>|<desc>|<PRIO>` y `¿Correcto? (s/n) [s]`.
 - "¿Otro objetivo? (s/n) [s]".
 - Resumen: una línea por entrada en el mismo formato, y `¿Escribir N objetivo(s)? (s/n) [s]`; `n` → `Nada se ha modificado.` y salida 0.
@@ -412,7 +412,7 @@ esac
 
 - [ ] **Step 4: Documentar**
 
-- `00_Config/README.md`, en "🚀 Uso Rápido": añadir
+- `00_Config/README.md`, en "Uso Rápido": añadir
   ```bash
   # Alta guiada de objetivos (pregunta host, puerto, protocolo, descripción y prioridad)
   ./scripts/config_wizard.sh

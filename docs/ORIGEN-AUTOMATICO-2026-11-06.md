@@ -22,10 +22,10 @@ Salida real al fijar un objetivo desde el gestor (copia del framework, para no t
 verdad):
 
 ```
-Nuevo objetivo (IP o dominio):    ➕ scope.yaml: nuevo-dominio.com
-   ➕ scope.yaml: *.nuevo-dominio.com
-   ➕ targets.txt: nuevo-dominio.com
-✅ Objetivo guardado: nuevo-dominio.com
+Nuevo objetivo (IP o dominio):    + scope.yaml: nuevo-dominio.com
+   + scope.yaml: *.nuevo-dominio.com
+   + targets.txt: nuevo-dominio.com
+✔ Objetivo guardado: nuevo-dominio.com
 ```
 
 Y el `scope.yaml` resultante sigue parseando, con los comentarios y el resto del fichero

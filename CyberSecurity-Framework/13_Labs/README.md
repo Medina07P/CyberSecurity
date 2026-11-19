@@ -1,8 +1,8 @@
-# 🧪 13_Labs - Laboratorios y Prácticas
+# 13_Labs - Laboratorios y Prácticas
 
 Este directorio contiene configuraciones y notas para laboratorios de hacking.
 
-## 📁 Estructura
+## Estructura
 
 | Directorio          | Descripción                    |
 |---------------------|--------------------------------|
@@ -12,7 +12,7 @@ Este directorio contiene configuraciones y notas para laboratorios de hacking.
 | `web_apps/`         | Aplicaciones web vulnerables   |
 | `cloud/`            | Laboratorios en la nube        |
 
-## 🚀 Uso Rápido
+## Uso Rápido
 
 ```bash
 # Configurar HTB
@@ -31,7 +31,7 @@ Este directorio contiene configuraciones y notas para laboratorios de hacking.
 ./setup_lab.sh cloud "aws-lab"
 ```
 
-## 📋 Flujo de Trabajo
+## Flujo de Trabajo
 
 ```
 1. Elegir laboratorio → hackthebox/ o tryhackme/

@@ -112,7 +112,7 @@ devolvía 0 y solo emitía un *warning* por stderr, que es lo que los dejó pasa
 No hay copia en la cuarentena ni historial en git (en ese momento el framework
 estaba untracked),
 así que los bytes originales no son recuperables: se completaron en el estilo de
-la casa (`echo "✅ ..."`, comprobación de que el fichero se escribió). Verificado
+la casa (`echo "✔ ..."`, comprobación de que el fichero se escribió). Verificado
 que el PHP generado conserva `$ip`/`$port` literales y expande `LHOST`/`LPORT`.
 
 ## Migración de datos
