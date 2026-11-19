@@ -13,7 +13,7 @@ if [[ -z "$TARGET" ]]; then
     exit 1
 fi
 
-echo "🔍 Fingerprinting de: $TARGET"
+echo "Fingerprinting de: $TARGET"
 
 # Crear directorios junto al módulo, no en el cwd
 MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -41,4 +41,4 @@ done
 # 4. Extraer SO
 grep -i "OS details" "$OUTPUT_DIR/nmap_${TARGET}.txt" 2>/dev/null > "$OUTPUT_DIR/os_${TARGET}.txt"
 
-echo "✅ Fingerprinting completado"
+echo "✔ Fingerprinting completado"

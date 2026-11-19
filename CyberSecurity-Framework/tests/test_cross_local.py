@@ -601,14 +601,14 @@ class LabTests(LocalCase):
                 self.assertTrue((alternative / name / 'notes/README.md').is_file())
                 # Only actual list rows carry the folder marker. Creation/editor
                 # output containing the name cannot satisfy this observation.
-                listed = re.findall(r'  📁 ([^\r\n]+)', result.stdout)
+                listed = re.findall(r'  ▪ ([^\r\n]+)', result.stdout)
                 self.assertEqual(listed, [name])
                 self.assertTrue(any(row[0] == 'editor' and row[-1] == str(alternative / name / 'notes/README.md')
                                     for row in f.records()[offset:]))
                 self.assertFalse((default / name).exists())
                 result = self.leaf(f, '13_Labs/main.sh', stdin=choice + '2\n\n5\n11\n', cwd=alien)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                listed = re.findall(r'  📁 ([^\r\n]+)', result.stdout)
+                listed = re.findall(r'  ▪ ([^\r\n]+)', result.stdout)
                 self.assertIn(default_name, listed)
                 self.assertNotIn(name, listed)
                 self.assertNotIn(name, result.stdout)

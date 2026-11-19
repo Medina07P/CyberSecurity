@@ -1,4 +1,4 @@
-# 🛡️ CyberSecurity Framework - Red Team / Pentesting
+# CyberSecurity Framework - Red Team / Pentesting
 
 <div align="center">
 
@@ -21,11 +21,11 @@
 
 ---
 
-## 📋 Descripción
+## Descripción
 
 Este framework proporciona una **estructura organizada y profesional** para realizar auditorías de seguridad, pruebas de penetración (pentesting) y evaluaciones de Red Team. Está diseñado para cubrir todo el ciclo de vida de una auditoría, desde la fase de OSINT hasta la generación de informes.
 
-### 🎯 Objetivos
+### Objetivos
 
 - **Estandarizar** el proceso de auditoría
 - **Organizar** herramientas, scripts y resultados
@@ -33,9 +33,9 @@ Este framework proporciona una **estructura organizada y profesional** para real
 - **Documentar** hallazgos y procedimientos
 - **Facilitar** la generación de informes profesionales
 
-### 🔒 Seguridad y Ética
+### Seguridad y Ética
 
-> ⚠️ **ADVERTENCIA LEGAL**
+> ⚠ **ADVERTENCIA LEGAL**
 >
 > Este framework está diseñado **EXCLUSIVAMENTE** para:
 > - Pruebas de penetración con autorización explícita
@@ -46,7 +46,7 @@ Este framework proporciona una **estructura organizada y profesional** para real
 
 ---
 
-## 📁 Estructura del Framework
+## Estructura del Framework
 
 ```
 CyberSecurity-Framework/
@@ -144,7 +144,7 @@ sesión.
 
 ---
 
-## 📊 Resumen por Fase
+## Resumen por Fase
 
 | Fase | Directorio | Descripción | Herramientas Clave |
 |------|-----------|-------------|-------------------|
@@ -165,7 +165,7 @@ sesión.
 
 ---
 
-## 🚀 Instalación
+## Instalación
 
 ### Requisitos del Sistema
 
@@ -214,7 +214,7 @@ cd 00_Config && ./scripts/validate_config.sh && cd ..
 
 ---
 
-## 🎮 Uso
+## Uso
 
 ### El gestor interactivo (recomendado)
 
@@ -316,7 +316,7 @@ cd 13_Labs && ./run_all_labs.sh
 
 ---
 
-## 📋 Flujo de Trabajo
+## Flujo de Trabajo
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -370,7 +370,7 @@ cd 13_Labs && ./run_all_labs.sh
 
 ---
 
-## 🛠️ Herramientas Incluidas
+## Herramientas Incluidas
 
 ### Escáneres de Red
 - **Nmap** - Escaneo de puertos y servicios
@@ -412,7 +412,7 @@ cd 13_Labs && ./run_all_labs.sh
 
 ---
 
-## 📚 Base de Conocimiento
+## Base de Conocimiento
 
 El framework incluye una extensa base de conocimiento:
 
@@ -439,7 +439,7 @@ El framework incluye una extensa base de conocimiento:
 
 ---
 
-## 📖 Documentación del proyecto
+## Documentación del proyecto
 
 Además de este README:
 
@@ -468,7 +468,7 @@ alimentan por tubería y usan dobles de `nmap`.
 
 ---
 
-## 🤝 Contribuir
+## Contribuir
 
 Si deseas contribuir a este framework:
 
@@ -492,7 +492,7 @@ Si deseas contribuir a este framework:
 
 ---
 
-## 📄 Licencia
+## Licencia
 
 Este proyecto está bajo la licencia MIT.
 
@@ -514,7 +514,7 @@ copies or substantial portions of the Software.
 
 ---
 
-## 📞 Contacto
+## Contacto
 
 Para consultas, sugerencias o reportes:
 
@@ -526,7 +526,7 @@ Para consultas, sugerencias o reportes:
 
 <div align="center">
 
-⭐ ¡No olvides darle una estrella al repositorio! ⭐
+¡No olvides darle una estrella al repositorio!
 
 *"La seguridad no es un producto, es un proceso" - Bruce Schneier*
 

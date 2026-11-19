@@ -17,7 +17,7 @@ source "$SCANS_LIB/scanner_runtime.bash"
 [[ -n "$TARGET" ]] || { echo 'Uso: ./masscan_scan.sh <red> [PUERTOS] [TASA]'; exit 1; }
 scanner_network "$TARGET" && scanner_ports "$PORTS" && scanner_require masscan || exit 1
 if ! [[ "$RATE" =~ ^[0-9]+$ ]] || (( 10#$RATE < 1 || 10#$RATE > 100000 )); then
-    echo "❌ Tasa no válida: '$RATE'. Usa un entero entre 1 y 100000 paquetes/s." >&2
+    echo "✖ Tasa no válida: '$RATE'. Usa un entero entre 1 y 100000 paquetes/s." >&2
     exit 1
 fi
 RATE=$((10#$RATE))
@@ -45,13 +45,13 @@ sys.exit(1)
 PY
 }
 if LOCAL=$(_masscan_local_overlap "$TARGET"); then
-    echo "❌ Masscan no puede escanear $TARGET ($LOCAL): es esta misma máquina." >&2
+    echo "✖ Masscan no puede escanear $TARGET ($LOCAL): es esta misma máquina." >&2
     echo '   Sus paquetes no pasan por el kernel local y devolvería 0 puertos aunque haya servicios.' >&2
     echo '   Usa nmap con connect: nmap -sT -p <puertos> 127.0.0.1  (o el modo básico del módulo 03).' >&2
     exit 1
 fi
 
-[[ "$(id -u)" == 0 ]] || { echo '❌ Masscan necesita root (sockets raw). No se ha ejecutado.' >&2; exit 1; }
+[[ "$(id -u)" == 0 ]] || { echo '✖ Masscan necesita root (sockets raw). No se ha ejecutado.' >&2; exit 1; }
 OUTPUT_DIR=$(scans_dir masscan) || exit 1
 SLUG=$(scans_slug "$TARGET")
 OUT="$OUTPUT_DIR/masscan_${SLUG}.json"
@@ -68,22 +68,22 @@ masscan_filtrado() {
     return $rc
 }
 
-echo "📡 Masscan: $TARGET; puertos $PORTS; tasa $RATE paquetes/s"
+echo "Masscan: $TARGET; puertos $PORTS; tasa $RATE paquetes/s"
 # Masscan solo admite un formato por ejecución; JSON conserva campos estructurados.
 scanner_run "$OUTPUT_DIR/errores.log" masscan_filtrado -p"$PORTS" --rate="$RATE" "$TARGET" \
     -oJ "$OUT" || exit 1
 
 if [[ ! -e "$OUT" ]]; then
-    echo "⚠️  Masscan terminó sin crear $OUT. Resultado NO DETERMINADO." >&2
+    echo "⚠  Masscan terminó sin crear $OUT. Resultado NO DETERMINADO." >&2
     exit 1
 fi
 N=$(grep -c '"port"' "$OUT")
 if (( N == 0 )); then
-    echo "🟡 SIN PUERTOS ABIERTOS DETECTADOS: masscan terminó sin errores y 0 respuestas."
+    echo "● SIN PUERTOS ABIERTOS DETECTADOS: masscan terminó sin errores y 0 respuestas."
     echo "   Esto NO prueba que estén cerrados: con tasas altas o redes con pérdida se"
     echo "   pierden respuestas, y un firewall que descarta paquetes se ve igual."
     echo "   Confirma con: nmap -sT -p $PORTS <host>   (o repite con una tasa menor)."
 else
-    echo "🔴 $N puerto(s) abierto(s) respondieron. Revisa $OUT"
+    echo "● $N puerto(s) abierto(s) respondieron. Revisa $OUT"
 fi
-echo "✅ Escaneo completado. Resultados: $OUT"
+echo "✔ Escaneo completado. Resultados: $OUT"

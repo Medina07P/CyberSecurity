@@ -1,11 +1,11 @@
-# 📊 11_Reports - Informes de Auditoría
+# 11_Reports - Informes de Auditoría
 
 Este directorio contiene el motor de informes que genera reportes profesionales
 a partir de **evidencias ya existentes** en `<repo>/scans/` y los árboles de
 los módulos anteriores. No ejecuta herramientas, adquisiciones ni empaquetados.
 Guía detallada: [USE.md](USE.md).
 
-## 📁 Estructura
+## Estructura
 
 | Directorio / Fichero | Descripción |
 |---------------------|-------------|
@@ -20,7 +20,7 @@ Guía detallada: [USE.md](USE.md).
 | `final_report/`     | (Legacy) Informe final antiguo |
 | `evidence/`         | Evidencias empaquetadas |
 
-## 🚀 Uso Rápido
+## Uso Rápido
 
 ```bash
 # Generar ambos informes (por defecto)
@@ -36,7 +36,7 @@ Guía detallada: [USE.md](USE.md).
 ./report_generator.sh ambos --objetivo 192.168.1.10 --cliente ACME --auditor Ana
 ```
 
-## 📊 Tipos de informe
+## Tipos de informe
 
 | Tipo | Fichero | Dirigido a |
 |------|---------|-----------|
@@ -44,7 +44,7 @@ Guía detallada: [USE.md](USE.md).
 | `cliente` | `informe_cliente.md` / `.html` | Dirección: impacto, riesgo, plan 30/60/90 |
 | `ambos`   | Los dos anteriores + `findings.json` | Entrega completa |
 
-## ⚡ Acción R en el gestor
+## Acción R en el gestor
 
 Desde el menú principal del gestor (`cyber_framework.sh`), la tecla **R**
 abre un submenu de informe rápido:
@@ -57,7 +57,7 @@ abre un submenu de informe rápido:
 Si no hay perfil de cliente/auditor guardado, los pide una vez y los
 almacena en `11_Reports/.report_profile` para siguientes ejecuciones.
 
-## 🔧 Motor Python
+## Motor Python
 
 ```bash
 python3 report_engine.py --objetivo 127.0.0.1 --tipo ambos

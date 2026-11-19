@@ -11,7 +11,7 @@ cd "$FRAMEWORK_DIR" || exit 1
 # Librería del gestor: parser de Uso:, sesión del objetivo, estado de fases
 LIB_DIR="$FRAMEWORK_DIR/00_Config/lib"
 if [[ ! -f "$LIB_DIR/prompt.bash" ]]; then
-    echo "❌ Falta la librería del gestor en $LIB_DIR" >&2
+    echo "✖ Falta la librería del gestor en $LIB_DIR" >&2
     exit 1
 fi
 source "$LIB_DIR/params.bash"
@@ -58,17 +58,17 @@ show_banner() {
     echo -e "${CYAN}${BOLD}"
     echo "╔═══════════════════════════════════════════════════════════════════╗"
     echo "║                                                                   ║"
-    echo -e "║     🛡️  ${WHITE}CYBERSECURITY FRAMEWORK - Manager Universal${CYAN}     ║"
+    echo -e "║            ${WHITE}CYBERSECURITY FRAMEWORK - Manager Universal${CYAN}            ║"
     echo "║                                                                   ║"
-    echo -e "║     ${DIM}Ejecución guiada por fases del framework${CYAN}               ║"
+    echo -e "║             ${DIM}Ejecución guiada por fases del framework${CYAN}              ║"
     echo "║                                                                   ║"
     echo "╚═══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
     if [[ -n "$tgt" ]]; then
-        echo -e "  ${WHITE}🎯 Objetivo:${NC} ${GREEN}${tgt}${NC}"
+        echo -e "  ${WHITE}◎ Objetivo:${NC} ${GREEN}${tgt}${NC}"
     else
-        echo -e "  ${WHITE}🎯 Objetivo:${NC} ${YELLOW}sin definir${NC} ${DIM}(pulsa T para elegirlo)${NC}"
+        echo -e "  ${WHITE}◎ Objetivo:${NC} ${YELLOW}sin definir${NC} ${DIM}(pulsa T para elegirlo)${NC}"
     fi
     show_phase_line
     echo ""
@@ -94,20 +94,20 @@ show_module_status() {
         fi
     }
     
-    echo -e "  ${GREEN}00_Config${NC}        📁 $(count_files 00_Config) archivos  |  🛠️  $(count_scripts 00_Config) scripts"
-    echo -e "  ${GREEN}01_OSINT${NC}          📁 $(count_files 01_OSINT) archivos  |  🛠️  $(count_scripts 01_OSINT) scripts"
-    echo -e "  ${GREEN}02_Recon${NC}          📁 $(count_files 02_Recon) archivos  |  🛠️  $(count_scripts 02_Recon) scripts"
-    echo -e "  ${GREEN}03_Scanners${NC}       📁 $(count_files 03_Scanners) archivos |  🛠️  $(count_scripts 03_Scanners) scripts"
-    echo -e "  ${GREEN}04_Enumeration${NC}    📁 $(count_files 04_Enumeration) archivos |  🛠️  $(count_scripts 04_Enumeration) scripts"
-    echo -e "  ${GREEN}05_Exploitation${NC}   📁 $(count_files 05_Exploitation) archivos |  🛠️  $(count_scripts 05_Exploitation) scripts"
-    echo -e "  ${GREEN}06_PostExploitation${NC} 📁 $(count_files 06_PostExploitation) archivos |  🛠️  $(count_scripts 06_PostExploitation) scripts"
-    echo -e "  ${GREEN}07_Wireless${NC}       📁 $(count_files 07_Wireless) archivos |  🛠️  $(count_scripts 07_Wireless) scripts"
-    echo -e "  ${GREEN}08_Forensics${NC}      📁 $(count_files 08_Forensics) archivos |  🛠️  $(count_scripts 08_Forensics) scripts"
-    echo -e "  ${GREEN}09_Automation${NC}     📁 $(count_files 09_Automation) archivos |  🛠️  $(count_scripts 09_Automation) scripts"
-    echo -e "  ${GREEN}10_Evidence${NC}       📁 $(count_files 10_Evidence) archivos |  🛠️  $(count_scripts 10_Evidence) scripts"
-    echo -e "  ${GREEN}11_Reports${NC}        📁 $(count_files 11_Reports) archivos |  🛠️  $(count_scripts 11_Reports) scripts"
-    echo -e "  ${GREEN}12_Knowledge_Base${NC} 📁 $(count_files 12_Knowledge_Base) archivos |  🛠️  $(count_scripts 12_Knowledge_Base) scripts"
-    echo -e "  ${GREEN}13_Labs${NC}           📁 $(count_files 13_Labs) archivos |  🛠️  $(count_scripts 13_Labs) scripts"
+    echo -e "  ${GREEN}00_Config${NC}           ▪ $(printf '%4s' "$(count_files 00_Config)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 00_Config)") scripts"
+    echo -e "  ${GREEN}01_OSINT${NC}            ▪ $(printf '%4s' "$(count_files 01_OSINT)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 01_OSINT)") scripts"
+    echo -e "  ${GREEN}02_Recon${NC}            ▪ $(printf '%4s' "$(count_files 02_Recon)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 02_Recon)") scripts"
+    echo -e "  ${GREEN}03_Scanners${NC}         ▪ $(printf '%4s' "$(count_files 03_Scanners)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 03_Scanners)") scripts"
+    echo -e "  ${GREEN}04_Enumeration${NC}      ▪ $(printf '%4s' "$(count_files 04_Enumeration)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 04_Enumeration)") scripts"
+    echo -e "  ${GREEN}05_Exploitation${NC}     ▪ $(printf '%4s' "$(count_files 05_Exploitation)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 05_Exploitation)") scripts"
+    echo -e "  ${GREEN}06_PostExploitation${NC} ▪ $(printf '%4s' "$(count_files 06_PostExploitation)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 06_PostExploitation)") scripts"
+    echo -e "  ${GREEN}07_Wireless${NC}         ▪ $(printf '%4s' "$(count_files 07_Wireless)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 07_Wireless)") scripts"
+    echo -e "  ${GREEN}08_Forensics${NC}        ▪ $(printf '%4s' "$(count_files 08_Forensics)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 08_Forensics)") scripts"
+    echo -e "  ${GREEN}09_Automation${NC}       ▪ $(printf '%4s' "$(count_files 09_Automation)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 09_Automation)") scripts"
+    echo -e "  ${GREEN}10_Evidence${NC}         ▪ $(printf '%4s' "$(count_files 10_Evidence)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 10_Evidence)") scripts"
+    echo -e "  ${GREEN}11_Reports${NC}          ▪ $(printf '%4s' "$(count_files 11_Reports)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 11_Reports)") scripts"
+    echo -e "  ${GREEN}12_Knowledge_Base${NC}   ▪ $(printf '%4s' "$(count_files 12_Knowledge_Base)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 12_Knowledge_Base)") scripts"
+    echo -e "  ${GREEN}13_Labs${NC}             ▪ $(printf '%4s' "$(count_files 13_Labs)") archivos  |  ⚙ $(printf '%3s' "$(count_scripts 13_Labs)") scripts"
     echo ""
 }
 
@@ -179,7 +179,7 @@ change_target() {
         if [[ "$sel" =~ ^[0-9]+$ ]] && (( sel >= 1 && sel <= ${#lista[@]} )); then
             entry="${lista[$((sel - 1))]}"
             if session_set_target "${entry%%|*}"; then
-                echo -e "\n${GREEN}✅ Objetivo guardado: ${entry%%|*}${NC}"
+                echo -e "\n${GREEN}✔ Objetivo guardado: ${entry%%|*}${NC}"
             fi
             pause
             return 0
@@ -192,9 +192,9 @@ change_target() {
     printf 'Nuevo objetivo (IP o dominio): '
     IFS= read -r nuevo || return 0
     if session_set_target "$nuevo"; then
-        echo -e "\n${GREEN}✅ Objetivo guardado: $nuevo${NC}"
+        echo -e "\n${GREEN}✔ Objetivo guardado: $nuevo${NC}"
     else
-        echo -e "\n${RED}❌ No es una IP ni un dominio válido: '$nuevo'${NC}"
+        echo -e "\n${RED}✖ No es una IP ni un dominio válido: '$nuevo'${NC}"
         echo -e "${DIM}   Sin espacios ni símbolos. Ejemplos: 192.168.1.10, example.com${NC}"
     fi
     pause
@@ -294,23 +294,23 @@ execute_script() {
     esac
 
     cd "$module_dir" || {
-        echo -e "${RED}❌ Error: No se pudo acceder a $module_dir${NC}"
+        echo -e "${RED}✖ Error: No se pudo acceder a $module_dir${NC}"
         return 1
     }
 
     rel_path="${script_path#$module_dir/}"
 
-    echo -e "\n${GREEN}▶️  Ejecutando: ${rel_path}${NC}"
+    echo -e "\n${GREEN}▶  Ejecutando: ${rel_path}${NC}"
     echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
     [[ -x "$rel_path" ]] || chmod +x "$rel_path" 2>/dev/null
 
     if params_is_generator "$rel_path"; then
-        echo -e "${YELLOW}ℹ️  Es un GENERADOR: escribe otro script, no escanea nada.${NC}"
+        echo -e "${YELLOW}ℹ  Es un GENERADOR: escribe otro script, no escanea nada.${NC}"
     fi
 
     if (( ! basic_scanner )) && params_is_dangerous "$script_path"; then
-        echo -e "${RED}⚠️  Herramienta intrusiva (escaneo intensivo / fuerza bruta / explotación / persistencia).${NC}"
+        echo -e "${RED}⚠  Herramienta intrusiva (escaneo intensivo / fuerza bruta / explotación / persistencia).${NC}"
         if ! ask_confirm "¿Confirmas que el objetivo está dentro de tu alcance autorizado?"; then
             echo -e "${YELLOW}Cancelado${NC}"
             cd "$original_dir" || exit 1
@@ -374,12 +374,12 @@ run_module_scripts() {
         module_intro "$module_dir"
 
         if [[ ! -d "$module_dir" ]]; then
-            echo -e "${RED}❌ Módulo no encontrado: $module_dir${NC}"
+            echo -e "${RED}✖ Módulo no encontrado: $module_dir${NC}"
             pause
             return
         fi
 
-        echo -e "${YELLOW}📂 Directorio: $PWD/$module_dir${NC}"
+        echo -e "${YELLOW}▪ Directorio: $PWD/$module_dir${NC}"
         echo ""
 
         local -a scripts=() categories=()
@@ -426,12 +426,12 @@ run_module_scripts() {
         fi
 
         if [[ ${#scripts[@]} -eq 0 ]]; then
-            echo -e "${YELLOW}⚠️  No se encontraron scripts ejecutables en este módulo${NC}"
+            echo -e "${YELLOW}⚠  No se encontraron scripts ejecutables en este módulo${NC}"
             pause
             return
         fi
 
-        echo -e "${GREEN}✅ Se encontraron ${#scripts[@]} scripts disponibles:${NC}"
+        echo -e "${GREEN}✔ Se encontraron ${#scripts[@]} scripts disponibles:${NC}"
         echo ""
 
         local current_cat="" i num marca
@@ -479,7 +479,7 @@ run_module_scripts() {
                 execute_script "${scripts[$idx]}" "$module_dir"
             elif [[ "${categories[$idx]}" == "run_all" ]]; then
                 echo ""
-                echo -e "${YELLOW}⚠️  Este script ejecuta TODOS los scripts del módulo${NC}"
+                echo -e "${YELLOW}⚠  Este script ejecuta TODOS los scripts del módulo${NC}"
                 if ask_confirm "¿Deseas continuar?"; then
                     execute_script "${scripts[$idx]}" "$module_dir"
                 else
@@ -503,12 +503,12 @@ run_module_scripts() {
                 esac
                 if [[ -n "$esquema_var" ]]; then
                     echo ""
-                    echo -e "${YELLOW}ℹ️  Este script no deduce el esquema del puerto.${NC}"
+                    echo -e "${YELLOW}ℹ  Este script no deduce el esquema del puerto.${NC}"
                     echo -ne "${BOLD}${WHITE}Esquema real del servicio http|https (Enter = no fijarlo): ${NC}"
                     IFS= read -r esquema_val
                     case "$esquema_val" in
                         http|https|"") ;;
-                        *) echo -e "${RED}❌ Esquema no válido: '${esquema_val}'; se continúa sin fijarlo.${NC}"
+                        *) echo -e "${RED}✖ Esquema no válido: '${esquema_val}'; se continúa sin fijarlo.${NC}"
                            esquema_val="" ;;
                     esac
                 fi
@@ -526,7 +526,7 @@ run_module_scripts() {
                     echo -ne "${BOLD}${WHITE}Número de intentos (Enter = por defecto del script): ${NC}"
                     IFS= read -r max_val
                     if [[ -n "$max_val" ]] && ! [[ "$max_val" =~ ^[0-9]+$ && "$max_val" -ge 1 ]]; then
-                        echo -e "${RED}❌ Tiene que ser un entero > 0: '${max_val}'; se continúa con el valor por defecto.${NC}"
+                        echo -e "${RED}✖ Tiene que ser un entero > 0: '${max_val}'; se continúa con el valor por defecto.${NC}"
                         max_val=""
                     fi
                 fi
@@ -551,7 +551,7 @@ run_module_scripts() {
                         ""|1) dicc_tipo="claves" ;;
                         2) dicc_tipo="combo" ;;
                         *)
-                            echo -e "${RED}❌ Opción no válida: '${dicc_tipo}'; se continúa con «claves».${NC}"
+                            echo -e "${RED}✖ Opción no válida: '${dicc_tipo}'; se continúa con «claves».${NC}"
                             dicc_tipo="claves"
                             ;;
                     esac
@@ -581,7 +581,7 @@ run_module_scripts() {
                 [[ -n "$dicc_tipo" ]] && unset BRUTE_DICC_TIPO
             fi
         else
-            echo -e "${RED}❌ Opción inválida${NC}"
+            echo -e "${RED}✖ Opción inválida${NC}"
             sleep 1
         fi
     done
@@ -664,7 +664,7 @@ module_labs() {
 run_recon_phase() {
     local script="02_Recon/scripts/auto_recon.sh"
     if [[ ! -f "$script" ]]; then
-        echo -e "${YELLOW}⚠️  No se encontró $script; se salta la fase.${NC}"
+        echo -e "${YELLOW}⚠  No se encontró $script; se salta la fase.${NC}"
         return 1
     fi
     execute_script "$script" "02_Recon"
@@ -678,7 +678,7 @@ full_workflow() {
     local target
     target=$(session_target)
     if [[ -z "$target" ]]; then
-        echo -e "${RED}❌ No hay objetivo definido.${NC}"
+        echo -e "${RED}✖ No hay objetivo definido.${NC}"
         echo -e "${YELLOW}Primero elige el objetivo con la opción T.${NC}"
         pause
         return
@@ -697,7 +697,7 @@ full_workflow() {
     echo -e "  ${GREEN}8.${NC} Evidencia        (10_Evidence)"
     echo -e "  ${GREEN}9.${NC} Reporte          (11_Reports)"
     echo ""
-    echo -e "${RED}${BOLD}⚠️  Incluye fuerza bruta; persistencia y limpieza quedan excluidas por sus coordinadores.${NC}"
+    echo -e "${RED}${BOLD}⚠  Incluye fuerza bruta; persistencia y limpieza quedan excluidas por sus coordinadores.${NC}"
     echo -e "${RED}   Solo contra equipos propios o con autorización escrita.${NC}"
     echo ""
 
@@ -720,11 +720,11 @@ full_workflow() {
     for phase in "00_Config" "01_OSINT" "02_Recon" "03_Scanners" "04_Enumeration" \
                  "05_Exploitation" "06_PostExploitation" "10_Evidence" "11_Reports"; do
         if [[ ! -d "$phase" ]]; then
-            echo -e "${RED}❌ Fase $phase no encontrada${NC}"
+            echo -e "${RED}✖ Fase $phase no encontrada${NC}"
             continue
         fi
 
-        echo -e "\n${CYAN}▶️  Fase: $phase${NC}"
+        echo -e "\n${CYAN}▶  Fase: $phase${NC}"
 
         if [[ "$phase" == "02_Recon" ]]; then
             run_recon_phase
@@ -733,14 +733,14 @@ full_workflow() {
 
         run_script=$(find "$phase" -maxdepth 1 -name "run_all_*.sh" -type f 2>/dev/null | head -1)
         if [[ -z "$run_script" ]]; then
-            echo -e "${YELLOW}⚠️  No hay run_all_*.sh en $phase; se salta.${NC}"
+            echo -e "${YELLOW}⚠  No hay run_all_*.sh en $phase; se salta.${NC}"
             sleep 1
             continue
         fi
         execute_script "$run_script" "$phase"
     done
 
-    echo -e "\n${GREEN}✅ Flujo de auditoría completado${NC}"
+    echo -e "\n${GREEN}✔ Flujo de auditoría completado${NC}"
     pause
 }
 
@@ -772,7 +772,7 @@ quick_report() {
         2) tipo="cliente" ;;
         3) tipo="ambos" ;;
         *)
-            echo -e "${RED}❌ Opción inválida${NC}"
+            echo -e "${RED}✖ Opción inválida${NC}"
             pause
             return 0
             ;;
@@ -838,7 +838,7 @@ import json, sys
 for path in json.load(sys.stdin)["archivos"]:
     sys.stdout.write(path + "\0")
 ')
-        echo -e "${GREEN}📁 Informes escritos en esta ejecución${NC}:"
+        echo -e "${GREEN}▪ Informes escritos en esta ejecución${NC}:"
         for f in "${report_files[@]}"; do
             printf '  %s\n' "$f"
             if [[ -z "$html_file" && "$f" == *.html ]]; then
@@ -860,7 +860,7 @@ for path in json.load(sys.stdin)["archivos"]:
 
     if [[ $rc -ne 0 ]]; then
         echo ""
-        echo -e "${YELLOW}⚠️  Código de salida del motor: $rc${NC}"
+        echo -e "${YELLOW}⚠  Código de salida del motor: $rc${NC}"
     fi
 
     pause
@@ -872,7 +872,7 @@ show_help() {
     clear_screen
     echo -e "${CYAN}${BOLD}━━━ AYUDA ━━━${NC}"
     echo ""
-    echo -e "${YELLOW}📋 MÓDULOS DEL FRAMEWORK:${NC}"
+    echo -e "${YELLOW}MÓDULOS DEL FRAMEWORK:${NC}"
     echo ""
     echo -e "  ${GREEN}00_Config${NC}       Configuración, alcance y lista de objetivos"
     echo -e "  ${GREEN}01_OSINT${NC}        Inteligencia de fuentes abiertas"
@@ -889,7 +889,7 @@ show_help() {
     echo -e "  ${GREEN}12_Knowledge_Base${NC} Base de conocimiento"
     echo -e "  ${GREEN}13_Labs${NC}         Laboratorios de práctica"
     echo ""
-    echo -e "${YELLOW}💡 ORDEN RECOMENDADO:${NC}"
+    echo -e "${YELLOW}ℹ ORDEN RECOMENDADO:${NC}"
     echo -e "  ${GREEN}1.${NC} 00_Config      valida el alcance y los objetivos"
     echo -e "  ${GREEN}2.${NC} 02_Recon       descubre qué hay vivo"
     echo -e "  ${GREEN}3.${NC} 03_Scanners    busca servicios y vulnerabilidades"
@@ -897,13 +897,13 @@ show_help() {
     echo -e "  ${GREEN}5.${NC} 05 y 06        solo si tienes autorización"
     echo -e "  ${GREEN}6.${NC} 10_Evidence y 11_Reports recogen y documentan"
     echo ""
-    echo -e "${YELLOW}🎯 OBJETIVO:${NC}"
+    echo -e "${YELLOW}◎ OBJETIVO:${NC}"
     echo -e "  Con ${GREEN}T${NC} eliges el equipo o dominio de la sesión. Se guarda en"
     echo -e "  ${DIM}00_Config/.session${NC} y se propone como valor por defecto en"
     echo -e "  todos los scripts que piden un host. Si defines varios en"
     echo -e "  ${DIM}00_Config/targets.txt${NC}, te los ofrece como lista."
     echo ""
-    echo -e "${YELLOW}⌨️  ATAJOS:${NC}"
+    echo -e "${YELLOW}ATAJOS:${NC}"
     echo -e "  ${GREEN}T${NC}   Cambiar objetivo"
     echo -e "  ${GREEN}R${NC}   Informe rápido (técnico, cliente o ambos)"
     echo -e "  ${GREEN}K${NC}   Claves de API (pide y guarda las que falten)"
@@ -912,14 +912,14 @@ show_help() {
     echo -e "  ${GREEN}0${NC}   Volver al menú principal"
     echo -e "  ${GREEN}Q${NC}   Salir"
     echo ""
-    echo -e "${YELLOW}📝 INFORMES:${NC}"
+    echo -e "${YELLOW}INFORMES:${NC}"
     echo -e "  Con ${GREEN}R${NC} generas los informes técnico y de cliente desde lo ya escaneado."
     echo ""
-    echo -e "${YELLOW}📖 DOCUMENTACIÓN:${NC}"
+    echo -e "${YELLOW}DOCUMENTACIÓN:${NC}"
     echo -e "  Manual completo del gestor: ${DIM}../docs/MANUAL-GESTOR.md${NC}"
     echo -e "  ${DIM}(o ejecuta desde la raíz del repo: less docs/MANUAL-GESTOR.md)${NC}"
     echo ""
-    echo -e "${YELLOW}ℹ️  MARCAS EN LA LISTA:${NC}"
+    echo -e "${YELLOW}ℹ  MARCAS EN LA LISTA:${NC}"
     echo -e "  ${RED}[intrusiva]${NC}  pide confirmación extra antes de ejecutarse"
     echo -e "  ${CYAN}[manual]${NC}     usa banderas o subcomandos; escribes los argumentos"
     echo -e "  ${YELLOW}[generador]${NC}  escribe otro script, no escanea nada"
@@ -941,28 +941,28 @@ main_menu() {
     echo -e "${BOLD}${WHITE}│  SELECCIONA UN MÓDULO                                  │${NC}"
     echo -e "${BOLD}${WHITE}└──────────────────────────────────────────────────────────┘${NC}"
     echo ""
-    echo -e "  ${CYAN}00${NC}  ${WHITE}⚙️  Configuración y Setup${NC}"
-    echo -e "  ${CYAN}01${NC}  ${WHITE}🔍 OSINT - Inteligencia de código abierto${NC}"
-    echo -e "  ${CYAN}02${NC}  ${WHITE}📡 Reconocimiento y Fingerprinting${NC}"
-    echo -e "  ${CYAN}03${NC}  ${WHITE}🔬 Escáneres (Nmap, Masscan, Nuclei)${NC}"
-    echo -e "  ${CYAN}04${NC}  ${WHITE}📋 Enumeración de servicios${NC}"
-    echo -e "  ${CYAN}05${NC}  ${WHITE}💀 Explotación de vulnerabilidades${NC}"
-    echo -e "  ${CYAN}06${NC}  ${WHITE}🎯 Post-Explotación${NC}"
-    echo -e "  ${CYAN}07${NC}  ${WHITE}📶 Wireless - WiFi y Bluetooth${NC}"
-    echo -e "  ${CYAN}08${NC}  ${WHITE}🔎 Forense y Análisis${NC}"
-    echo -e "  ${CYAN}09${NC}  ${WHITE}🤖 Automatización y Workflows${NC}"
-    echo -e "  ${CYAN}10${NC}  ${WHITE}📦 Evidencia y Capturas${NC}"
-    echo -e "  ${CYAN}11${NC}  ${WHITE}📊 Generación de Reportes${NC}"
-    echo -e "  ${CYAN}12${NC}  ${WHITE}📚 Base de Conocimiento${NC}"
-    echo -e "  ${CYAN}13${NC}  ${WHITE}🧪 Laboratorios (HTB/THM/AD)${NC}"
+    echo -e "  ${CYAN}00${NC}  ${WHITE}⚙  Configuración y Setup${NC}"
+    echo -e "  ${CYAN}01${NC}  ${WHITE}OSINT - Inteligencia de código abierto${NC}"
+    echo -e "  ${CYAN}02${NC}  ${WHITE}Reconocimiento y Fingerprinting${NC}"
+    echo -e "  ${CYAN}03${NC}  ${WHITE}Escáneres (Nmap, Masscan, Nuclei)${NC}"
+    echo -e "  ${CYAN}04${NC}  ${WHITE}Enumeración de servicios${NC}"
+    echo -e "  ${CYAN}05${NC}  ${WHITE}Explotación de vulnerabilidades${NC}"
+    echo -e "  ${CYAN}06${NC}  ${WHITE}◎ Post-Explotación${NC}"
+    echo -e "  ${CYAN}07${NC}  ${WHITE}Wireless - WiFi y Bluetooth${NC}"
+    echo -e "  ${CYAN}08${NC}  ${WHITE}Forense y Análisis${NC}"
+    echo -e "  ${CYAN}09${NC}  ${WHITE}Automatización y Workflows${NC}"
+    echo -e "  ${CYAN}10${NC}  ${WHITE}Evidencia y Capturas${NC}"
+    echo -e "  ${CYAN}11${NC}  ${WHITE}Generación de Reportes${NC}"
+    echo -e "  ${CYAN}12${NC}  ${WHITE}Base de Conocimiento${NC}"
+    echo -e "  ${CYAN}13${NC}  ${WHITE}Laboratorios (HTB/THM/AD)${NC}"
     echo ""
-    echo -e "  ${CYAN}99${NC}  ${WHITE}🚀 Ejecutar Flujo Completo${NC}"
-    echo -e "  ${CYAN}R ${NC}  ${WHITE}📊 Informe rápido${NC}"
-    echo -e "  ${CYAN}T ${NC}  ${WHITE}🎯 Cambiar objetivo${NC} ${DIM}(actual: ${target:-sin definir})${NC}"
-    echo -e "  ${CYAN}K ${NC}  ${WHITE}🔑 Claves de API${NC} ${DIM}($(keys_resumen_line))${NC}"
-    echo -e "  ${CYAN}D ${NC}  ${WHITE}📦 Dependencias${NC} ${DIM}($(dependencies_resumen_line))${NC}"
-    echo -e "  ${CYAN}I ${NC}  ${WHITE}🤖 Asistente IA${NC}"
-    echo -e "  ${CYAN}? ${NC}  ${WHITE}📖 Ayuda y Comandos Útiles${NC}"
+    echo -e "  ${CYAN}99${NC}  ${WHITE}▶ Ejecutar Flujo Completo${NC}"
+    echo -e "  ${CYAN}R ${NC}  ${WHITE}Informe rápido${NC}"
+    echo -e "  ${CYAN}T ${NC}  ${WHITE}◎ Cambiar objetivo${NC} ${DIM}(actual: ${target:-sin definir})${NC}"
+    echo -e "  ${CYAN}K ${NC}  ${WHITE}Claves de API${NC} ${DIM}($(keys_resumen_line))${NC}"
+    echo -e "  ${CYAN}D ${NC}  ${WHITE}Dependencias${NC} ${DIM}($(dependencies_resumen_line))${NC}"
+    echo -e "  ${CYAN}I ${NC}  ${WHITE}Asistente IA${NC}"
+    echo -e "  ${CYAN}? ${NC}  ${WHITE}Ayuda y Comandos Útiles${NC}"
     echo -e "  ${CYAN}Q ${NC}  ${RED}Salir${NC}"
     echo ""
 
@@ -1074,7 +1074,7 @@ keys_menu() {
             keys_helper importar "$herramienta"
             ;;
         *)
-            echo -e "${RED}❌ Opción inválida${NC}"
+            echo -e "${RED}✖ Opción inválida${NC}"
             ;;
     esac
     pause
@@ -1161,7 +1161,7 @@ dependencies_menu() {
             done
             echo ""; dependencies_status
             ;;
-        *) echo -e "${RED}❌ Opción inválida${NC}" ;;
+        *) echo -e "${RED}✖ Opción inválida${NC}" ;;
     esac
     pause
 }
@@ -1175,7 +1175,7 @@ main() {
 
         if ! IFS= read -r choice; then
             echo ""
-            echo -e "${GREEN}👋 Entrada cerrada. ¡Hasta luego!${NC}"
+            echo -e "${GREEN}Entrada cerrada. ¡Hasta luego!${NC}"
             exit 0
         fi
 
@@ -1207,12 +1207,12 @@ main() {
             I|i) ai_menu ;;
             \?|\?\?|help|HELP|H|h) show_help ;;
             Q|q|salir|exit)
-                echo -e "\n${GREEN}👋 ¡Hasta luego!${NC}"
+                echo -e "\n${GREEN}¡Hasta luego!${NC}"
                 exit 0
                 ;;
             "") : ;;
             *)
-                echo -e "\n${RED}❌ Opción inválida: '$choice'${NC}"
+                echo -e "\n${RED}✖ Opción inválida: '$choice'${NC}"
                 echo -e "${YELLOW}Prueba con 00-13, 99, R, T, K, D, I, ? o Q.${NC}"
                 pause
                 ;;
@@ -1223,8 +1223,8 @@ main() {
 # ─── Iniciar ─────────────────────────────────────────────────
 
 if [[ ! -d "00_Config" ]]; then
-    echo -e "${RED}❌ Error: No se encuentra el directorio 00_Config${NC}"
-    echo -e "${YELLOW}ℹ️  Ejecuta desde la raíz del framework:${NC}"
+    echo -e "${RED}✖ Error: No se encuentra el directorio 00_Config${NC}"
+    echo -e "${YELLOW}ℹ  Ejecuta desde la raíz del framework:${NC}"
     echo -e "${GREEN}cd \"$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)\"${NC}"
     echo -e "${GREEN}./cyber_framework.sh${NC}"
     exit 1

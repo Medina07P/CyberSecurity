@@ -1,5 +1,50 @@
 # AGENTS.md
 
+**Símbolos Unicode simples en lugar de emojis, 2026-11-18 — integrado en
+`develop` (`6e81716`, fast-forward local desde `4b5d1ed`), sin push:**
+sustituidos los emojis a color por símbolos Unicode monocromos
+(`✔ ✖ ⚠ ● ▪ ⚙ ◎ ℹ +`) en el menú del gestor, sus bibliotecas, toda la
+documentación `.md` y los mensajes de los scripts de los 14 módulos —
+no quedó ningún emoji en ningún fichero versionado del proyecto.
+Implementado con `subagent-driven-development` (5 tareas sobre un worktree
+en `.worktrees/`, rama `feat/iconos-simbolos`), cada una con implementador
+y revisor independientes: (1) conversor de mapeo fijo (fuera del repo, en
+el scratchpad) y línea base de las 19 suites — todas verdes salvo
+`run_reports`, que mantiene sus 2 fallos preexistentes del shim legacy
+(EXDEV); (2) `cyber_framework.sh` y `00_Config/lib/*.bash`, con realineado
+manual del banner y las columnas `archivos | scripts` tras pasar de
+glifos de ancho 2 a símbolos de ancho 1; (3) los 91 `.md` con emoji,
+dejando intactos a propósito el diseño y el plan de esta misma rama, que
+listan el mapa de sustitución; (4) scripts de los módulos 01–05, con la
+única dependencia real de parser encontrada (la línea `Resumen:` de
+`sqlmap_request.sh`, convertida junto con el test que la lee); (5) módulos
+00 y 06–13 más los seis tests que habían quedado aplazados, confirmando
+que `report_engine.py` nunca emitió marcadores de severidad con emoji (no
+hizo falta añadir etiqueta de texto). Diseño en
+`docs/superpowers/specs/2026-11-18-iconos-simbolos-design.md` y plan en
+`docs/superpowers/plans/2026-11-18-iconos-simbolos.md`. Revisión final
+independiente (subagente en Opus) sobre el diff completo de la rama: 0
+Critical, 1 Important, 3 Minor. El Important —deriva entre dos tareas: un
+README de `03_Scanners` citaba la salida de `masscan` sin el símbolo `●`
+que el script ya emitía tras su conversión— y uno de los Minor —un
+espacio sobrante en dos mensajes de `api_keys.py` donde se había quitado
+un emoji sin mapeo— se corrigieron en una ola de arreglos antes del
+merge, confirmada por un segundo revisor independiente. Los otros dos
+Minor quedan sin corregir, por diseño: el menú principal solo conserva
+símbolo en 4 de 14 entradas (las demás usaban emojis sin mapeo) y
+`show_module_status` pasó a usar `printf` con ancho fijo para mantener
+alineadas las columnas tras el cambio de ancho de los glifos. Un primer
+intento de revisor fue bloqueado por el filtro de seguridad de contenido
+al citar scripts de post-explotación/wireless; se relanzó con un encuadre
+más estrecho, centrado solo en la equivalencia de caracteres del diff, sin
+discutir qué hacen las herramientas. 19 suites ejecutadas en el worktree
+aislado antes del merge, todas en verde salvo las 2 fallas preexistentes
+de `run_reports`; nunca se corrió `run_tests.sh` sobre este checkout (borra
+`scans/` y logs reales). Tras el fast-forward se reaplicaron a mano los dos
+cambios locales sin commit de `scope.yaml`/`targets.txt` (el objetivo
+`127.0.0.1` registrado en sesión), ya con el texto convertido. Worktree y
+rama de trabajo borrados tras el merge. Sin push.
+
 **Cierre de los 8 Minor diferidos del asistente IA, 2026-11-18 — integrado
 en `develop` (`b047d9f`, fast-forward local desde `e5793bd`), sin push:**
 los 8 Minor documentados en la nota anterior (y en
@@ -527,7 +572,7 @@ Para cerrar el hallazgo ALTO de aquel informe (20 × `401` y cero `429` en el lo
 
 On 2026-11-06 the deterministic report engine landed (`docs/superpowers/specs/2026-11-05-informes-automatizados-design.md`, state: approved and implemented). `11_Reports/report_engine.py` reads `scans/` and produces `findings.json` plus two reports — `informe_tecnico.md/.html` and `informe_cliente.md/.html` — attributed to the session target. `11_Reports/report_generator.sh` is the friendly wrapper (`Uso: ./report_generator.sh [tipo]`, slots mode). `R` in the manager menu triggers it; the profile (`cliente`/`auditor`) is stored in `11_Reports/.report_profile` (git-ignored). `09_Automation/python/report_generator.py` is now an obsolescence shim that delegates to the engine. The new suite `tests/run_reports.sh` (57 Python asserts plus shell checks for the wrapper, the menu, the documentation and syntax) covers the parser rules, the attribution, the traps (keywords, catch-all, `NO DETERMINADO`) and the doc checks. `docs/MANUAL-GESTOR.md` is the user-facing guide in Spanish.
 
-Ese mismo día se cerró el agujero de `01_OSINT`: `run_all_osint.sh` no declaraba parámetros y llamaba a sus cinco hijos sin argumentos, así que todos imprimían su `Uso:` y él anunciaba «✅ OSINT completado» con `exit 0` sin haber ejecutado nada. Ahora pide `<dominio> [archivo]`, pasa el dominio a emails/WHOIS-DNS/subdominios, deriva el nombre de empresa para redes sociales (y lo anuncia), ejecuta metadatos solo si le das un archivo local, y un hijo que falla se cuenta y hace salir 1 con su stderr en `01_OSINT/osint_errores.log`. Es el sexto `run_all_*` que se autolocaliza. `docs/OSINT-RUNALL-2026-11-06.md` lo documenta con los 14 asserts nuevos.
+Ese mismo día se cerró el agujero de `01_OSINT`: `run_all_osint.sh` no declaraba parámetros y llamaba a sus cinco hijos sin argumentos, así que todos imprimían su `Uso:` y él anunciaba «✔ OSINT completado» con `exit 0` sin haber ejecutado nada. Ahora pide `<dominio> [archivo]`, pasa el dominio a emails/WHOIS-DNS/subdominios, deriva el nombre de empresa para redes sociales (y lo anuncia), ejecuta metadatos solo si le das un archivo local, y un hijo que falla se cuenta y hace salir 1 con su stderr en `01_OSINT/osint_errores.log`. Es el sexto `run_all_*` que se autolocaliza. `docs/OSINT-RUNALL-2026-11-06.md` lo documenta con los 14 asserts nuevos.
 
 Y el objetivo de sesión dejó de ser cosa de dos ficheros: `session_set_target` registra lo que fijas también en `scope.yaml` (IP en `targets.ips`; dominio **y** `*.dominio` en `targets.domains`, con `.bak`, validación PyYAML y descarte del temporal si el YAML deja de parsear — el original no se toca —) y en `targets.txt` (`<host>|—|—|Registrado al fijar el objetivo|B`). Idempotente, sin distinguir mayúsculas, y un fallo avisa sin cancelar la sesión. Se arregló de paso que `scope_allows` no coincidiera con una entrada de dominio sin comodín y que devolviera «no determinado» cuando el `scope.yaml` no tenía IPs. Consecuencia asumida: la comprobación de alcance pasa a ser un registro de lo usado, no una barrera. `docs/ORIGEN-AUTOMATICO-2026-11-06.md` y `docs/MANUAL-GESTOR.md` lo explican; la suite subió a 386 asserts por entonces, incluida una guarda de `md5sum` que impide que los tests toquen el `scope.yaml` y el `targets.txt` reales.
 

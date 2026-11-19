@@ -16,7 +16,7 @@ run_child() {
     local script="$1"
     shift
     if [[ ! -f "$script" ]]; then
-        echo "❌ Script no encontrado: $script"
+        echo "✖ Script no encontrado: $script"
         FALLIDAS=$((FALLIDAS + 1))
         return
     fi
@@ -25,7 +25,7 @@ run_child() {
         FALLIDAS=$((FALLIDAS + 1))
     fi
 }
-echo "⚠️ Modo avanzado: todos los puertos y análisis activo sobre $TARGET"
+echo "⚠ Modo avanzado: todos los puertos y análisis activo sobre $TARGET"
 run_child network_scanners/nmap/nmap_smart.sh "$TARGET"
 if [[ "$TARGET" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     if command -v masscan >/dev/null 2>&1 && [[ "$(id -u)" == 0 ]]; then
@@ -59,13 +59,13 @@ if WEB_DISCOVERY=$(scanner_run "$OUTPUT_DIR/errores.log" nmap -Pn -p 80,443,8080
         done
     fi
 else
-    echo '❌ Descubrimiento web fallido: NO DETERMINADO; no se ejecutan sondas web.'
+    echo '✖ Descubrimiento web fallido: NO DETERMINADO; no se ejecutan sondas web.'
     FALLIDAS=$((FALLIDAS + 1))
 fi
 printf '\nRESUMEN — Ejecutadas: %s | Fallidas: %s | Omitidas: %s\n' "$EJECUTADAS" "$FALLIDAS" "$OMITIDAS"
 if (( FALLIDAS )); then
-    echo '❌ Ejecución incompleta. Revisa los diagnósticos de esta ejecución.'
+    echo '✖ Ejecución incompleta. Revisa los diagnósticos de esta ejecución.'
     exit 1
 fi
-echo '✅ Ejecución terminada; las omisiones no se han evaluado.'
+echo '✔ Ejecución terminada; las omisiones no se han evaluado.'
 exit 0

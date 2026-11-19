@@ -7,7 +7,7 @@
 - `wordlists/` - Diccionarios personalizados
 Este directorio contiene todos los archivos de configuración, alcance y objetivos para tus auditorías.
 
-## 📁 Estructura
+## Estructura
 
 | Archivo/Directorio | Descripción |
 |-------------------|-------------|

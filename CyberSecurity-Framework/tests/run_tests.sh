@@ -1120,7 +1120,7 @@ eq "sqlmap_request: '-' lee de la entrada estándar" "$(grep -c -- '--batch' "$S
 mkdir -p "$TMPD/ev"; cp "$TMPD/req_sm.req" "$TMPD/ev/001_id_sqli_bool.req"; cp "$TMPD/req_sm.req" "$TMPD/ev/002_q_xss.req"
 : > "$SSTUB_LOG"
 OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/ev" 2>&1)
-SM_RESUMEN=$(printf '%s\n' "$OUT" | sed -n 's/^📊 Resumen: //p')
+SM_RESUMEN=$(printf '%s\n' "$OUT" | sed -n 's/^Resumen: //p')
 SM_RUN=$(dirname "$SM_RESUMEN")
 eq "sqlmap_request: directorio = un sqlmap por fichero" "$(grep -c -- '--batch' "$SSTUB_LOG")" "2"
 eq "sqlmap_request: dos logs en el run observado" "$(find "$SM_RUN" -name '*.log' | wc -l | tr -d ' ')" "2"
@@ -1137,7 +1137,7 @@ eq "sqlmap_request: si se niega, no ejecuta sqlmap" "$(wc -l < "$SSTUB_LOG" | tr
 # Host reescrito: conserva el puerto del .req
 printf 'GET /?id=1 HTTP/1.1\nHost: app.inventado.example:8443\n\n' > "$TMPD/req_sm_vhost.req"
 OUT=$(PATH="$SSTUB:$PATH" bash "$FW/05_Exploitation/web/sqlmap_request.sh" "$TMPD/req_sm_vhost.req" 10.0.0.5 2>&1)
-SM_RUN=$(dirname "$(printf '%s\n' "$OUT" | sed -n 's/^📊 Resumen: //p')")
+SM_RUN=$(dirname "$(printf '%s\n' "$OUT" | sed -n 's/^Resumen: //p')")
 eq "sqlmap_request: el Host reescrito conserva el puerto" \
    "$(grep -ho 'Host: 10\.0\.0\.5:[0-9]*' "$SM_RUN"/copia_*.req | head -1 | grep -c ':8443')" "1"
 

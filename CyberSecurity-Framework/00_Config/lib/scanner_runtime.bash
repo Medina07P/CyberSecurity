@@ -5,7 +5,7 @@ source "$SCANNER_LIB_DIR/scans.bash"
 
 scanner_require() {
     command -v "$1" >/dev/null 2>&1 && return 0
-    printf '❌ %s no instalado; instala la herramienta antes de continuar.\n' "$1" >&2
+    printf '✖ %s no instalado; instala la herramienta antes de continuar.\n' "$1" >&2
     return 1
 }
 
@@ -52,7 +52,7 @@ try:
 except (ValueError, TypeError):
     valid = False
 if not valid:
-    print('❌ Entrada no válida para ' + kind + '.', file=sys.stderr)
+    print('✖ Entrada no válida para ' + kind + '.', file=sys.stderr)
 sys.exit(0 if valid else 1)
 PY
 }
@@ -75,11 +75,11 @@ scanner_run() {
             printf '\n[%s] %s — código %s\n' "$(date -Is)" "$1" "$rc"
             cat "$err"
         } >>"$log"
-        printf 'ℹ️ Diagnóstico de esta ejecución: %s\n' "$log" >&2
+        printf 'ℹ Diagnóstico de esta ejecución: %s\n' "$log" >&2
     fi
     rm -f "$err"
     if (( rc != 0 )); then
-        printf '❌ Falló %s (código %s). Resultado NO DETERMINADO.\n' "$1" "$rc" >&2
+        printf '✖ Falló %s (código %s). Resultado NO DETERMINADO.\n' "$1" "$rc" >&2
         return 1
     fi
     return 0
@@ -91,16 +91,16 @@ scanner_run() {
 scanner_nuclei_summary() {
     local file="$1" n
     if [[ ! -e "$file" ]]; then
-        echo "⚠️  Nuclei terminó sin crear $file. Resultado NO DETERMINADO."
+        echo "⚠  Nuclei terminó sin crear $file. Resultado NO DETERMINADO."
         return 1
     fi
     n=$(grep -c . "$file")
     if (( n == 0 )); then
-        echo "🟢 SIN HALLAZGOS: Nuclei terminó sin errores y 0 plantillas coincidieron."
+        echo "● SIN HALLAZGOS: Nuclei terminó sin errores y 0 plantillas coincidieron."
         echo "   Esto no prueba ausencia de vulnerabilidades: solo cubre las plantillas"
         echo "   y severidades de esta ejecución. Nuclei no detecta fallos de lógica propios."
     else
-        echo "🔴 HALLAZGOS: $n coincidencia(s). Revisa $file"
+        echo "● HALLAZGOS: $n coincidencia(s). Revisa $file"
     fi
     return 0
 }

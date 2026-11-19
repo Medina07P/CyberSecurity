@@ -339,7 +339,7 @@ Expected: el primero vacío (hoy se descarta con `2>/dev/null`).
 
 - [ ] **Step 3: Implement**
 
-Sustituir `2>/dev/null` por `2>>"$OUTPUT_DIR/errores.log"` en los 8 escáneres (no en los `command -v`, que deben seguir silenciosos). Al final de cada uno, si el log no está vacío, imprimir `⚠️  Errores registrados en: <ruta>`. `run_all_scanners.sh` recorre los logs y lista los no vacíos.
+Sustituir `2>/dev/null` por `2>>"$OUTPUT_DIR/errores.log"` en los 8 escáneres (no en los `command -v`, que deben seguir silenciosos). Al final de cada uno, si el log no está vacío, imprimir `⚠  Errores registrados en: <ruta>`. `run_all_scanners.sh` recorre los logs y lista los no vacíos.
 
 - [ ] **Step 4: Run tests**
 
@@ -409,7 +409,7 @@ Expected: `FALLO`.
 
 - [ ] **Step 3: Implement**
 
-Añadir al principio de cada informe generado una línea `> ⚠️ PLANTILLA: no consume los resultados de \`scans/\`; rellenar a mano.` y un aviso equivalente por pantalla al terminar.
+Añadir al principio de cada informe generado una línea `> ⚠ PLANTILLA: no consume los resultados de \`scans/\`; rellenar a mano.` y un aviso equivalente por pantalla al terminar.
 
 - [ ] **Step 4: Run test to verify it passes**
 

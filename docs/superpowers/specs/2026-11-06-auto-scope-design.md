@@ -121,11 +121,11 @@ cliente.example|—|—|Registrado al fijar el objetivo|B
 ### Lo que ve el operador
 
 ```
-✅ Objetivo guardado: cliente.example
-   ➕ scope.yaml: cliente.example, *.cliente.example
+✔ Objetivo guardado: cliente.example
+   + scope.yaml: cliente.example, *.cliente.example
 ```
 
-Si ya estaba: no imprime nada más. Si no se pudo: `⚠️ No se pudo registrar en
+Si ya estaba: no imprime nada más. Si no se pudo: `⚠ No se pudo registrar en
 scope.yaml: <motivo>`.
 
 ## Tests (en `tests/run_tests.sh`, sección nueva)

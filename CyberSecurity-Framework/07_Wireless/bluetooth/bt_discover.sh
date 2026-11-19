@@ -16,7 +16,7 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "🔍 Descubriendo dispositivo: $MAC"
+echo "Descubriendo dispositivo: $MAC"
 echo "────────────────────────────────────────"
 
 # 1. Información básica
@@ -34,4 +34,4 @@ echo " → Características:"
 sudo gatttool -b "$MAC" --characteristics 2>/dev/null | head -10
 
 echo ""
-echo "📁 Resultados guardados en: $OUTPUT_DIR/bt_info_${MAC}.txt"
+echo "▪ Resultados guardados en: $OUTPUT_DIR/bt_info_${MAC}.txt"

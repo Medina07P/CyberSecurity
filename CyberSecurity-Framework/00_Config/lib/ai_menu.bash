@@ -10,7 +10,7 @@ ai_menu() {
 
     clear_screen
     if ! command -v python3 >/dev/null 2>&1; then
-        echo -e "${YELLOW}⚠️  El asistente de IA necesita python3 y no está en el PATH.${NC}"
+        echo -e "${YELLOW}⚠  El asistente de IA necesita python3 y no está en el PATH.${NC}"
         echo -e "${DIM}Instálalo (p. ej. sudo apt install python3) y vuelve a pulsar I.${NC}"
         return 0
     fi

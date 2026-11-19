@@ -501,14 +501,14 @@ from lib.parsers import host_sources
 
 class HostSourceTests(unittest.TestCase):
     def test_api_mutating_methods_are_low_observations_and_unattributable(self):
-        r = host_sources.parse_api(write("api/methods.txt", " ✅ GET (404)\n ✅ PUT (200)\n ✅ DELETE (501)\n"), ROOT)
+        r = host_sources.parse_api(write("api/methods.txt", " ✔ GET (404)\n ✔ PUT (200)\n ✔ DELETE (501)\n"), ROOT)
         self.assertEqual(len(r.findings), 1)
         self.assertEqual((r.findings[0].severidad, r.findings[0].activo), ("baja", ""))
 
     def test_unattributed_sources_marked_in_reports(self):
         root = Path(tmp())
         scans = root / "scans"
-        write_at(scans, "api/methods.txt", " ✅ PUT (200)\n")
+        write_at(scans, "api/methods.txt", " ✔ PUT (200)\n")
         
         # Sin flag: no se incluye
         collected = collect(scans, root, "127.0.0.1")
@@ -703,7 +703,7 @@ class CliTests(unittest.TestCase):
         self.profile = self.tmp / ".report_profile"
         write_at(self.scans, "nmap/a.xml", XML_127)
         write_at(self.scans, "nmap/b.xml", XML_127.replace("127.0.0.1", "127.0.0.10"))
-        write_at(self.scans, "api/methods.txt", " ✅ PUT (200)\n")
+        write_at(self.scans, "api/methods.txt", " ✔ PUT (200)\n")
         os.environ["REPORT_PROFILE"] = str(self.profile)
 
     def test_generates_both_reports_and_json(self):
@@ -840,7 +840,7 @@ class TargetIsolationTests(unittest.TestCase):
         })
         write_at(scans, "web/ffuf_127.0.0.1.json", target_ffuf)
         write_at(scans, "web/ffuf_127.0.0.10.json", other_ffuf)
-        write_at(scans, "api/methods.txt", " ✅ PUT (200)\n")
+        write_at(scans, "api/methods.txt", " ✔ PUT (200)\n")
         write_at(scans, "nmap/errores.log", "fallo de ejecución\n")
 
         collected = collect(scans, root, "127.0.0.1")

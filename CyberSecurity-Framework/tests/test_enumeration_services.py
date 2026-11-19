@@ -13,7 +13,7 @@ class ServiceTests(EnumerationFixture):
             with self.subTest(name=name):
                 result = self.leaf(path, 'example.invalid', FAKE_FAIL='all')
                 self.assertNotEqual(result.returncode, 0, result.stdout+result.stderr)
-                self.assertNotIn('✅', result.stdout)
+                self.assertNotIn('✔', result.stdout)
 
     def test_all_service_capabilities_remain_executable(self):
         for name, path in LEAVES.items():

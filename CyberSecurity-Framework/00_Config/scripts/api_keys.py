@@ -22,7 +22,7 @@ class _ArgumentParser(argparse.ArgumentParser):
 
     def error(self, message):
         self.print_usage(sys.stderr)
-        print(f"❌ {message}", file=sys.stderr)
+        print(f"✖ {message}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -62,20 +62,20 @@ def _cargar_plantilla_theharvester():
     path = _harvester_template_path()
     if not path.exists():
         if "KEYS_HARVESTER_TEMPLATE" not in os.environ:
-            print(f"⚠️  Plantilla de theHarvester no encontrada: {path}", file=sys.stderr)
+            print(f"⚠  Plantilla de theHarvester no encontrada: {path}", file=sys.stderr)
         return {}
     try:
         with open(path) as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as exc:
-        print(f"⚠️  Plantilla de theHarvester ilegible: {exc}", file=sys.stderr)
+        print(f"⚠  Plantilla de theHarvester ilegible: {exc}", file=sys.stderr)
         return {}
     except (OSError, UnicodeDecodeError) as exc:
-        print(f"⚠️  Plantilla de theHarvester ilegible: {exc}", file=sys.stderr)
+        print(f"⚠  Plantilla de theHarvester ilegible: {exc}", file=sys.stderr)
         return {}
     if not isinstance(data, dict):
         print(
-            f"⚠️  Plantilla de theHarvester con formato inesperado: {path}",
+            f"⚠  Plantilla de theHarvester con formato inesperado: {path}",
             file=sys.stderr,
         )
         return {}
@@ -222,9 +222,9 @@ class _TheHarvesterAdapter:
             existente = self._leer_existente(dest)
         except _ProyeccionIlegible as exc:
             if not forzar:
-                print(f"⚠️  {exc}", file=sys.stderr)
+                print(f"⚠  {exc}", file=sys.stderr)
                 return False, str(exc)
-            print(f"⚠️  {exc}; se sobrescribe con copia de seguridad", file=sys.stderr)
+            print(f"⚠  {exc}; se sobrescribe con copia de seguridad", file=sys.stderr)
             existente = {}
         plantilla = self._plantilla(reg, existente)
         reg_section = reg.get("theharvester", {})
@@ -458,13 +458,13 @@ class _AmassAdapter:
         try:
             data = self._leer_existente(dest)
         except _ProyeccionIlegible as exc:
-            print(f"⚠️  {exc}", file=sys.stderr)
+            print(f"⚠  {exc}", file=sys.stderr)
             return False, str(exc)
 
         datasources = data.get("datasources")
         if not isinstance(datasources, list):
             msg = f"amass: {dest} no contiene una lista 'datasources'"
-            print(f"⚠️  {msg}", file=sys.stderr)
+            print(f"⚠  {msg}", file=sys.stderr)
             return False, msg
 
         reg_section = reg.get("amass", {})
@@ -481,7 +481,7 @@ class _AmassAdapter:
             if entry is None:
                 if ok_reg and isinstance(val_reg, str) and val_reg:
                     print(
-                        f"⚠️  amass: la fuente {source_name} no está en datasources.yaml",
+                        f"⚠  amass: la fuente {source_name} no está en datasources.yaml",
                         file=sys.stderr,
                     )
                     sin_sitio += 1
@@ -686,7 +686,7 @@ class _ReconNgAdapter:
             for name, value in conn.execute("SELECT name, value FROM keys"):
                 rows[name] = value
         except sqlite3.Error as exc:
-            print(f"⚠️  recon-ng: no se pudo leer la base: {exc}", file=sys.stderr)
+            print(f"⚠  recon-ng: no se pudo leer la base: {exc}", file=sys.stderr)
         return rows
 
     def inicializado(self):
@@ -708,7 +708,7 @@ class _ReconNgAdapter:
             finally:
                 conn.close()
         except (sqlite3.Error, OSError) as exc:
-            print(f"⚠️  recon-ng: no se pudo leer {dest}: {exc}", file=sys.stderr)
+            print(f"⚠  recon-ng: no se pudo leer {dest}: {exc}", file=sys.stderr)
             return result
         for campo in self._campos():
             val_ext = rows.get(campo)
@@ -780,7 +780,7 @@ class _SpiderfootAdapter:
             ):
                 rows[f"{scope}.{opt}"] = val
         except sqlite3.Error as exc:
-            print(f"⚠️  spiderfoot: no se pudo leer la base: {exc}", file=sys.stderr)
+            print(f"⚠  spiderfoot: no se pudo leer la base: {exc}", file=sys.stderr)
         return rows
 
     def inicializado(self):
@@ -804,7 +804,7 @@ class _SpiderfootAdapter:
             finally:
                 conn.close()
         except (sqlite3.Error, OSError) as exc:
-            print(f"⚠️  spiderfoot: no se pudo leer {dest}: {exc}", file=sys.stderr)
+            print(f"⚠  spiderfoot: no se pudo leer {dest}: {exc}", file=sys.stderr)
             return result
         for campo in self._campos():
             val_ext = rows.get(campo)
@@ -1010,15 +1010,15 @@ def cargar_registro():
         with open(REGISTRO) as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as exc:
-        print(f"❌ Registro ilegible: {exc}", file=sys.stderr)
+        print(f"✖ Registro ilegible: {exc}", file=sys.stderr)
         sys.exit(2)
     except (OSError, UnicodeDecodeError) as exc:
-        print(f"❌ No se pudo leer el registro: {exc}", file=sys.stderr)
+        print(f"✖ No se pudo leer el registro: {exc}", file=sys.stderr)
         sys.exit(2)
     if data is None:
         return {"version": 1}
     if not isinstance(data, dict):
-        print("❌ Registro ilegible: el contenido no es un diccionario", file=sys.stderr)
+        print("✖ Registro ilegible: el contenido no es un diccionario", file=sys.stderr)
         sys.exit(2)
     return data
 
@@ -1047,7 +1047,7 @@ def guardar_registro(reg):
         os.replace(tmp_path, REGISTRO)
         REGISTRO.chmod(0o600)
     except OSError as exc:
-        print(f"❌ No se pudo escribir el registro: {exc}", file=sys.stderr)
+        print(f"✖ No se pudo escribir el registro: {exc}", file=sys.stderr)
         sys.exit(2)
     finally:
         if tmp_path.exists():
@@ -1069,16 +1069,16 @@ def poner_valor(reg, herramienta, campo, valor):
     """Escribe un campo en el registro. Rechaza herramienta/campo desconocidos."""
     tool = _tool_by_name(herramienta)
     if tool is None:
-        print(f"❌ Herramienta desconocida: {herramienta}", file=sys.stderr)
+        print(f"✖ Herramienta desconocida: {herramienta}", file=sys.stderr)
         sys.exit(1)
     if campo not in tool["campos"]:
-        print(f"❌ Campo desconocido: {herramienta}.{campo}", file=sys.stderr)
+        print(f"✖ Campo desconocido: {herramienta}.{campo}", file=sys.stderr)
         sys.exit(1)
     try:
         valor = _normalizar_valor(valor)
     except ValueError:
         print(
-            "❌ El valor no puede contener saltos de línea ni caracteres nulos",
+            "✖ El valor no puede contener saltos de línea ni caracteres nulos",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -1092,7 +1092,7 @@ def poner_valor(reg, herramienta, campo, valor):
         _set_nested(reg[herramienta], campo, valor)
         if len(valor) < 8:
             print(
-                f"⚠️  {herramienta}/{campo}: la clave es muy corta "
+                f"⚠  {herramienta}/{campo}: la clave es muy corta "
                 f"({len(valor)} caracteres); ¿es correcta?",
                 file=sys.stderr,
             )
@@ -1136,7 +1136,7 @@ def absorber_theharvester(reg):
         try:
             existente = adaptador._leer_existente(candidato)
         except _ProyeccionIlegible as exc:
-            print(f"⚠️  {exc}", file=sys.stderr)
+            print(f"⚠  {exc}", file=sys.stderr)
             return []
         absorbidos = []
         for campo in adaptador._campos():
@@ -1149,7 +1149,7 @@ def absorber_theharvester(reg):
             absorbidos.append(campo)
         if absorbidos:
             print(
-                f"ℹ️  theHarvester: {len(absorbidos)} valores de {candidato} "
+                f"ℹ  theHarvester: {len(absorbidos)} valores de {candidato} "
                 "se importan al registro antes de que ~/.theHarvester deje de "
                 "leerlo (a partir de ahora manda el fichero de ~)"
             )
@@ -1203,7 +1203,7 @@ def leer_valor(etiqueta):
     """
     if sys.stdin.isatty():
         return getpass.getpass(f"{etiqueta}: ")
-    print("⚠️  sin terminal: el eco es visible", file=sys.stderr)
+    print("⚠  sin terminal: el eco es visible", file=sys.stderr)
     print(f"{etiqueta}: ", end="", file=sys.stderr)
     return sys.stdin.readline()
 
@@ -1217,10 +1217,10 @@ def pedir(herramienta, campo=None):
     """
     tool = _tool_by_name(herramienta)
     if tool is None:
-        print(f"❌ Herramienta desconocida: {herramienta}", file=sys.stderr)
+        print(f"✖ Herramienta desconocida: {herramienta}", file=sys.stderr)
         return 1
     if campo and campo not in tool["campos"]:
-        print(f"❌ Campo desconocido: {herramienta}.{campo}", file=sys.stderr)
+        print(f"✖ Campo desconocido: {herramienta}.{campo}", file=sys.stderr)
         return 1
     reg = cargar_registro()
     sembrar_theharvester(reg)
@@ -1235,7 +1235,7 @@ def pedir(herramienta, campo=None):
     if not campos:
         if absorbidos:
             guardar_registro(reg)
-        print(f"✅ {herramienta}: no queda ningún campo vacío")
+        print(f"✔ {herramienta}: no queda ningún campo vacío")
         return 0
 
     cambiado = bool(absorbidos)
@@ -1250,7 +1250,7 @@ def pedir(herramienta, campo=None):
             continue
         if any(ch.isspace() for ch in valor):
             print(
-                f"❌ {herramienta}/{c}: el valor no puede llevar espacios "
+                f"✖ {herramienta}/{c}: el valor no puede llevar espacios "
                 "(parece texto, no una clave)",
                 file=sys.stderr,
             )
@@ -1259,11 +1259,11 @@ def pedir(herramienta, campo=None):
         if valor == "-":
             poner_valor(reg, herramienta, c, "-")
             borrados.append(c)
-            print(f"🗑️  {herramienta}/{c}: borrada")
+            print(f"{herramienta}/{c}: borrada")
         else:
             poner_valor(reg, herramienta, c, valor)
             largo = len(_valor_registro(reg.get(herramienta, {}), c))
-            print(f"✅ {herramienta}/{c}: definida ({largo} caracteres)")
+            print(f"✔ {herramienta}/{c}: definida ({largo} caracteres)")
         cambiado = True
 
     if cambiado:
@@ -1272,7 +1272,7 @@ def pedir(herramienta, campo=None):
             herramienta, reg, forzar=True, borrar=tuple(borrados)
         )
         if not ok:
-            print(f"⚠️  {msg}", file=sys.stderr)
+            print(f"⚠  {msg}", file=sys.stderr)
             return 3
     return codigo
 
@@ -1333,7 +1333,7 @@ def estado_json(reg):
 
 
 def _mostrar_estado(reg):
-    print("\n🔐 ESTADO DE CLAVES DE API")
+    print("\nESTADO DE CLAVES DE API")
     print("=" * 60)
     herramientas = estado_json(reg)["herramientas"]
     ancho = max(len(h["etiqueta"]) for h in herramientas)
@@ -1392,10 +1392,10 @@ def main():
         guardar_registro(reg)
         borrada = valor.strip() == "-"
         if borrada:
-            print(f"🗑️  {args.herramienta}/{args.campo}: borrada")
+            print(f"{args.herramienta}/{args.campo}: borrada")
         else:
             print(
-                f"✅ {args.herramienta}/{args.campo}: "
+                f"✔ {args.herramienta}/{args.campo}: "
                 f"definida ({len(valor.strip())} caracteres)"
             )
         ok, msg = proyectar(
@@ -1403,23 +1403,23 @@ def main():
             borrar=(args.campo,) if borrada else (),
         )
         if not ok:
-            print(f"⚠️  {msg}", file=sys.stderr)
+            print(f"⚠  {msg}", file=sys.stderr)
             sys.exit(3)
-        print(f"✅ {msg}")
+        print(f"✔ {msg}")
     elif args.orden == "estado":
         reg = cargar_registro()
         sembrar_theharvester(reg)
         if args.faltan:
             tool = _tool_by_name(args.faltan)
             if tool is None:
-                print(f"❌ Herramienta desconocida: {args.faltan}", file=sys.stderr)
+                print(f"✖ Herramienta desconocida: {args.faltan}", file=sys.stderr)
                 sys.exit(2)
             info = estado_herramienta(args.faltan, reg)
             faltan = info["total"] - info["puestas"]
             if faltan > 0:
-                print(f"⚠️  {args.faltan}: faltan {faltan} de {info['total']} campos")
+                print(f"⚠  {args.faltan}: faltan {faltan} de {info['total']} campos")
                 sys.exit(1)
-            print(f"✅ {args.faltan}: todos los campos están definidos")
+            print(f"✔ {args.faltan}: todos los campos están definidos")
             sys.exit(0)
         if args.json:
             print(json.dumps(estado_json(reg)))
@@ -1430,7 +1430,7 @@ def main():
         sembrar_theharvester(reg)
         if args.herramienta and _tool_by_name(args.herramienta) is None:
             print(
-                f"❌ Herramienta desconocida: {args.herramienta}",
+                f"✖ Herramienta desconocida: {args.herramienta}",
                 file=sys.stderr,
             )
             sys.exit(2)
@@ -1445,14 +1445,14 @@ def main():
         for nombre in herramientas:
             tool = _tool_by_name(nombre)
             if not _tiene_valores(reg, nombre) and not tool["adaptador"].inicializado():
-                print(f"⬜ {tool['etiqueta']}: sin valores y sin fichero, no se crea")
+                print(f"{tool['etiqueta']}: sin valores y sin fichero, no se crea")
                 continue
             ok, msg = proyectar(nombre, reg)
             if not ok:
-                print(f"⚠️  {msg}", file=sys.stderr)
+                print(f"⚠  {msg}", file=sys.stderr)
                 exit_code = 3
             else:
-                print(f"✅ {msg}")
+                print(f"✔ {msg}")
         sys.exit(exit_code)
     elif args.orden == "pedir":
         sys.exit(pedir(args.herramienta, args.campo))
@@ -1461,7 +1461,7 @@ def main():
             imp_parser.error("Falta la herramienta")
         if _tool_by_name(args.herramienta) is None:
             print(
-                f"❌ Herramienta desconocida: {args.herramienta}",
+                f"✖ Herramienta desconocida: {args.herramienta}",
                 file=sys.stderr,
             )
             sys.exit(2)
@@ -1473,7 +1473,7 @@ def main():
             for path, val in vals.items():
                 _set_nested(reg[args.herramienta], path, val)
             guardar_registro(reg)
-        print(f"✅ {args.herramienta}: importados {len(vals)} campos")
+        print(f"✔ {args.herramienta}: importados {len(vals)} campos")
     else:
         parser.print_help()
         sys.exit(1)

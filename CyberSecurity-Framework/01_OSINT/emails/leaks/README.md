@@ -1,20 +1,20 @@
-# 📂 Filtraciones de Emails
+# Filtraciones de Emails
 
 Este directorio contiene archivos de emails encontrados en filtraciones.
 
-## ⚠️ ADVERTENCIA LEGAL
+## ⚠ ADVERTENCIA LEGAL
 
 Solo utiliza esta información para:
 - Verificar si tus propios emails han sido filtrados
 - Pruebas de seguridad autorizadas
 
-## 📁 Archivos esperados
+## Archivos esperados
 
 - `haveibeenpwned.txt` - Emails filtrados
 - `dehashed.txt` - Emails con contraseñas
 - `leak_*.txt` - Filtraciones específicas
 
-## 🔒 Seguridad
+## Seguridad
 
 - NUNCA uses estas credenciales para acceder a sistemas
 - Informa a los propietarios si encuentras sus datos

@@ -138,9 +138,9 @@ con uno de estos estados:
 
 | Mensaje | Significado | Qué hacer |
 |---|---|---|
-| `🔴 N puerto(s) abierto(s) respondieron` | Hubo respuestas. Es una observación, no una explotación. | Confirma servicios con `nmap -sV -p <puertos>`. |
-| `🟡 SIN PUERTOS ABIERTOS DETECTADOS` | Masscan terminó bien y no recibió respuestas. **No prueba que estén cerrados**: un firewall que descarta, una tasa alta o pérdida de red se ven igual. | Repite con tasa menor y confirma con `nmap -sT`. |
-| `❌ … NO DETERMINADO` (código 1) | Falló la herramienta o no creó el JSON. | Mira `scans/masscan/errores.log`. |
+| `● N puerto(s) abierto(s) respondieron` | Hubo respuestas. Es una observación, no una explotación. | Confirma servicios con `nmap -sV -p <puertos>`. |
+| `● SIN PUERTOS ABIERTOS DETECTADOS` | Masscan terminó bien y no recibió respuestas. **No prueba que estén cerrados**: un firewall que descarta, una tasa alta o pérdida de red se ven igual. | Repite con tasa menor y confirma con `nmap -sT`. |
+| `✖ … NO DETERMINADO` (código 1) | Falló la herramienta o no creó el JSON. | Mira `scans/masscan/errores.log`. |
 
 `errores.log` conserva el banner y los errores reales de cada ejecución; la
 barra de progreso (`rate: … found=0`, que se repite cada segundo y las ~10 s de

@@ -275,8 +275,8 @@ En `session_set_target`, tras escribir `.session`:
 ```bash
     printf '%s\n' "$1" > "$SESSION_FILE" || return 1
     # El registro es informativo: si falla, la sesión sigue siendo válida.
-    scope_add_target "$1" || printf '⚠️  No se pudo registrar en scope.yaml (código %s)\n' "$?" >&2
-    targets_add_entry "$1" || printf '⚠️  No se pudo registrar en targets.txt (código %s)\n' "$?" >&2
+    scope_add_target "$1" || printf '⚠  No se pudo registrar en scope.yaml (código %s)\n' "$?" >&2
+    targets_add_entry "$1" || printf '⚠  No se pudo registrar en targets.txt (código %s)\n' "$?" >&2
     return 0
 ```
 
@@ -285,10 +285,10 @@ si el mensaje debe llevar el código real (en ese caso, `local rc=$?`).
 
 - [ ] **Step 4: Avisar en el gestor**
 
-En `change_target` (`cyber_framework.sh`), tras el `✅ Objetivo guardado:` de las dos ramas,
+En `change_target` (`cyber_framework.sh`), tras el `✔ Objetivo guardado:` de las dos ramas,
 informar de lo registrado solo si había algo nuevo. La forma más simple sin duplicar lógica:
 `scope_add_target` imprime a stderr una línea por entrada añadida
-(`➕ scope.yaml: dominio, *.dominio`) y nada si ya estaba; el gestor no filtra nada. Ajustar
+(`+ scope.yaml: dominio, *.dominio`) y nada si ya estaba; el gestor no filtra nada. Ajustar
 Task 1 para que esos avisos salgan por stderr y se vean en la terminal.
 
 - [ ] **Step 5: Aislar la copia del e2e**

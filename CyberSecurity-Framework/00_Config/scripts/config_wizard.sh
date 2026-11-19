@@ -153,19 +153,19 @@ wz_write() {
     } > "$tmp"
     rc=$?
     if [[ "$rc" -ne 0 || ! -s "$tmp" ]]; then
-        echo "❌ No se pudo preparar el contenido nuevo en $tmp"
+        echo "✖ No se pudo preparar el contenido nuevo en $tmp"
         rm -f "$tmp"
         return 1
     fi
 
     if [[ "$WZ_MODE" == "2" && -f "$f" ]]; then
         if [[ -e "$f.bak" && ! -f "$f.bak" ]]; then
-            echo "❌ $f.bak existe y no es un fichero; no se ha modificado $f"
+            echo "✖ $f.bak existe y no es un fichero; no se ha modificado $f"
             rm -f "$tmp"
             return 1
         fi
         if ! cp -f "$f" "$f.bak"; then
-            echo "❌ No se pudo crear la copia de seguridad $f.bak"
+            echo "✖ No se pudo crear la copia de seguridad $f.bak"
             echo "   $f no se ha modificado."
             rm -f "$tmp"
             return 1
@@ -174,13 +174,13 @@ wz_write() {
     fi
 
     if ! mv -f "$tmp" "$f"; then
-        echo "❌ No se pudo sustituir $f"
+        echo "✖ No se pudo sustituir $f"
         rm -f "$tmp"
         return 1
     fi
 
     echo ""
-    echo "✅ Objetivos escritos en $f"
+    echo "✔ Objetivos escritos en $f"
 
     if command -v python3 >/dev/null 2>&1; then
         # Ruta absoluta: parse_targets.py resuelve las relativas contra su directorio.
@@ -198,7 +198,7 @@ main() {
     echo "  ASISTENTE DE OBJETIVOS - 00_Config"
     echo "════════════════════════════════════════════════════════"
     echo ""
-    echo "📋 Objetivos actuales ($TARGETS_FILE):"
+    echo "Objetivos actuales ($TARGETS_FILE):"
     wz_show_targets
     echo ""
 
@@ -208,7 +208,7 @@ main() {
         case "$resp" in
             1|2) WZ_MODE="$resp"; break ;;
             0)   echo "Nada se ha modificado."; return 0 ;;
-            *)   echo "❌ Opción no válida: $resp" >&2 ;;
+            *)   echo "✖ Opción no válida: $resp" >&2 ;;
         esac
     done
     echo ""
@@ -218,7 +218,7 @@ main() {
             || { echo "Nada se ha modificado."; return 0; }
         [[ -z "$host" ]] && break
         if ! validate_target "$host"; then
-            echo "❌ Host no válido: $host" >&2
+            echo "✖ Host no válido: $host" >&2
             continue
         fi
 
@@ -226,7 +226,7 @@ main() {
             puerto=$(wz_ask "Puerto (1-65535)") \
                 || { echo "Nada se ha modificado."; return 0; }
             wz_valid_port "$puerto" && break
-            echo "❌ Puerto no válido: $puerto" >&2
+            echo "✖ Puerto no válido: $puerto" >&2
         done
 
         defecto=$(wz_default_protocol "$puerto")
@@ -234,11 +234,11 @@ main() {
             proto=$(wz_ask "Protocolo" "$defecto") \
                 || { echo "Nada se ha modificado."; return 0; }
             if [[ -z "$proto" ]]; then
-                echo "❌ Protocolo obligatorio para el puerto $puerto" >&2
+                echo "✖ Protocolo obligatorio para el puerto $puerto" >&2
                 continue
             fi
             wz_valid_text "$proto" && break
-            echo "❌ Protocolo no válido (sin '|'): $proto" >&2
+            echo "✖ Protocolo no válido (sin '|'): $proto" >&2
         done
 
         while :; do
@@ -246,7 +246,7 @@ main() {
                 || { echo "Nada se ha modificado."; return 0; }
             desc="${desc:-$proto}"
             wz_valid_text "$desc" && break
-            echo "❌ Descripción no válida (sin '|'): $desc" >&2
+            echo "✖ Descripción no válida (sin '|'): $desc" >&2
         done
 
         while :; do
@@ -254,11 +254,11 @@ main() {
                 || { echo "Nada se ha modificado."; return 0; }
             prio="${prio:-M}"
             wz_valid_priority "$prio" && { prio="${prio^^}"; break; }
-            echo "❌ Prioridad no válida: $prio" >&2
+            echo "✖ Prioridad no válida: $prio" >&2
         done
 
         if wz_exists "$host" "$puerto"; then
-            resp=$(wz_ask "⚠️  Ya existe ${host}:${puerto}. ¿Añadir igualmente? (s/n)" "n") \
+            resp=$(wz_ask "⚠  Ya existe ${host}:${puerto}. ¿Añadir igualmente? (s/n)" "n") \
                 || { echo "Nada se ha modificado."; return 0; }
             if ! wz_yes "$resp"; then
                 echo "  (descartado)"
@@ -287,7 +287,7 @@ main() {
         return 0
     fi
 
-    echo "📋 Resumen de lo que se va a escribir:"
+    echo "Resumen de lo que se va a escribir:"
     for linea in "${WZ_LINES[@]}"; do
         echo "  → $linea"
     done
