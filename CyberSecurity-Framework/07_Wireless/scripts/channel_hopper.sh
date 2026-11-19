@@ -12,7 +12,7 @@ if [[ -z "$INTERFACE" ]]; then
     exit 1
 fi
 
-echo "📡 Cambiando canales en: $INTERFACE"
+echo "Cambiando canales en: $INTERFACE"
 echo "────────────────────────────────────────"
 echo " (presiona Ctrl+C para detener)"
 echo ""

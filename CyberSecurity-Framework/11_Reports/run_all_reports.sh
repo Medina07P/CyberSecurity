@@ -22,9 +22,9 @@ for path in data["archivos"]:
 ' || exit 1
 fi
 if [[ $rc -eq 0 ]]; then
-    echo '✅ INFORMES COMPLETADOS (consulte cobertura y limitaciones)'
+    echo '✔ INFORMES COMPLETADOS (consulte cobertura y limitaciones)'
 elif [[ $rc -eq 3 ]]; then
-    echo '⚠️ Informes escritos sin fuentes evaluables; no implica ausencia de vulnerabilidades.' >&2
+    echo '⚠ Informes escritos sin fuentes evaluables; no implica ausencia de vulnerabilidades.' >&2
 else
     echo "Error al generar informes (código $rc); no se presentan informes históricos." >&2
 fi

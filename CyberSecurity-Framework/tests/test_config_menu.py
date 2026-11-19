@@ -160,7 +160,7 @@ class ConfigChecksTests(ConfigFixture):
         self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
         self.assertIn('FALTA: scope.yaml', result.stdout)
         self.assertIn('FALTA: wordlists/custom.lst', result.stdout)
-        self.assertNotIn('✅ Verificación completada', result.stdout)
+        self.assertNotIn('✔ Verificación completada', result.stdout)
 
     def test_parser_missing_input_exits_one(self):
         result = self.command('scripts/parse_targets.py', '--input', self.root/'missing.txt')
@@ -174,7 +174,7 @@ class ConfigChecksTests(ConfigFixture):
             with self.subTest(args=args):
                 result = self.command('scripts/parse_targets.py', *args)
                 self.assertEqual(result.returncode, 1)
-                self.assertIn('❌', result.stderr)
+                self.assertIn('✖', result.stderr)
                 self.assertNotIn('Traceback', result.stdout+result.stderr)
 
     @unittest.skipIf(os.name != 'posix' or getattr(os, 'geteuid', lambda: 0)() == 0,
@@ -190,7 +190,7 @@ class ConfigChecksTests(ConfigFixture):
         finally:
             parent.chmod(0o700)
         self.assertEqual(result.returncode, 1)
-        self.assertIn('❌', result.stderr)
+        self.assertIn('✖', result.stderr)
         self.assertNotIn('Traceback', result.stdout+result.stderr)
 
     def test_parser_preserves_export_contract_and_cwd(self):
@@ -205,12 +205,12 @@ class ConfigChecksTests(ConfigFixture):
     def test_run_all_from_other_cwd_is_read_only_and_explicit(self):
         result = self.command('run_all_config.sh')
         self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
-        self.assertEqual(result.stdout.count('▶️  Ejecutando:'), 4)
+        self.assertEqual(result.stdout.count('▶  Ejecutando:'), 4)
         self.assertIn('scripts/api_keys.py estado', result.stdout)
         self.assertNotIn('usage: api_keys.py', result.stdout+result.stderr)
         self.assertNotIn('ASISTENTE DE OBJETIVOS', result.stdout)
         self.assertNotIn('Ejecutando: scripts/config_wizard', result.stdout)
-        self.assertIn('✅ Configuración completada', result.stdout)
+        self.assertIn('✔ Configuración completada', result.stdout)
         self.assert_untouched()
 
     def test_run_all_reports_child_failure_and_visible_stderr(self):
@@ -219,8 +219,8 @@ class ConfigChecksTests(ConfigFixture):
         self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
         self.assertIn('fixture status error', result.stderr)
         self.assertIn('7', result.stdout)
-        self.assertNotIn('✅ Configuración completada', result.stdout)
-        self.assertEqual(result.stdout.count('▶️  Ejecutando:'), 4)
+        self.assertNotIn('✔ Configuración completada', result.stdout)
+        self.assertEqual(result.stdout.count('▶  Ejecutando:'), 4)
         self.assert_untouched()
 
     def test_run_all_keeps_running_after_validation_failure(self):
@@ -229,14 +229,14 @@ class ConfigChecksTests(ConfigFixture):
         self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
         self.assertIn('scripts/api_keys.py estado', result.stdout)
         self.assertIn('RESUMEN DE OBJETIVOS', result.stdout)
-        self.assertNotIn('✅ Configuración completada', result.stdout)
+        self.assertNotIn('✔ Configuración completada', result.stdout)
         self.assertFalse(self.registry.exists())
 
     def test_run_all_from_menu_does_not_prompt_for_keys(self):
         result = self.menu('00\n1\ns\n\n0\nQ\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('scripts/api_keys.py estado', result.stdout)
-        self.assertIn('✅ Configuración completada', result.stdout)
+        self.assertIn('✔ Configuración completada', result.stdout)
         self.assertNotIn('usage: api_keys.py', result.stdout+result.stderr)
         self.assertNotIn('Elige una opción [0-5]', result.stdout)
         self.assert_untouched()

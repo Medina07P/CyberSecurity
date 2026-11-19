@@ -14,22 +14,22 @@ if [[ -z "$TERM" ]]; then
     exit 1
 fi
 
-echo "🔍 Buscando: $TERM"
+echo "Buscando: $TERM"
 echo "════════════════════════════════════════════════════════"
 
 # Buscar en todos los archivos .md
 echo ""
-echo "📄 Resultados en archivos:"
+echo "Resultados en archivos:"
 grep -r -i --color=always "$TERM" . --include="*.md" 2>/dev/null | head -20
 
 # Buscar en nombres de archivos
 echo ""
-echo "📁 Archivos relacionados:"
+echo "▪ Archivos relacionados:"
 find . -name "*${TERM}*" -type f 2>/dev/null | head -10
 
 echo ""
-echo "📁 Directorios relacionados:"
+echo "▪ Directorios relacionados:"
 find . -name "*${TERM}*" -type d 2>/dev/null | head -10
 
 echo ""
-echo "✅ Búsqueda completada"
+echo "✔ Búsqueda completada"

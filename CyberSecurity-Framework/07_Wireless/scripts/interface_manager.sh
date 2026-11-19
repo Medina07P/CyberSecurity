@@ -6,7 +6,7 @@
 
 ACTION="${1:-list}"
 
-echo "📡 Gestión de interfaces wireless"
+echo "Gestión de interfaces wireless"
 echo "────────────────────────────────────────"
 
 case "$ACTION" in
@@ -27,7 +27,7 @@ case "$ACTION" in
         sudo ip link set "$INTERFACE" down
         sudo iw dev "$INTERFACE" set type monitor
         sudo ip link set "$INTERFACE" up
-        echo " ✅ Modo monitor activado"
+        echo " ✔ Modo monitor activado"
         ;;
     managed)
         INTERFACE="$2"
@@ -39,7 +39,7 @@ case "$ACTION" in
         sudo ip link set "$INTERFACE" down
         sudo iw dev "$INTERFACE" set type managed
         sudo ip link set "$INTERFACE" up
-        echo " ✅ Modo managed activado"
+        echo " ✔ Modo managed activado"
         ;;
     *)
         echo " Uso: ./interface_manager.sh [list|monitor|managed]"

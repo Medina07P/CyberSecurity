@@ -43,7 +43,7 @@ class TargetParser:
         """Exporta a JSON"""
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(self.targets, f, indent=2)
-        print(f"✅ JSON guardado en: {output_file}")
+        print(f"✔ JSON guardado en: {output_file}")
     
     def to_csv(self, output_file):
         """Exporta a CSV"""
@@ -52,7 +52,7 @@ class TargetParser:
                 writer = csv.DictWriter(f, fieldnames=self.targets[0].keys())
                 writer.writeheader()
                 writer.writerows(self.targets)
-        print(f"✅ CSV guardado en: {output_file}")
+        print(f"✔ CSV guardado en: {output_file}")
     
     def get_ips(self):
         """Obtiene lista de IPs únicas"""
@@ -68,7 +68,7 @@ class TargetParser:
     
     def print_summary(self):
         """Muestra resumen en consola"""
-        print("\n📊 RESUMEN DE OBJETIVOS")
+        print("\nRESUMEN DE OBJETIVOS")
         print("=" * 50)
         print(f"  Total objetivos: {len(self.targets)}")
         print(f"  IPs únicas: {len(self.get_ips())}")
@@ -91,7 +91,7 @@ def main() -> int:
     
     try:
         if not input_file.exists():
-            print(f"❌ Archivo no encontrado: {input_file}", file=sys.stderr)
+            print(f"✖ Archivo no encontrado: {input_file}", file=sys.stderr)
             return 1
         tp = TargetParser(input_file)
         if args.json:
@@ -101,7 +101,7 @@ def main() -> int:
         if args.summary or (not args.json and not args.csv):
             tp.print_summary()
     except (OSError, UnicodeError, csv.Error) as exc:
-        print(f"❌ No se pudieron leer o exportar los objetivos: {exc}", file=sys.stderr)
+        print(f"✖ No se pudieron leer o exportar los objetivos: {exc}", file=sys.stderr)
         return 1
     return 0
 

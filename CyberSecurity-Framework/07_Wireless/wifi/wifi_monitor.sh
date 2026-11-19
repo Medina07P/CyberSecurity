@@ -12,12 +12,12 @@ if [[ -z "$INTERFACE" ]]; then
     exit 1
 fi
 
-echo "📡 Activando modo monitor en: $INTERFACE"
+echo "Activando modo monitor en: $INTERFACE"
 echo "────────────────────────────────────────"
 
 # Verificar interfaz
 if ! ip link show "$INTERFACE" &>/dev/null; then
-    echo "❌ Interfaz $INTERFACE no existe"
+    echo "✖ Interfaz $INTERFACE no existe"
     exit 1
 fi
 
@@ -28,8 +28,8 @@ sudo ip link set "$INTERFACE" up
 
 # Verificar
 if iw dev "$INTERFACE" info | grep -q "type monitor"; then
-    echo "✅ Modo monitor activado en $INTERFACE"
+    echo "✔ Modo monitor activado en $INTERFACE"
     echo " → Usar: sudo airodump-ng $INTERFACE"
 else
-    echo "❌ Error al activar modo monitor"
+    echo "✖ Error al activar modo monitor"
 fi

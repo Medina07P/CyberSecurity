@@ -45,8 +45,8 @@ mail.example.com|25|SMTP|Servidor de Correo|M
 
 # ─── NOTAS ─────────────────────────────────────────────────
 
-# ✅ VERIFICADOS: 2026-01-15
-# ⚠️ PENDIENTE: Puerto 8080 en 192.168.1.30 (Nginx)
-# 🚫 PROHIBIDO: Escanear 10.10.10.1 (Router)
+# ✔ VERIFICADOS: 2026-01-15
+# ⚠ PENDIENTE: Puerto 8080 en 192.168.1.30 (Nginx)
+# PROHIBIDO: Escanear 10.10.10.1 (Router)
 # ─── AÑADIDOS POR EL GESTOR (2026-11-13 11:15) ───
 192.168.101.15|—|—|Registrado al fijar el objetivo|B

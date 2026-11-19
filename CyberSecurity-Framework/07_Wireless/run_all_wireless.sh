@@ -21,28 +21,28 @@ echo "════════════════════════�
 
 # 1. Escanear redes
 echo ""
-echo "📡 ESCANEO WIFI"
+echo "ESCANEO WIFI"
 echo "────────────────────────────────────────"
 ./wifi/wifi_scan.sh "$INTERFACE"
 
 # 2. Activar modo monitor
 echo ""
-echo "📡 MODO MONITOR"
+echo "MODO MONITOR"
 echo "────────────────────────────────────────"
 ./scripts/interface_manager.sh monitor "$INTERFACE"
 
 # 3. Escanear Bluetooth
 echo ""
-echo "📡 BLUETOOTH"
+echo "BLUETOOTH"
 echo "────────────────────────────────────────"
 ./bluetooth/bt_scan.sh
 
 echo ""
 echo "════════════════════════════════════════════════════════"
-echo " ✅ WIRELESS COMPLETADO"
+echo " ✔ WIRELESS COMPLETADO"
 echo "════════════════════════════════════════════════════════"
 echo ""
-echo "💡 Próximos pasos:"
+echo "ℹ Próximos pasos:"
 echo " 1. Capturar handshake: ./wifi/wifi_handshake.sh ${INTERFACE}mon"
 echo " 2. Atacar red: ./wifi/wifi_deauth.sh ${INTERFACE}mon <BSSID> <CHANNEL>"
 echo " 3. Craquear: ./wifi/wifi_crack.sh handshake-01.cap"
