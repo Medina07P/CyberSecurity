@@ -1,5 +1,50 @@
 # AGENTS.md
 
+**Símbolos Unicode simples en lugar de emojis, 2026-11-18 — integrado en
+`develop` (`6e81716`, fast-forward local desde `4b5d1ed`), sin push:**
+sustituidos los emojis a color por símbolos Unicode monocromos
+(`✔ ✖ ⚠ ● ▪ ⚙ ◎ ℹ +`) en el menú del gestor, sus bibliotecas, toda la
+documentación `.md` y los mensajes de los scripts de los 14 módulos —
+no quedó ningún emoji en ningún fichero versionado del proyecto.
+Implementado con `subagent-driven-development` (5 tareas sobre un worktree
+en `.worktrees/`, rama `feat/iconos-simbolos`), cada una con implementador
+y revisor independientes: (1) conversor de mapeo fijo (fuera del repo, en
+el scratchpad) y línea base de las 19 suites — todas verdes salvo
+`run_reports`, que mantiene sus 2 fallos preexistentes del shim legacy
+(EXDEV); (2) `cyber_framework.sh` y `00_Config/lib/*.bash`, con realineado
+manual del banner y las columnas `archivos | scripts` tras pasar de
+glifos de ancho 2 a símbolos de ancho 1; (3) los 91 `.md` con emoji,
+dejando intactos a propósito el diseño y el plan de esta misma rama, que
+listan el mapa de sustitución; (4) scripts de los módulos 01–05, con la
+única dependencia real de parser encontrada (la línea `Resumen:` de
+`sqlmap_request.sh`, convertida junto con el test que la lee); (5) módulos
+00 y 06–13 más los seis tests que habían quedado aplazados, confirmando
+que `report_engine.py` nunca emitió marcadores de severidad con emoji (no
+hizo falta añadir etiqueta de texto). Diseño en
+`docs/superpowers/specs/2026-11-18-iconos-simbolos-design.md` y plan en
+`docs/superpowers/plans/2026-11-18-iconos-simbolos.md`. Revisión final
+independiente (subagente en Opus) sobre el diff completo de la rama: 0
+Critical, 1 Important, 3 Minor. El Important —deriva entre dos tareas: un
+README de `03_Scanners` citaba la salida de `masscan` sin el símbolo `●`
+que el script ya emitía tras su conversión— y uno de los Minor —un
+espacio sobrante en dos mensajes de `api_keys.py` donde se había quitado
+un emoji sin mapeo— se corrigieron en una ola de arreglos antes del
+merge, confirmada por un segundo revisor independiente. Los otros dos
+Minor quedan sin corregir, por diseño: el menú principal solo conserva
+símbolo en 4 de 14 entradas (las demás usaban emojis sin mapeo) y
+`show_module_status` pasó a usar `printf` con ancho fijo para mantener
+alineadas las columnas tras el cambio de ancho de los glifos. Un primer
+intento de revisor fue bloqueado por el filtro de seguridad de contenido
+al citar scripts de post-explotación/wireless; se relanzó con un encuadre
+más estrecho, centrado solo en la equivalencia de caracteres del diff, sin
+discutir qué hacen las herramientas. 19 suites ejecutadas en el worktree
+aislado antes del merge, todas en verde salvo las 2 fallas preexistentes
+de `run_reports`; nunca se corrió `run_tests.sh` sobre este checkout (borra
+`scans/` y logs reales). Tras el fast-forward se reaplicaron a mano los dos
+cambios locales sin commit de `scope.yaml`/`targets.txt` (el objetivo
+`127.0.0.1` registrado en sesión), ya con el texto convertido. Worktree y
+rama de trabajo borrados tras el merge. Sin push.
+
 **Cierre de los 8 Minor diferidos del asistente IA, 2026-11-18 — integrado
 en `develop` (`b047d9f`, fast-forward local desde `e5793bd`), sin push:**
 los 8 Minor documentados en la nota anterior (y en
