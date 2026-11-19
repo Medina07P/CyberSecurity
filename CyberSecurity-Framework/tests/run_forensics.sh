@@ -17,7 +17,8 @@ os.umask(0o077)
 libraries = '''dangerous.txt enumeration_evidence.py enumeration_http.py
 enumeration_menu.bash enumeration_runtime.bash enumeration_services.bash enumeration_web.bash
 exploitation_evidence.py exploitation_menu.bash exploitation_runtime.bash
-forensics_disk.bash forensics_evidence.py forensics_menu.bash forensics_runtime.bash
+forensics_disk.bash forensics_evidence.py forensics_iot.bash forensics_iot.py
+forensics_menu.bash forensics_runtime.bash
 forensics_timeline.py forensics_volatility.bash http_request.bash module_intro.bash params.bash
 phase_status.bash postexploitation_evidence.py postexploitation_menu.bash
 postexploitation_runtime.bash prompt.bash report_profile.bash scanner_runtime.bash
@@ -25,7 +26,8 @@ scanners_menu.bash scans.bash session.bash web_target.bash wireless_menu.bash'''
 leaves = '''requirements.sh run_all_forensics.sh show_results.sh
 disk/disk_forensics.sh disk/file_carving.sh logs/log_analyzer.sh
 memory/memory_dump.sh memory/strings_analysis.sh memory/volatility_analysis.sh
-pcaps/pcap_analyzer.sh timeline/timeline_creator.sh'''.split()
+pcaps/pcap_analyzer.sh timeline/timeline_creator.sh
+iot/iot_acquire.sh iot/iot_sterilize.sh iot/iot_triage.sh iot/iot_vt_lookup.sh'''.split()
 
 def safe(path, directory=False):
     for parent in [path, *path.parents]:

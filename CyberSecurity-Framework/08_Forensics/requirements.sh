@@ -7,7 +7,8 @@ packages=(volatility autopsy foremost scalpel tcpdump wireshark)
 case "${1:---check}" in
     --check)
         (( $# <= 1 )) || exit 2
-        for tool in volatility autopsy foremost scalpel tcpdump wireshark avml lime dd; do
+        for tool in volatility autopsy foremost scalpel tcpdump wireshark avml lime dd \
+            photorec exiftool sha256sum mkfs.vfat; do
             if command -v "$tool" >/dev/null 2>&1; then availability=disponible; else availability=ausente; fi
             printf '%s: %s (versión/compatibilidad no verificadas)\n' "$tool" "$availability"
         done

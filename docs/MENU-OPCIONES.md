@@ -201,6 +201,11 @@ siguen disponibles en la lista completa. Ver entradas para sus límites.
 | `08.9` | Flujo offline | memory/log/pcap/disk/timeline-auth seleccionados | solo fuentes elegidas; cancelación espera cleanup de hoja, no inicia siguiente |
 | `08.10` | Visor metadata | filtros run/input/operation opcionales | no relee originales ni cuerpos; cleanup no revalida análisis corrupto |
 | `08.11` | Diez originales y visor | ruta allowlist | no descubre scripts recuperados como herramientas; mantiene confirmaciones |
+| `08.12` | IoT/soporte portátil | subopción explícita | adquirir imagen, triar, consultar VirusTotal o esterilizar; sin ejecución implícita |
+| `08.12.1` | Adquirir imagen | dispositivo y token ADQUIRIR_SOPORTE | root ya disponible, desmontado; dd no verifica integridad ni monta el original |
+| `08.12.2` | Triar recuperados | directorio y opciones | copia completa del árbol; hash/firma no prueban autoría ni malware |
+| `08.12.3` | VirusTotal v3 | run de triaje, VT_API_KEY y token CONSULTAR_VIRUSTOTAL | solo hashes por HTTPS; usuario externo ve lo consultado, sin veredicto si 404 |
+| `08.12.4` | Esterilizar soporte | dispositivo, --size-mib exacto y token ESTERILIZAR_SOPORTE | destructivo e irreversible; recibo privado sin run, no certifica borrado normativo |
 | `08.0` | Volver | 0, ! o EOF | sin análisis ni adquisición nueva |
 | `09.1` | Disponibilidad | ninguna adicional | catálogo/PATH, no ejecuta backends ni certifica versiones |
 | `09.2` | Guía | ninguna adicional | planes/permisos/límites sin leer config/evidencias |
@@ -435,6 +440,10 @@ antes de operar: no se ha verificado aquí compatibilidad operacional.
 | `08_Forensics/memory/volatility_analysis.sh` | memoria/backend/profile/symbols locales | análisis Windows offline en copias | sin descargas; compatibilidad real no certificada |
 | `08_Forensics/pcaps/pcap_analyzer.sh` | PCAP offline explícito | capinfos valida formato; tshark obtiene indicadores | no captura en vivo, tráfico observado no vulnerabilidad confirmada |
 | `08_Forensics/timeline/timeline_creator.sh` | fuentes/year/timezone/local explícitos | timeline por fuentes seleccionadas | sin fuentes NO_EVALUABLE; años no resueltos no inventados |
+| `08_Forensics/iot/iot_acquire.sh` | dispositivo, padre y size-mib opcionales | imagen dd de soporte desmontado con SHA-256 y metadata | root ya disponible; sin verificación de integridad física ni montaje |
+| `08_Forensics/iot/iot_triage.sh` | directorio y opciones exiftool/investigator | copia verificada, hash, familia y duplicados en informes privados | hash/firma no prueban autoría ni malware; árbol vacío NO_EVALUABLE |
+| `08_Forensics/iot/iot_vt_lookup.sh` | run de triaje, limit/delay/api-base | consulta v3 solo con hashes, por HTTPS o loopback | VT_API_KEY en entorno; 404 no es veredicto limpio ni malware confirmado |
+| `08_Forensics/iot/iot_sterilize.sh` | dispositivo y size-mib exacto; wipe/passes/filesystem | borrado y formato vfat opcional con verificación de ceros/firma | destructivo irreversible; recibo fuera de runs; no certifica borrado seguro |
 | `09_Automation/run_all_automation.sh` | vacío menú o target/flags | núcleo09 preview-first, rc propagado | no flujo99 ni permisos implícitos |
 | `09_Automation/bash/auto_recon.sh` | target y flags | preview ping+scan_basic | execute/autorización/scanner separados |
 | `09_Automation/bash/auto_enum.sh` | target y flags | preview SSH/shares/versionesBD y web opcional | users/anonymous_access; no puertos completos implícitos |

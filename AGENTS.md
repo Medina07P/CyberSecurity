@@ -1,5 +1,47 @@
 # AGENTS.md
 
+**IoT y soporte portátil en 08_Forensics, 2026-11-19 — integrado en
+`develop`, sin push:** nueva carpeta `08_Forensics/iot/` con cuatro hojas que
+modernizan un proyecto Python 2 que vivía fuera del repo (adquisición de USB/SD,
+triaje de recuperados, consulta VirusTotal y esterilización). No se reutilizó la
+clave VT escrita en el `Pr.py` original: es un secreto expuesto, hay que
+revocarla; la hoja nueva usa **VirusTotal v3** (`/api/v3/files/<hash>`,
+cabecera `x-apikey`) y lee `VT_API_KEY` **solo** del entorno (nunca argv ni
+fichero) con validación de longitud y sin imprimirla. PhotoRec 7.2 quedó fuera
+de la automatización tras probar `/cmd` v1–v7 en esta máquina: abre la TUI y
+puede salir 0 sin recuperar nada, así que el carving por lotes se delega en
+`disk/file_carving.sh` y PhotoRec se documenta como uso guiado. Decisiones de
+contrato: adquisición y esterilización exigen root **ya disponible** (mismo
+patrón `sudo -n` que `memory_dump`, sin escalada interactiva), dispositivo de
+bloque real no virtual y sin particiones montadas (`device-guard`), `--size-mib`
+exacto para escribir y token literal propio (`ADQUIRIR_SOPORTE`,
+`CONSULTAR_VIRUSTOTAL`, `ESTERILIZAR_SOPORTE`). La esterilización **no crea
+run** ni es evidencia: recibo y log privados en `analysis/sterilizations/`
+(fuera del almacén de runs) y declara `PARCIAL`/`CANCELADO` con el rc de cada
+fase; no certifica borrado seguro normativo. El triaje copia y verifica el
+árbol, rechaza symlinks/nodos especiales y marca árbol vacío como
+`NO_EVALUABLE`; la consulta VT exige un run de triaje finalizado, solo envía
+hashes por HTTPS (o loopback explícito en pruebas, sin `--delay < 15`),
+enlaza el informe consultado por `report_sha256` en vez de copiarlo y no
+inventa veredicto ante 404. Núcleo en `00_Config/lib/forensics_iot.py` (+
+`forensics_iot.bash`), operaciones nuevas `acquisition`/`triage`/`lookup` y modo
+`network` en `forensics_evidence.py`, menú `08 → 12` con submenú de cuatro
+acciones (los cuatro casos viven en el `case` externo de `forensics_prepare`,
+con prompt propio por hoja; el listado `11` sigue mostrando solo las diez
+originales) y las cuatro hojas en `dangerous.txt`. Fixture del aislador de 09:
+se añadieron esas 6 fuentes al inventario cerrado
+`tests/automation_sandbox_sources.json` con autorización expresa del usuario en
+esta sesión, porque la tabla de hojas de `docs/MENU-OPCIONES.md` se contrasta
+contra él (`test_every_leaf_explained`). Pruebas: `tests/test_forensics_iot.py`
+(14 casos: triaje sintético, symlink, exiftool ausente vs. fallido, VT v3 en
+loopback, guardas de dispositivo, rutas privadas) dentro de
+`tests/run_forensics.sh`: 311 tests rc0, GUARD OK. Sin hardware real, sin
+root, sin red externa y sin servicio VirusTotal real. `requirements.sh --check`
+informa además de `photorec`, `exiftool`, `sha256sum` y `mkfs.vfat` (sin
+instalarlos). Pendiente: las cifras históricas «118/122 `.sh`» de este archivo
+no se actualizaron (ahora son 122 fuera de `tests/`), y el conteo de suites
+antiguas sigue siendo el heredado.
+
 **Símbolos Unicode simples en lugar de emojis, 2026-11-18 — integrado en
 `develop` (`6e81716`, fast-forward local desde `4b5d1ed`), sin push:**
 sustituidos los emojis a color por símbolos Unicode monocromos

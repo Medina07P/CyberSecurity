@@ -78,8 +78,8 @@ module_intro() {
             printf '%s\n' \
                 'Para qué sirve: Analizar fuentes explícitas offline; separar la adquisición local sensible.' \
                 'Entrada: Archivos de memoria, logs, PCAP, imágenes o fuentes seleccionadas; no IP de sesión.' \
-                'Incluye: Strings, logs, TShark, Volatility, disco, recuperación, timeline y visor.' \
-                'Precauciones: Requiere fuentes autorizadas, espacio para copias y permisos adecuados; adquisición y montaje son acciones separadas. No certifica custodia legal ni compatibilidad operacional.'
+                'Incluye: Strings, logs, TShark, Volatility, disco, recuperación, timeline, visor e IoT/USB.' \
+                'Precauciones: Requiere fuentes autorizadas, espacio para copias y permisos adecuados; adquisición, esterilización y montaje son acciones separadas. No certifica custodia legal ni compatibilidad operacional.'
             ;;
         # 09_Automation/python/{orchestrator,auto_audit,report_generator}.py;
         # 09_Automation/run_all_automation.sh; 09_Automation/workflows/*.yaml.

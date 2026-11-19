@@ -10,9 +10,10 @@ compatibilidad de imágenes. La comprobación `requirements.sh`/`--check` usa so
 
 El menú `08`: 1 dependencias, 2 strings, 3 logs, 4 PCAP, 5 Volatility,
 6 disco/recuperación, 7 timeline offline, 8 local/adquisición, 9 flujo offline,
-10 visor, 11 listado original, 0 volver. `!`, cancelación y EOF descartan la
-selección incompleta. Nunca se usan valores sensibles de Ejemplo como defaults.
-Opciones avanzadas admiten comillas mediante shlex, no eval.
+10 visor, 11 listado original, 12 IoT/soporte portátil, 0 volver. `!`,
+cancelación y EOF descartan la selección incompleta. Nunca se usan valores
+sensibles de Ejemplo como defaults. Opciones avanzadas admiten comillas mediante
+shlex, no eval.
 
 ### Cambios de defaults aprobados
 
@@ -49,7 +50,8 @@ Layout normal:
 ```text
 08_Forensics/analysis/runs/run-<32hex>/run.json
   sources.json, work/, analysis/, steps/   (metadata/copia/streams privados)
-08_Forensics/recovered/run-<32hex>/        (productos de recuperación)
+08_Forensics/analysis/sterilizations/      (recibos de esterilización, sin run)
+08_Forensics/recovered/run-<32hex>/        (productos de recuperación/iot)
 captures/memory/run-<32hex>/               (bajo raíz del framework)
 ```
 
@@ -166,6 +168,56 @@ Scalpel recibe la imagen como argumento posicional (`-i` significaría lista de
 rutas a leer); Foremost conserva `-i IMAGE`. Nunca se interpretan bytes de la
 imagen como una selección adicional de fuentes.
 
+## IoT y soporte portátil (USB/SD)
+
+Cuatro hojas en `iot/`, sin ejecución implícita ni entrada en el flujo offline:
+
+```bash
+bash 08_Forensics/iot/iot_acquire.sh /dev/sdb --size-mib 14901
+bash 08_Forensics/disk/file_carving.sh 08_Forensics/recovered/run-ID/image.dd
+bash 08_Forensics/iot/iot_triage.sh 08_Forensics/recovered/run-ID
+export VT_API_KEY='...'
+bash 08_Forensics/iot/iot_vt_lookup.sh 08_Forensics/analysis/runs/run-ID
+bash 08_Forensics/iot/iot_sterilize.sh /dev/sdb --size-mib 14901 --wipe zeros --filesystem vfat
+```
+
+- `iot_acquire.sh DEVICE [OUTPUT_DIR] [--size-mib N]`: modo `physical`, root ya
+  disponible, soporte desmontado y token `ADQUIRIR_SOPORTE`. `device-guard`
+  rechaza dispositivos virtuales (`loop`, `ram`, `zram`, `dm-`, `md`, `sr`,
+  `nbd`), cualquier partición montada y tamaños que no coincidan con
+  `--size-mib`.
+  `dd` con `conv=noerror,sync` no demuestra una lectura íntegra: éxito
+  estructural con tamaño distinto o desconocido queda `PARCIAL`. La imagen y
+  `image.json` quedan en `recovered/run-<id>/`; no se monta el original.
+- `iot_triage.sh DIR [--investigator NOMBRE] [--exiftool] [--exiftool-limit N]`:
+  copia y verifica el árbol completo (espacio/tiempo), rechaza symlinks y
+  nodos especiales, y publica `report.json`/`report.md` en `analysis/` del run
+  `triage offline`. Familia por firma y, si no hay firma, por extensión; los
+  duplicados exactos se marcan por SHA-256. `--exiftool` exige el binario
+  (si falta, rc2 antes de crear run) y su fallo por archivo solo omite ese
+  campo. Hash/firma no demuestran autoría, intención ni malware. Árbol vacío:
+  `NO_EVALUABLE`, no éxito.
+- `iot_vt_lookup.sh RUN_DIR [--limit N] [--delay SEGUNDOS] [--api-base URL]`:
+  exige un run de triaje finalizado y legible, `VT_API_KEY` exportada (>20
+  caracteres, nunca impresa ni escrita) y token `CONSULTAR_VIRUSTOTAL`. Solo
+  envía hashes SHA-256 por HTTPS a VirusTotal (`/api/v3/files/<hash>`); fuera de
+  loopback rechaza HTTP y `--delay < 15`, porque la API pública limita a 4
+  consultas/minuto. `404` = `NO_CONOCIDO`; `401/403/429/red` detienen la tanda
+  sin inventar veredictos. El run es `lookup network`, guarda `vt.json`/`vt.md`
+  con el SHA-256 del informe consultado y no copia el informe ajeno.
+- `iot_sterilize.sh DEVICE [--size-mib N] [--wipe zeros|urandom|both]
+  [--passes 1-7] [--filesystem none|vfat]`: DESTRUCTIVO. Sin `--size-mib`
+  exacto no escribe nada (el error indica el valor observado). Tras `dd` de
+  ceros verifica inicio/fin a cero; `urandom` no se verifica; `mkfs.vfat -I -F32`
+  se comprueba por firma. No crea run ni es evidencia ni certifica borrado
+  seguro normativo: el recibo privado y su log quedan en
+  `analysis/sterilizations/`, fuera del almacén de runs.
+- PhotoRec 7.2 no se automatiza: su `/cmd` abre la TUI y puede salir 0 sin
+  recuperar nada («rc0 sin productos» no es éxito). El carving por lotes es
+  `disk/file_carving.sh` (Foremost/Scalpel); PhotoRec queda guiado.
+- `requirements.sh --check` informa también de `photorec`, `exiftool`,
+  `sha256sum` y `mkfs.vfat`; sigue sin ejecutar binarios ni instalar.
+
 ## Acciones locales sensibles y tokens
 
 La barrera del gestor y las confirmaciones de hojas son independientes; no
@@ -179,6 +231,9 @@ retorna2 sin ejecutar la acción. Las hojas piden líneas exactas:
 | disco `--physical` | `INSPECCIONAR_FISICO` |
 | disco `--mount-copy` | `MONTAR_COPIA` |
 | carving `--physical` | `RECUPERAR_FISICO` |
+| iot adquisición (`--size-mib` opcional) | `ADQUIRIR_SOPORTE` |
+| iot consulta VirusTotal (`VT_API_KEY` en entorno) | `CONSULTAR_VIRUSTOTAL` |
+| iot esterilización (destructiva) | `ESTERILIZAR_SOPORTE` |
 | timeline `--local` | `LOCAL_SI` |
 | flujo `--local` | `FLUJO_LOCAL`, después permisos independientes de hojas |
 | lectura syslog del flujo local | `LEER_LOG_LOCAL`, después timeline pide `LOCAL_SI` |
@@ -253,6 +308,11 @@ mount/journal/adquisición/install son stubs cerrados, sin fallback. Guardas de
 inventario/hash/modo antes/después detectan cambios y ficheros nuevos, conservan
 rc real de unittest; copias de diagnóstico se retienen en `/tmp/opencode`.
 Los tests del runner usan una fixture representativa, no otra suite anidada.
+Las hojas `iot/` se prueban con árboles sintéticos, un proveedor VirusTotal v3
+en loopback, `dd`/`sudo`/`exiftool`/`sha256sum` como stubs cerrados y sin root:
+acreditan contratos de token, rechazo de entrada, triaje real del árbol copiado
+y formato de las consultas, NO lectura de hardware, borrado real ni veredictos
+reales de VirusTotal.
 Prueba adicional: `python3 -B -m unittest discover -s tests -p 'test_forensics_*.py' -v`
 solo en copia de fuentes/config sintética, nunca sobre evidencia real.
 Regresiones antiguas solo en copia limpia; `run_tests` sigue heredada roja

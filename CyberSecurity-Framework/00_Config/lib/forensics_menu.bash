@@ -10,6 +10,17 @@ forensics_original_entries() {
         show_results.sh timeline/timeline_creator.sh
 }
 
+# Nuevas hojas IoT/portátil: nunca se descubren en árboles de resultados.
+forensics_iot_entries() {
+    printf '%s\n' iot/iot_acquire.sh iot/iot_sterilize.sh iot/iot_triage.sh \
+        iot/iot_vt_lookup.sh
+}
+
+forensics_all_entries() {
+    forensics_original_entries
+    forensics_iot_entries
+}
+
 # One line is ONE value, including spaces. No sensitive example defaults.
 forensics_read() {
     local value
@@ -66,6 +77,30 @@ forensics_prepare() {
             FORENSICS_ARGS=("--$choice" "$value")
             printf 'Opciones: --year YYYY --timezone IANA; sin ellas fechas no resueltas no se inventan.\n' >&2
             forensics_options || return 1 ;;
+        */iot_acquire.sh)
+            printf 'Imagen de soporte USB/SD: el dispositivo se lee, nunca se escribe ni se monta.\n' >&2
+            value=$(forensics_read 'Dispositivo de bloque explícito (p. ej. /dev/sdb)') || return 1
+            FORENSICS_ARGS=("$value")
+            printf 'Opciones: --size-mib N confirma el tamaño observado (recomendado).\n' >&2
+            forensics_options || return 1 ;;
+        */iot_triage.sh)
+            printf 'Triaje de un árbol recuperado; se copia y verifica antes de analizarlo.\n' >&2
+            value=$(forensics_read 'Directorio de recuperados (preferible: run privado finalizado)') || return 1
+            FORENSICS_ARGS=("$value")
+            printf 'Opciones: --investigator NOMBRE --exiftool --exiftool-limit N.\n' >&2
+            forensics_options || return 1 ;;
+        */iot_vt_lookup.sh)
+            printf 'Consulta VirusTotal v3: solo hashes, nunca el archivo ni el informe.\n' >&2
+            value=$(forensics_read 'RUN_DIR de un triaje finalizado con report.json') || return 1
+            FORENSICS_ARGS=("$value")
+            printf 'VT_API_KEY debe estar exportada. Opciones: --limit N --delay SEGUNDOS.\n' >&2
+            forensics_options || return 1 ;;
+        */iot_sterilize.sh)
+            printf 'DESTRUCTIVO e IRREVERSIBLE: borra el soporte; sin --size-mib N no escribe nada.\n' >&2
+            value=$(forensics_read 'Dispositivo de bloque explícito a esterilizar') || return 1
+            FORENSICS_ARGS=("$value")
+            printf 'Opciones: --size-mib N (obligatorio) --wipe zeros|urandom|both --passes N --filesystem none|vfat.\n' >&2
+            forensics_options || return 1 ;;
         *)
             value=$(forensics_read 'Archivo explícito (no objetivo IP; se copiará íntegro)') || return 1
             FORENSICS_ARGS=("$value")
@@ -89,7 +124,7 @@ forensics_execute_script() {
     local entry allowed=0
     while IFS= read -r entry; do
         [[ $path != "08_Forensics/$entry" ]] || allowed=1
-    done < <(forensics_original_entries)
+    done < <(forensics_all_entries)
     (( allowed )) || return 2
     if [[ $mode = --prepared ]]; then FORENSICS_ARGS=("${@:4}")
     else forensics_prepare "$path" || return 0; fi
@@ -112,7 +147,7 @@ forensics_menu() {
     while :; do
         printf '\nFORENSE 08 — identidad por evidencia, no IP de sesión\n' >&2
         if declare -F module_intro >/dev/null; then module_intro '08_Forensics' >&2; fi
-        printf '1) Dependencias (solo disponibilidad)\n2) Strings offline\n3) Log offline\n4) PCAP offline\n5) Volatility Windows offline\n6) Disco/recuperación\n7) Timeline offline\n8) Adquisición/local explícitos\n9) Flujo offline por fuentes elegidas\n10) Visor (metadata, sin cuerpos)\n11) Diez entradas originales + visor\n0) Volver\nSelección: ' >&2
+        printf '1) Dependencias (solo disponibilidad)\n2) Strings offline\n3) Log offline\n4) PCAP offline\n5) Volatility Windows offline\n6) Disco/recuperación\n7) Timeline offline\n8) Adquisición/local explícitos\n9) Flujo offline por fuentes elegidas\n10) Visor (metadata, sin cuerpos)\n11) Originales + visor\n12) IoT/soporte portátil (USB/SD)\n0) Volver\nSelección: ' >&2
         IFS= read -r choice || return 0
         case $choice in
             0|'!') return 0 ;;
@@ -141,6 +176,15 @@ forensics_menu() {
             9) execute_script '08_Forensics/run_all_forensics.sh' '08_Forensics' || : ;;
             10) execute_script '08_Forensics/show_results.sh' '08_Forensics' --prepared || : ;;
             11) run_module_scripts '08_Forensics' '08_Forensics — originales y visor' >&2 ;;
+            12)
+                action=$(forensics_read 'IoT/portátil: 1 adquirir imagen; 2 triar recuperados; 3 consultar VirusTotal; 4 esterilizar soporte') || continue
+                case $action in
+                    1) execute_script '08_Forensics/iot/iot_acquire.sh' '08_Forensics' || : ;;
+                    2) execute_script '08_Forensics/iot/iot_triage.sh' '08_Forensics' || : ;;
+                    3) execute_script '08_Forensics/iot/iot_vt_lookup.sh' '08_Forensics' || : ;;
+                    4) execute_script '08_Forensics/iot/iot_sterilize.sh' '08_Forensics' || : ;;
+                    *) printf 'Acción IoT no válida; no se ejecuta nada.\n' >&2 ;;
+                esac ;;
             *) printf 'Opción inválida; no se ejecuta ninguna herramienta.\n' >&2 ;;
         esac
     done

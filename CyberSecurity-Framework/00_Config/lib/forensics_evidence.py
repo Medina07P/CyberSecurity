@@ -26,8 +26,11 @@ import uuid
 
 STATES = ('COMPLETADO', 'PARCIAL', 'FALLIDO', 'OMITIDO', 'NO_EVALUABLE', 'CANCELADO')
 OPERATIONS = ('strings', 'logs', 'timeline', 'pcap', 'volatility', 'disk',
-              'carving', 'memory', 'workflow', 'dependencies')
-MODES = ('offline', 'local', 'physical')
+              'carving', 'memory', 'workflow', 'dependencies',
+              'acquisition', 'triage', 'lookup')
+# network: consulta externa explícita (solo hashes en VirusTotal), nunca una
+# captura del host ni un soporte físico.
+MODES = ('offline', 'local', 'physical', 'network')
 IDENTIFIER = re.compile(r'[a-zA-Z][a-zA-Z0-9_.-]{0,63}\Z')
 HEX = re.compile(r'[0-9a-f]{64}\Z')
 RUN_ID = re.compile(r'run-[0-9a-f]{32}\Z')
