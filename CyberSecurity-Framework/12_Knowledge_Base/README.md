@@ -1,8 +1,8 @@
-# 📚 12_Knowledge_Base - Base de Conocimiento
+# 12_Knowledge_Base - Base de Conocimiento
 
 Base de conocimiento para consulta rápida durante auditorías.
 
-## 📁 Estructura
+## Estructura
 
 | Directorio        | Descripción                    |
 |-------------------|--------------------------------|
@@ -12,7 +12,7 @@ Base de conocimiento para consulta rápida durante auditorías.
 | `notes/`          | Notas y plantillas             |
 | `procedures/`     | Procedimientos estándar        |
 
-## 🚀 Uso Rápido
+## Uso Rápido
 
 ```bash
 # Buscar en la base de conocimiento
@@ -25,7 +25,7 @@ cat cheatsheets/nmap_cheatsheet.md
 grep -r "CVE-2024" cves/
 ```
 
-## 📋 Flujo de Trabajo
+## Flujo de Trabajo
 
 ```
 1. Consultar cheatsheets  → Comandos rápidos

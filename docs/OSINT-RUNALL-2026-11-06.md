@@ -1,4 +1,4 @@
-# run_all_osint: del "✅ completado" en falso al contrato con dominio (2026-11-06)
+# run_all_osint: del "✔ completado" en falso al contrato con dominio (2026-11-06)
 
 ## Síntoma
 
@@ -8,17 +8,17 @@ Desde el gestor, `01_OSINT` → `1. run_all_osint.sh` terminaba así:
 Sin argumentos
 
   EJECUTANDO OSINT
-▶️  Ejecutando: scripts/email_harvester.sh
+▶  Ejecutando: scripts/email_harvester.sh
 Uso: ./email_harvester.sh <dominio>
 Ejemplo: ./email_harvester.sh example.com
-▶️  Ejecutando: scripts/metadata_extractor.sh
+▶  Ejecutando: scripts/metadata_extractor.sh
 Uso: ./metadata_extractor.sh <archivo>
 ...
-✅ OSINT completado
+✔ OSINT completado
 ```
 
 Los cinco hijos imprimían su `Uso:` y salían `1`, y el script acababa con
-**`exit 0` y "✅ OSINT completado"**. Ninguna herramienta llegó a ejecutarse:
+**`exit 0` y "✔ OSINT completado"**. Ninguna herramienta llegó a ejecutarse:
 el fallo total se presentaba como éxito.
 
 ## Causa
@@ -31,7 +31,7 @@ parámetros, y eso encadenaba tres defectos:
 2. **El bucle llamaba a los hijos sin argumentos** (`bash "$script"`), así que
    todos se quedaban en su validación de argumentos y salían `1`.
 3. **Ese `exit 1` se ignoraba y el `2>/dev/null` tapaba cualquier error**; el
-   `echo "✅ OSINT completado"` era incondicional.
+   `echo "✔ OSINT completado"` era incondicional.
 
 Dos hijos además no aceptan un dominio: `metadata_extractor.sh` trabaja sobre
 un **archivo local** y `social_media_search.sh` sobre un **nombre de empresa**.
@@ -51,8 +51,8 @@ un **archivo local** y `social_media_search.sh` sobre un **nombre de empresa**.
   inexistente corta con `exit 1` antes de lanzar nada.
 - Cada hijo se lanza con `2>>osint_errores.log` (se añade, no se vacía: lleva
   cabecera con fecha y dominio). Un hijo que devuelve ≠0 se cuenta; al final,
-  si hubo alguno, se imprime `⚠️ OSINT terminó con N de M pasos fallidos` y se
-  sale `1`. El "✅ completado" solo aparece cuando los pasos salieron bien.
+  si hubo alguno, se imprime `⚠ OSINT terminó con N de M pasos fallidos` y se
+  sale `1`. El "✔ completado" solo aparece cuando los pasos salieron bien.
 - El script se autolocaliza (`cd "$(dirname "${BASH_SOURCE[0]}")"`), así que
   `bash 01_OSINT/run_all_osint.sh example.com` desde `/tmp` invoca a los hijos
   correctos. Era uno de los diez `run_all_*` que asumían el `cwd`.

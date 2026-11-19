@@ -222,7 +222,7 @@ Ejemplo: ./zap_scan.sh https://example.com
    JVM tarda en levantar.
 6. Ejecuta `zap_driver.py` con el `OUTPUT_DIR`/`SLUG` ya resueltos.
 7. Imprime el mismo estilo de cierre que `nuclei_scan.sh`
-   (`✅`/`📁 Resultados:`).
+   (`✔`/`Resultados:`).
 
 ### Pruebas
 

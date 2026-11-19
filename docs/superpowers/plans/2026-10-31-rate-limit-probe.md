@@ -92,7 +92,7 @@ Ejemplo: ./rate_limit_probe.sh ../scans/web/login.req 20
 
 Variables: `RATE_LIMIT_INTENTOS` (20), `RATE_LIMIT_RETARDO` (0), `RATE_LIMIT_CAMPO`, `RATE_LIMIT_SI`, `RATE_LIMIT_MAX_SEG` (30), `RATE_LIMIT_ESQUEMA` (decisión del constructor, hermana de `HTTP_INJECT_ESQUEMA`).
 
-Detección (case-insensitive) sobre `hr_params`: primer `ubicacion|nombre|valor` cuyo nombre case con `pass|clave|secret|contras`. Si no hay, mensaje `❌ No se encontró un campo de contraseña (pass/clave/secret/contras): indícalo con RATE_LIMIT_CAMPO` y `exit 1`. Si `hr_params` devuelve 4 o 5, el mensaje dice que no se pudo leer el cuerpo. Si hay un segundo candidato, `avisar` con su nombre.
+Detección (case-insensitive) sobre `hr_params`: primer `ubicacion|nombre|valor` cuyo nombre case con `pass|clave|secret|contras`. Si no hay, mensaje `✖ No se encontró un campo de contraseña (pass/clave/secret/contras): indícalo con RATE_LIMIT_CAMPO` y `exit 1`. Si `hr_params` devuelve 4 o 5, el mensaje dice que no se pudo leer el cuerpo. Si hay un segundo candidato, `avisar` con su nombre.
 
 Confirmación (salvo `RATE_LIMIT_SI=1`): `¿N intentos contra <url>? Puede bloquear la cuenta. [s/N]`; sin `s`, `exit 0`.
 

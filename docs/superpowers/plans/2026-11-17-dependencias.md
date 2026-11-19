@@ -407,7 +407,7 @@ dependencies_menu() {
             fi
             dependencies_install "${elegidos[@]}"
             ;;
-        *) echo -e "${RED}❌ Opción inválida${NC}" ;;
+        *) echo -e "${RED}✖ Opción inválida${NC}" ;;
     esac
     pause
 }
@@ -415,7 +415,7 @@ dependencies_menu() {
 
 - [ ] **Step 3: Dispatch and help text**
 
-In `main()`'s `case "$choice" in`, add `D|d) dependencies_menu ;;` next to the `K|k) keys_menu ;;` line. Update the two literal prompt strings that list shortcuts (`main_menu`'s `➜ Selecciona un módulo [00-13, 99, R, T, K, ?, Q]:` and `main()`'s invalid-option message `Prueba con 00-13, 99, R, T, K, ? o Q.`) to insert `, D` after `K` in both. In `show_help()`, add one line under `⌨️  ATAJOS:` immediately after the `K` line: `echo -e "  ${GREEN}D${NC}   Dependencias (ver qué falta e instalarlo)"`.
+In `main()`'s `case "$choice" in`, add `D|d) dependencies_menu ;;` next to the `K|k) keys_menu ;;` line. Update the two literal prompt strings that list shortcuts (`main_menu`'s `➜ Selecciona un módulo [00-13, 99, R, T, K, ?, Q]:` and `main()`'s invalid-option message `Prueba con 00-13, 99, R, T, K, ? o Q.`) to insert `, D` after `K` in both. In `show_help()`, add one line under ` ATAJOS:` immediately after the `K` line: `echo -e "  ${GREEN}D${NC}   Dependencias (ver qué falta e instalarlo)"`.
 
 - [ ] **Step 4: Add smoke tests to `tests/run_smoke.sh`**
 

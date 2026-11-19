@@ -79,7 +79,7 @@ sobrescribía el HTML. Ahora `os.path.splitext(...)[0] + ".json"`.
 
 `report_generator.sh` no lee nada de `scans/`: escribe un esqueleto con huecos
 `[FECHA]`, `[NOMBRE_CLIENTE]`. Cada informe generado lleva ahora una cabecera
-`> ⚠️ **PLANTILLA**`, un aviso por pantalla y un pie que ya no dice "generado
+`> ⚠ **PLANTILLA**`, un aviso por pantalla y un pie que ya no dice "generado
 automáticamente".
 
 ### 10. Informes generados fuera del índice

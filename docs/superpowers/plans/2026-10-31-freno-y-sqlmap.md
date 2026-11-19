@@ -133,7 +133,7 @@ En `peticion()`, tras fijar `RESP_CODE`/`RESP_SIZE`/`RESP_TIME`/`RESP_CT` y **an
 
 ```bash
 if (( FRENADO == 1 )); then
-    echo "❌ Te están frenando antes de empezar (HTTP ${RESP_CODE} en la línea base): no se ha probado nada."
+    echo "✖ Te están frenando antes de empezar (HTTP ${RESP_CODE} en la línea base): no se ha probado nada."
     echo "   Baja el ritmo (HTTP_INJECT_RETARDO), espera o pide exclusión al WAF. El error queda en: ${LOG}"
     exit 1
 fi

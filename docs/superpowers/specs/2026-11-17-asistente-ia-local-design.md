@@ -113,7 +113,7 @@ Todo ocurre en la máquina: ningún dato sale a servicios externos.
 ### Menú guiado (comportamiento)
 
 ```
-🤖 Asistente del framework      modelo: qwen2.5:3b ✔   contexto: 12 %
+Asistente del framework      modelo: qwen2.5:3b ✔   contexto: 12 %
 Objetivo de la sesión: <objetivo>
 
  1) Entender mis resultados

@@ -1,8 +1,8 @@
-# 📡 02_Recon - Reconocimiento Activo
+# 02_Recon - Reconocimiento Activo
 
 Este directorio contiene herramientas y datos para la fase de reconocimiento activo.
 
-## 📁 Estructura
+## Estructura
 
 | Directorio | Descripción |
 |-----------|-------------|
@@ -13,7 +13,7 @@ Este directorio contiene herramientas y datos para la fase de reconocimiento act
 | `fingerprinting/` | Huella digital de servicios |
 | `scripts/` | Scripts de automatización |
 
-## 🚀 Uso Rápido
+## Uso Rápido
 
 ```bash
 # Descubrir hosts
