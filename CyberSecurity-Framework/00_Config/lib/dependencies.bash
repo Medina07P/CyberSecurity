@@ -302,11 +302,99 @@ dependencies_install_avml() {
     dependencies_verify_avml
 }
 
+# Descarga URL a DESTINO con progreso visible. Si el servidor anuncia un
+# tamaño grande, reparte el archivo en varias conexiones con rangos HTTP
+# (una sola conexión a GitHub va muy lenta); si algo no cuadra, reintenta
+# con una sola. Variable opcional: OLLAMA_DOWNLOAD_CONNECTIONS (1-16).
+dependencies_descargar_archivo() {
+    local url="$1" destino="$2"
+    local conexiones="${OLLAMA_DOWNLOAD_CONNECTIONS:-8}"
+    local total='' i inicio fin esperado parte pid rc=0 vivos=0 size size_parte estado
+    local -a partes=() pids=()
+
+    [[ "$conexiones" =~ ^[0-9]+$ ]] || conexiones=1
+    (( conexiones >= 1 )) || conexiones=1
+    (( conexiones <= 16 )) || conexiones=16
+
+    if (( conexiones > 1 )); then
+        total=$(curl -sIL --max-time 20 "$url" 2>/dev/null \
+            | awk 'BEGIN{IGNORECASE=1} /^content-length:/ {gsub("\r",""); print $2}' \
+            | tail -1)
+    fi
+
+    if [[ "$total" =~ ^[0-9]+$ ]] && (( total >= 8*1024*1024 && conexiones > 1 )); then
+        printf '⚙  Descargando con %s conexiones paralelas...\n' "$conexiones" >&2
+        for ((i = 0; i < conexiones; i++)); do
+            inicio=$(( total * i / conexiones ))
+            fin=$(( total * (i + 1) / conexiones - 1 ))
+            parte="$destino.parte$i"
+            partes+=("$parte")
+            curl -sS -fL --retry 2 -r "$inicio-$fin" -o "$parte" "$url" &
+            pids+=($!)
+        done
+
+        while :; do
+            vivos=0
+            for pid in "${pids[@]}"; do
+                estado=$(ps -o stat= -p "$pid" 2>/dev/null | tr -d '[:space:]')
+                [[ -n "$estado" && "$estado" != Z* ]] && { vivos=1; break; }
+            done
+            (( vivos )) || break
+            size=0
+            for parte in "${partes[@]}"; do
+                size_parte=$(stat -c %s "$parte" 2>/dev/null || echo 0)
+                size=$(( size + size_parte ))
+            done
+            printf '\r  ↓ %s / %s MiB descargados...' "$((size / 1048576))" "$((total / 1048576))" >&2
+            sleep 3
+        done
+
+        for pid in "${pids[@]}"; do
+            wait "$pid" || rc=1
+        done
+        if (( rc == 0 )); then
+            for ((i = 0; i < conexiones; i++)); do
+                inicio=$(( total * i / conexiones ))
+                fin=$(( total * (i + 1) / conexiones - 1 ))
+                esperado=$(( fin - inicio + 1 ))
+                size=$(stat -c %s "${partes[$i]}" 2>/dev/null || echo 0)
+                (( size == esperado )) || { rc=1; break; }
+            done
+        fi
+        if (( rc == 0 )); then
+            if cat "${partes[@]}" > "$destino"; then
+                printf '\r  ↓ %s / %s MiB descargados.\n' "$((total / 1048576))" "$((total / 1048576))" >&2
+            else
+                rc=1
+            fi
+        else
+            printf '\n⚠  La descarga por partes no cuadró; se reintenta con una sola conexión.\n' >&2
+        fi
+        rm -f "${partes[@]}"
+        (( rc == 0 )) && return 0
+    fi
+
+    # Una sola conexión, o reintento tras un reparto fallido.
+    curl -sS -fL --retry 2 -o "$destino" "$url" &
+    pid=$!
+    while :; do
+        estado=$(ps -o stat= -p "$pid" 2>/dev/null | tr -d '[:space:]')
+        [[ -n "$estado" && "$estado" != Z* ]] || break
+        size=$(stat -c %s "$destino" 2>/dev/null || echo 0)
+        printf '\r  ↓ %s MiB descargados...' "$((size / 1048576))" >&2
+        sleep 3
+    done
+    wait "$pid"; rc=$?
+    size=$(stat -c %s "$destino" 2>/dev/null || echo 0)
+    printf '\r  ↓ %s MiB descargados.\n' "$((size / 1048576))" >&2
+    return "$rc"
+}
+
 # Repara solo el runner: descarga el paquete oficial y extrae lib/ollama sobre
 # la instalación existente. No reemplaza el binario ni crea un servicio nuevo,
 # así que conserva los modelos y la configuración del usuario.
 dependencies_ollama_repair_runner() {
-    local dir paquete url tmp
+    local dir paquete url tmp version
     dir=$(dependencies_ollama_dir) || { printf 'No se pudo localizar la instalación de Ollama.\n' >&2; return 1; }
     case "$(uname -m)" in
         x86_64) paquete='ollama-linux-amd64' ;;
@@ -321,20 +409,35 @@ dependencies_ollama_repair_runner() {
         printf 'No se pudo crear un temporal para la descarga.\n' >&2; return 1; }
     # /var/tmp está en disco; /tmp suele ser tmpfs y el paquete (~1,5 GB)
     # competiría con la RAM del modelo en máquinas pequeñas.
-    local version
-    version=$(ollama --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+
+    # La versión se consulta con timeout: si el servicio está pausado
+    # (Ctrl-Z), «ollama --version» puede quedarse esperando para siempre.
+    version=""
+    printf '⚙  Comprobando la versión de Ollama...\n' >&2
+    if command -v timeout >/dev/null 2>&1; then
+        local salida rc_version
+        salida=$(timeout 10 ollama --version 2>/dev/null); rc_version=$?
+        version=$(printf '%s\n' "$salida" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        if (( rc_version == 124 )); then
+            printf '⚠  «ollama --version» no respondió en 10 s. Si el servicio está pausado, reanúdalo (fg o kill -CONT <pid>). Se usará la descarga genérica.\n' >&2
+        elif [[ -z "$version" ]]; then
+            printf '⚠  No se pudo leer la versión de Ollama; se usará la descarga genérica.\n' >&2
+        fi
+    fi
     if [[ -n "$version" ]]; then
         # Misma versión que el binario: el runner no se mezcla con otro release.
         url="https://github.com/ollama/ollama/releases/download/v${version}/${paquete}.tar.zst"
     else
         url="https://ollama.com/download/${paquete}.tar.zst"
     fi
-    printf 'Descargando el paquete oficial de Ollama (~1,5 GB) para extraer el runner...\n' >&2
-    if ! curl -fL --retry 2 -o "$tmp" "$url"; then
+
+    printf '⚙  Descargando %s (~1,5 GB; puede tardar varios minutos)...\n' "$url" >&2
+    if ! dependencies_descargar_archivo "$url" "$tmp"; then
         printf 'La descarga del paquete de Ollama falló.\n' >&2
         rm -f "$tmp"; return 1
     fi
-    printf 'Extrayendo solo lib/ollama en %s (no toca tus modelos)...\n' "$dir" >&2
+
+    printf '⚙  Extrayendo solo lib/ollama en %s (no toca tus modelos)...\n' "$dir" >&2
     if ! sudo tar --zstd -xf "$tmp" -C "$dir" lib/ollama; then
         printf 'No se pudo extraer el runner en %s.\n' "$dir" >&2
         rm -f "$tmp"; return 1
@@ -344,6 +447,7 @@ dependencies_ollama_repair_runner() {
         printf 'La extracción terminó pero no se encontró «llama-server».\n' >&2
         return 1
     fi
+    printf '✔ Runner llama-server instalado en %s.\n' "$(dependencies_ollama_runner_path)" >&2
 }
 
 dependencies_install_ollama() {
@@ -366,9 +470,11 @@ dependencies_install_ollama() {
     printf 'Ejecuta el instalador oficial de Ollama (curl -fsSL https://ollama.com/install.sh | sh); puede pedir la contraseña de sudo por su cuenta e instala un servicio en segundo plano.\nEscribe OLLAMA_SI para continuar (cualquier otra entrada cancela): ' >&2
     local respuesta; IFS= read -r respuesta
     [[ "$respuesta" == 'OLLAMA_SI' ]] || { printf 'Instalación de Ollama cancelada.\n' >&2; return 1; }
+    printf '⚙  Ejecutando el instalador oficial (descarga ~1,5 GB; puede tardar varios minutos y su salida aparece debajo)...\n' >&2
     if ! curl -fsSL https://ollama.com/install.sh | sh; then
         printf 'El instalador de Ollama terminó con error.\n' >&2; return 1
     fi
+    printf '✔ Instalador terminado; verificando binario y runner...\n' >&2
     if ! command -v ollama >/dev/null 2>&1; then
         printf 'El instalador terminó pero «ollama» no aparece en PATH.\n' >&2; return 1
     fi

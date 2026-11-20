@@ -289,6 +289,40 @@ printf '%s\n' "$out" | grep -qF 'avml ya está instalado.' && ok "avml ya presen
 rm -rf "$STUBDIR"
 unset STUBDIR CALLS
 
+echo "=== dependencies_descargar_archivo: paralelo por rangos ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+cat > "$STUBDIR/curl" <<EOF
+#!/bin/sh
+echo "curl \$*" >> "$CALLS"
+for a in "\$@"; do
+    [ "\$a" = "-sIL" ] && { printf 'content-length: 8388608\r\n'; exit 0; }
+done
+out=""; rango=""; prev=""
+for a in "\$@"; do
+    [ "\$prev" = "-o" ] && out="\$a"
+    [ "\$prev" = "-r" ] && rango="\$a"
+    prev="\$a"
+done
+if [ -n "\$rango" ]; then
+    ini=\${rango%-*}; fin=\${rango#*-}; n=\$((fin - ini + 1))
+else
+    n=8388608
+fi
+[ -n "\$out" ] && head -c "\$n" /dev/zero > "\$out"
+echo "parte \$rango -> \$out (\$n)" >> "$CALLS"
+exit 0
+EOF
+chmod +x "$STUBDIR/curl"
+
+OLLAMA_DOWNLOAD_CONNECTIONS=4 PATH="$STUBDIR:$CLEAN_PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_descargar_archivo 'http://ejemplo.invalid/paquete' '$STUBDIR/salida'" >/dev/null 2>&1
+eq "descarga paralela: rc 0" "$?" "0"
+eq "descarga paralela: tamaño total 8 MiB" "$(stat -c %s "$STUBDIR/salida")" "8388608"
+eq "descarga paralela: cuatro rangos" "$(grep -c '^parte ' "$CALLS")" "4"
+eq "descarga paralela: una sola cabecera HEAD" "$(grep -c -- '-sIL' "$CALLS")" "1"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
 echo "=== dependencies_install_ollama ==="
 STUBDIR="$(mktemp -d)"
 CALLS="$STUBDIR/calls.log"
