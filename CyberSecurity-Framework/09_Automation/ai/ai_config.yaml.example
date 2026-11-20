@@ -1,0 +1,25 @@
+# ============================================================
+#  CONFIGURACIÓN DEL ASISTENTE IA LOCAL  (PLANTILLA)
+#  Copia este fichero y ajústalo:
+#      cp ai_config.yaml.example ai_config.yaml
+#  ai_config.yaml NO se versiona: es configuración local.
+# ============================================================
+
+# Modelo de Ollama que usará el asistente.
+# Debe estar descargado:  ollama pull <modelo>
+# Recomendado: ./ai_assistant.py modelo
+modelo: qwen2.5:3b
+
+# Endpoint de Ollama. Por seguridad debe ser local (loopback).
+endpoint: http://127.0.0.1:11434
+
+# true solo si aceptas enviar datos a un Ollama en otra máquina.
+permitir_endpoint_remoto: false
+
+# Límites de contexto y recuperación documental.
+contexto_max_tokens: 2048
+turnos_literales: 4
+top_k: 4
+
+# false = el índice excluye credenciales y las redacta siempre.
+incluir_credenciales: false

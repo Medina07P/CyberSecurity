@@ -18,6 +18,13 @@ passwords_*.txt
 # Objetivo de la sesión del gestor (estado local, no se versiona)
 .session
 
+# Configuración real local: se versionan solo las plantillas *.example.
+# (Copia con: cp scope.yaml.example scope.yaml  /  cp targets.txt.example targets.txt)
+scope.yaml
+targets.txt
+!scope.yaml.example
+!targets.txt.example
+
 # Backups
 *.bak
 *.backup

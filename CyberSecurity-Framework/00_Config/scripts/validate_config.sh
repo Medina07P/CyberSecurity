@@ -45,6 +45,8 @@ for file in "${REQUIRED_FILES[@]}"; do
         echo "  ✔ $file encontrado"
     else
         echo "  ✖ $file NO encontrado"
+        [[ -f "$CONFIG_DIR/$file.example" ]] && \
+            echo "      → copia la plantilla: cp $file.example $file"
         ((ERROR_COUNT++))
     fi
 done

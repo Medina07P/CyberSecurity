@@ -16,6 +16,20 @@ Este directorio contiene todos los archivos de configuración, alcance y objetiv
 | `wordlists/` | Diccionarios personalizados para fuzzing y fuerza bruta |
 | `credentials/` | Credenciales encontradas (¡MANTENER SEGURO!) |
 
+## Primera puesta en marcha
+
+Los ficheros con datos reales **no se versionan**; en el repositorio solo viven
+sus plantillas `.example`. Tras clonar, crea los locales y edítalos:
+
+```bash
+cp scope.yaml.example scope.yaml
+cp targets.txt.example targets.txt
+cp ../09_Automation/ai/ai_config.yaml.example ../09_Automation/ai/ai_config.yaml
+```
+
+`scope.yaml`, `targets.txt` y `ai_config.yaml` están en `.gitignore`. No los
+fuerces con `git add -f`: contienen objetivos, clientes o ajustes de tu máquina.
+
 ## Desde el gestor
 
 | Opción | Qué hace |

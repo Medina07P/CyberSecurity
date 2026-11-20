@@ -1,0 +1,7 @@
+# Configuración real del asistente: no se versiona.
+# Copia la plantilla con: cp ai_config.yaml.example ai_config.yaml
+ai_config.yaml
+!ai_config.yaml.example
+
+# Índice, resúmenes y datos locales del asistente
+data/

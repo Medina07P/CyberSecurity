@@ -100,6 +100,19 @@ CyberSecurity-Framework/05_Exploitation/payloads/web_shells/shell_*
 # Objetivo de sesión del gestor
 CyberSecurity-Framework/00_Config/.session
 
+# Configuración local real: NUNCA al remoto.
+# Se versionan solo las plantillas *.example (scope.yaml.example,
+# targets.txt.example, ai_config.yaml.example). Para empezar:
+#   cd CyberSecurity-Framework/00_Config && cp scope.yaml.example scope.yaml
+#   cd CyberSecurity-Framework/00_Config && cp targets.txt.example targets.txt
+#   cd CyberSecurity-Framework/09_Automation/ai && cp ai_config.yaml.example ai_config.yaml
+CyberSecurity-Framework/00_Config/scope.yaml
+CyberSecurity-Framework/00_Config/scope.yaml.bak
+CyberSecurity-Framework/00_Config/targets.txt
+CyberSecurity-Framework/00_Config/targets.txt.bak
+CyberSecurity-Framework/09_Automation/ai/ai_config.yaml
+!*.example
+
 # Python
 __pycache__/
 *.pyc

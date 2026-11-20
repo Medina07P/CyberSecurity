@@ -25,6 +25,8 @@ check_file() {
         return 0
     else
         echo "  ✖ FALTA: $1"
+        [[ -f "$CONFIG_DIR/$1.example" ]] && \
+            echo "      → copia la plantilla: cp $1.example $1"
         ERROR_COUNT=$((ERROR_COUNT + 1))
         return 1
     fi

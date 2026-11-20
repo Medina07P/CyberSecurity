@@ -1,0 +1,48 @@
+# ============================================================
+#  LISTA DE OBJETIVOS  (PLANTILLA)
+#  Formato: IP|PUERTO|PROTOCOLO|DESCRIPCIÓN|PRIORIDAD
+# ============================================================
+#  PRIORIDAD: C = Crítica, A = Alta, M = Media, B = Baja
+#
+#  Copia este fichero y edítalo con tus objetivos:
+#      cp targets.txt.example targets.txt
+#  targets.txt NO se versiona: contiene hosts y servicios reales.
+#  Las IP y dominios de abajo son ejemplos (RFC 5737 / RFC 2606).
+# ============================================================
+
+# ─── MÁQUINAS PRINCIPALES (ejemplos) ──────────────────────
+
+192.0.2.10|22|SSH|Servidor de ejemplo|C
+192.0.2.10|80|HTTP|Portal web de ejemplo|C
+192.0.2.10|443|HTTPS|Portal web de ejemplo (TLS)|C
+192.0.2.10|8080|HTTP|Proxy / API de ejemplo|A
+
+198.51.100.20|445|SMB|Servidor de archivos de ejemplo|A
+198.51.100.20|135|RPC|RPC / DCOM de ejemplo|M
+198.51.100.20|3389|RDP|Escritorio remoto de ejemplo|A
+
+198.51.100.30|3306|MySQL|Base de datos de ejemplo|C
+198.51.100.30|5432|PostgreSQL|Base de datos de ejemplo|M
+198.51.100.30|6379|Redis|Caché de ejemplo|A
+
+# ─── SERVICIOS ADICIONALES (ejemplos) ─────────────────────
+
+192.0.2.50|21|FTP|FTP de ejemplo|B
+192.0.2.50|22|SSH|Jump server de ejemplo|A
+
+# ─── DOMINIOS (ejemplos) ───────────────────────────────────
+
+example.com|80|HTTP|Página de ejemplo|C
+example.com|443|HTTPS|Página de ejemplo (TLS)|C
+
+admin.example.com|443|HTTPS|Panel de administración de ejemplo|C
+api.example.com|443|HTTPS|API de ejemplo|A
+
+# ─── FIREWALL / SEGURIDAD ─────────────────────────────────
+
+192.0.2.1|—|—|Gateway / Firewall (ejemplo, EXCLUIDO)|—(EXCLUIDO)
+198.51.100.1|—|—|DNS / DHCP (ejemplo, EXCLUIDO)|—(EXCLUIDO)
+
+# ─── NOTAS ─────────────────────────────────────────────────
+# Una línea por servicio. «—» cuando el dato no aplica.
+# Las entradas marcadas EXCLUIDO se ignoran al leer los objetivos.
