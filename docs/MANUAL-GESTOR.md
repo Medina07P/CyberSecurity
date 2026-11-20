@@ -669,6 +669,9 @@ falta:
     plano. Si el binario ya está pero falta el runner `llama-server` (la
     causa del error HTTP 500 al generar), descarga el paquete oficial y
     extrae **solo** `lib/ollama`, sin tocar tus modelos ni el servicio.
+    La descarga muestra el progreso en MiB y reparte el archivo en varias
+    conexiones paralelas; la comprobación de versión tiene un timeout de
+    10 s para no quedarse colgada si `ollama serve` está pausado.
     Confirmación: escribir `OLLAMA_SI`. Si Ollama queda completo (recién
     instalado, reparado o ya presente de antes), se ofrece además un
     **catálogo de 4 modelos**, cada uno con su descripción honesta en el
