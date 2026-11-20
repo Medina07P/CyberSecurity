@@ -321,7 +321,14 @@ dependencies_ollama_repair_runner() {
         printf 'No se pudo crear un temporal para la descarga.\n' >&2; return 1; }
     # /var/tmp está en disco; /tmp suele ser tmpfs y el paquete (~1,5 GB)
     # competiría con la RAM del modelo en máquinas pequeñas.
-    url="https://ollama.com/download/${paquete}.tar.zst"
+    local version
+    version=$(ollama --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    if [[ -n "$version" ]]; then
+        # Misma versión que el binario: el runner no se mezcla con otro release.
+        url="https://github.com/ollama/ollama/releases/download/v${version}/${paquete}.tar.zst"
+    else
+        url="https://ollama.com/download/${paquete}.tar.zst"
+    fi
     printf 'Descargando el paquete oficial de Ollama (~1,5 GB) para extraer el runner...\n' >&2
     if ! curl -fL --retry 2 -o "$tmp" "$url"; then
         printf 'La descarga del paquete de Ollama falló.\n' >&2

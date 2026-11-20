@@ -353,12 +353,16 @@ chmod +x "\$dir/lib/ollama/llama-server"
 exit 0
 EOF
 chmod +x "$STUBDIR/sudo" "$STUBDIR/zstd" "$STUBDIR/curl" "$STUBDIR/tar"
-touch "$STUBDIR/bin/ollama"; chmod +x "$STUBDIR/bin/ollama"
+cat > "$STUBDIR/bin/ollama" <<'EOF'
+#!/bin/sh
+echo "ollama version is 0.40.16"
+EOF
+chmod +x "$STUBDIR/bin/ollama"
 
 out=$(printf 'OLLAMA_SI\n0\n' | PATH="$STUBDIR/bin:$STUBDIR:$CLEAN_PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" 2>&1)
 eq "repara un Ollama incompleto: rc 0" "$?" "0"
 printf '%s\n' "$out" | grep -qF 'le falta el runner' && ok "avisa de que falta llama-server" || ko "no avisa de que falta llama-server"
-grep -q -F 'ollama-linux-amd64.tar.zst' "$CALLS" && ok "descarga el paquete oficial" || ko "no descarga el paquete oficial"
+grep -q -F 'releases/download/v0.40.16/ollama-linux-amd64.tar.zst' "$CALLS" && ok "descarga la versión exacta del binario" || ko "no descarga la versión exacta del binario"
 grep -q -F 'lib/ollama' "$CALLS" && ok "extrae solo lib/ollama" || ko "no extrae solo lib/ollama"
 [[ -x "$STUBDIR/lib/ollama/llama-server" ]] && ok "tras reparar queda el runner" || ko "tras reparar falta el runner"
 rm -rf "$STUBDIR"
