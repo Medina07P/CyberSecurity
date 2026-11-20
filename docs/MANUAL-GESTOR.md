@@ -663,11 +663,14 @@ falta:
   `aircrack-ng`).
 - **Opción `2`** cubre tres herramientas que **no** se instalan por `apt` y
   que hasta ahora solo aparecían documentadas en el reporte:
-  - **Ollama**: ejecuta su instalador oficial
+  - **Ollama**: si falta el binario, ejecuta su instalador oficial
     (`curl -fsSL https://ollama.com/install.sh | sh`), que puede pedir la
     contraseña de `sudo` por su cuenta e instala un servicio en segundo
-    plano. Confirmación: escribir `OLLAMA_SI`. Si Ollama queda disponible
-    (recién instalado o ya presente de antes), se ofrece además un
+    plano. Si el binario ya está pero falta el runner `llama-server` (la
+    causa del error HTTP 500 al generar), descarga el paquete oficial y
+    extrae **solo** `lib/ollama`, sin tocar tus modelos ni el servicio.
+    Confirmación: escribir `OLLAMA_SI`. Si Ollama queda completo (recién
+    instalado, reparado o ya presente de antes), se ofrece además un
     **catálogo de 4 modelos**, cada uno con su descripción honesta en el
     propio menú — nunca solo un nombre:
     1. **General**: el modelo que ya recomienda el asistente de IA (tecla

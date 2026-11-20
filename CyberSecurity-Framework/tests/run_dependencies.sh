@@ -39,6 +39,18 @@ eq "el código usa vulners.nse como ruta por defecto" "$?" "0"
 grep -q 'nmap-vulners\.nse' "$FW/00_Config/lib/dependencies.bash"
 eq "el código ya no menciona nmap-vulners.nse" "$?" "1"
 
+# Ollama: binario y runner. Un binario suelto no basta (HTTP 500 al generar).
+touch "$TMPBIN/ollama"; chmod +x "$TMPBIN/ollama"
+bash -c "export PATH='$TMPBIN'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_binary_ok ollama"
+eq "ollama solo con binario: incompleto" "$?" "1"
+touch "$TMPBIN/llama-server"; chmod +x "$TMPBIN/llama-server"
+bash -c "export PATH='$TMPBIN'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_binary_ok ollama"
+eq "ollama con binario y runner: completo" "$?" "0"
+touch "$TMPBIN/runner-externo"; chmod +x "$TMPBIN/runner-externo"
+OLLAMA_LLAMA_SERVER="$TMPBIN/runner-externo" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_binary_ok ollama"
+eq "OLLAMA_LLAMA_SERVER permite forzar la ruta del runner" "$?" "0"
+rm -f "$TMPBIN/ollama" "$TMPBIN/llama-server" "$TMPBIN/runner-externo"
+
 echo "=== dependencies_extra_missing ==="
 # NMAP_VULNERS_PATH se fija siempre: la ruta por defecto puede existir de
 # verdad en la máquina (nmap ya trae vulners.nse en algunos paquetes).
@@ -49,8 +61,11 @@ eq "nmap-vulners aparece (ausente en el PATH cerrado)" "$(printf '%s\n' "$out" |
 eq "exactamente 3 líneas" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "3"
 touch "$TMPBIN/ollama"; chmod +x "$TMPBIN/ollama"
 out=$(NMAP_VULNERS_PATH="$TMPBIN/no-existe.nse" bash -c "export PATH='$TMPBIN'; export NMAP_VULNERS_PATH='$TMPBIN/no-existe.nse'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_extra_missing")
-eq "ollama ya no aparece si está en PATH" "$(printf '%s\n' "$out" | grep -c -F ollama)" "0"
-rm -f "$TMPBIN/ollama"
+eq "ollama sigue apareciendo si solo está el binario (falta llama-server)" "$(printf '%s\n' "$out" | grep -c -F ollama)" "1"
+touch "$TMPBIN/llama-server"; chmod +x "$TMPBIN/llama-server"
+out=$(NMAP_VULNERS_PATH="$TMPBIN/no-existe.nse" bash -c "export PATH='$TMPBIN'; export NMAP_VULNERS_PATH='$TMPBIN/no-existe.nse'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_extra_missing")
+eq "ollama ya no aparece con binario y runner llama-server" "$(printf '%s\n' "$out" | grep -c -F ollama)" "0"
+rm -f "$TMPBIN/ollama" "$TMPBIN/llama-server"
 
 echo "=== dependencies_status ==="
 out=$(bash -c "export PATH='$TMPBIN'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_status")
@@ -280,7 +295,7 @@ CALLS="$STUBDIR/calls.log"
 cat > "$STUBDIR/curl" <<EOF
 #!/bin/sh
 echo "curl \$*" >> "$CALLS"
-printf 'touch "%s/ollama"; chmod +x "%s/ollama"\n' "$STUBDIR" "$STUBDIR"
+printf 'touch "%s/ollama" "%s/llama-server"; chmod +x "%s/ollama" "%s/llama-server"\n' "$STUBDIR" "$STUBDIR" "$STUBDIR" "$STUBDIR"
 EOF
 chmod +x "$STUBDIR/curl"
 
@@ -291,11 +306,99 @@ eq "confirmación negada: rc 1" "$?" "1"
 printf 'OLLAMA_SI\n0\n' | PATH="$STUBDIR:$CLEAN_PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" >/dev/null 2>&1
 eq "confirmado: rc 0 y ollama queda en PATH" "$?" "0"
 [[ -x "$STUBDIR/ollama" ]] && ok "ollama quedó instalado" || ko "ollama no quedó instalado"
+[[ -x "$STUBDIR/llama-server" ]] && ok "llama-server quedó instalado" || ko "llama-server no quedó instalado"
 
 out=$(printf '0\n' | PATH="$STUBDIR:$CLEAN_PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" 2>&1)
 eq "ya presente: no vuelve a pedir confirmación ni a invocar curl" "$(printf '%s\n' "$out" | grep -c -F 'curl')" "0"
 printf '%s\n' "$out" | grep -qF 'ollama ya está instalado.' && ok "ya presente: lo dice" || ko "ya presente: lo dice"
 printf '%s\n' "$out" | grep -qF 'Catálogo de modelos para Ollama' && ok "ya presente: ofrece el catálogo" || ko "ya presente: ofrece el catálogo"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
+echo "=== dependencies_install_ollama: binario sin llama-server (el caso del HTTP 500) ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+mkdir -p "$STUBDIR/bin"
+cat > "$STUBDIR/sudo" <<'EOF'
+#!/bin/sh
+exec "$@"
+EOF
+cat > "$STUBDIR/zstd" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+cat > "$STUBDIR/curl" <<EOF
+#!/bin/sh
+echo "curl \$*" >> "$CALLS"
+out=""; prev=""
+for a in "\$@"; do
+    [ "\$prev" = "-o" ] && out="\$a"
+    prev="\$a"
+done
+[ -n "\$out" ] && printf 'paquete falso\n' > "\$out"
+exit 0
+EOF
+cat > "$STUBDIR/tar" <<EOF
+#!/bin/sh
+echo "tar \$*" >> "$CALLS"
+dir=""; prev=""
+for a in "\$@"; do
+    [ "\$prev" = "-C" ] && dir="\$a"
+    prev="\$a"
+done
+[ -n "\$dir" ] || exit 1
+mkdir -p "\$dir/lib/ollama"
+touch "\$dir/lib/ollama/llama-server"
+chmod +x "\$dir/lib/ollama/llama-server"
+exit 0
+EOF
+chmod +x "$STUBDIR/sudo" "$STUBDIR/zstd" "$STUBDIR/curl" "$STUBDIR/tar"
+touch "$STUBDIR/bin/ollama"; chmod +x "$STUBDIR/bin/ollama"
+
+out=$(printf 'OLLAMA_SI\n0\n' | PATH="$STUBDIR/bin:$STUBDIR:$CLEAN_PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" 2>&1)
+eq "repara un Ollama incompleto: rc 0" "$?" "0"
+printf '%s\n' "$out" | grep -qF 'le falta el runner' && ok "avisa de que falta llama-server" || ko "no avisa de que falta llama-server"
+grep -q -F 'ollama-linux-amd64.tar.zst' "$CALLS" && ok "descarga el paquete oficial" || ko "no descarga el paquete oficial"
+grep -q -F 'lib/ollama' "$CALLS" && ok "extrae solo lib/ollama" || ko "no extrae solo lib/ollama"
+[[ -x "$STUBDIR/lib/ollama/llama-server" ]] && ok "tras reparar queda el runner" || ko "tras reparar falta el runner"
+rm -rf "$STUBDIR"
+unset STUBDIR CALLS
+
+echo "=== dependencies_install_ollama: el paquete no deja llama-server ==="
+STUBDIR="$(mktemp -d)"
+CALLS="$STUBDIR/calls.log"
+mkdir -p "$STUBDIR/bin"
+cat > "$STUBDIR/sudo" <<'EOF'
+#!/bin/sh
+exec "$@"
+EOF
+cat > "$STUBDIR/zstd" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+cat > "$STUBDIR/curl" <<EOF
+#!/bin/sh
+echo "curl \$*" >> "$CALLS"
+out=""; prev=""
+for a in "\$@"; do
+    [ "\$prev" = "-o" ] && out="\$a"
+    prev="\$a"
+done
+[ -n "\$out" ] && printf 'paquete falso\n' > "\$out"
+exit 0
+EOF
+cat > "$STUBDIR/tar" <<EOF
+#!/bin/sh
+echo "tar \$*" >> "$CALLS"
+exit 0
+EOF
+chmod +x "$STUBDIR/sudo" "$STUBDIR/zstd" "$STUBDIR/curl" "$STUBDIR/tar"
+touch "$STUBDIR/bin/ollama"; chmod +x "$STUBDIR/bin/ollama"
+
+out=$(printf 'OLLAMA_SI\n' | PATH="$STUBDIR/bin:$STUBDIR:$CLEAN_PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; source '$FW/00_Config/lib/dependencies_models.bash'; dependencies_install_ollama" 2>&1)
+eq "sin runner tras reparar: rc 1" "$?" "1"
+printf '%s\n' "$out" | grep -qF 'no se encontró «llama-server»' && ok "avisa de que no se encontró el runner" || ko "no avisa de que no se encontró el runner"
+printf '%s\n' "$out" | grep -qF 'Catálogo de modelos para Ollama' && ko "sin runner: no debía ofrecer el catálogo" || ok "sin runner: no ofrece el catálogo"
 rm -rf "$STUBDIR"
 unset STUBDIR CALLS
 

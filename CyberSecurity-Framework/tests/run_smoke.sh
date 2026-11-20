@@ -138,6 +138,8 @@ run "menú: D 2 lista las tres sin instalar nada" 'D\n2\n0\n0\n' "nmap-vulners"
 # el menú nunca volvía a dar forma de pedir otro modelo).
 STUBDIR_D2="$(mktemp -d)"
 printf '#!/bin/sh\n' > "$STUBDIR_D2/ollama"; chmod +x "$STUBDIR_D2/ollama"
+# Ollama solo cuenta como instalado si también está el runner que genera.
+printf '#!/bin/sh\n' > "$STUBDIR_D2/llama-server"; chmod +x "$STUBDIR_D2/llama-server"
 printf '#!/bin/sh\n' > "$STUBDIR_D2/avml"; chmod +x "$STUBDIR_D2/avml"
 NVP_D2="$STUBDIR_D2/vulners.nse"; touch "$NVP_D2"
 out_d2=$(printf 'D\n2\n0\n0\nQ\n' | PATH="$STUBDIR_D2:$PATH" NMAP_VULNERS_PATH="$NVP_D2" \

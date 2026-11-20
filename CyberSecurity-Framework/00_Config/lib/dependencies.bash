@@ -33,7 +33,7 @@ declare -gA DEPENDENCIES_NO_APT=(
     [lime]='módulo de kernel que se compila, no se instala aquí'
     [volatility]='sin paquete apt en Kali (reemplazado por volatility3); solo se documenta'
     [nmap-vulners]='no es un binario: script NSE que se clona a mano a /usr/share/nmap/scripts/'
-    [ollama]='se instala con «curl -fsSL https://ollama.com/install.sh | sh», no es un paquete apt'
+    [ollama]='se instala con «curl -fsSL https://ollama.com/install.sh | sh», no es un paquete apt; si falta el runner llama-server, se repara reinstalando'
 )
 
 declare -ga DEPENDENCIES_ORDER=(
@@ -56,8 +56,65 @@ declare -ga DEPENDENCIES_ORDER=(
     'Dependencias adicionales|nmap-vulners' 'Dependencias adicionales|ollama'
 )
 
+# ─── Ollama: el binario solo no basta ──────────────────────
+# Sin el runner «llama-server», «ollama list» funciona pero cualquier
+# generación devuelve HTTP 500. La ruta se puede forzar con
+# OLLAMA_LLAMA_SERVER (pruebas) y la raíz con OLLAMA_INSTALL_DIR.
+# Raíz de la instalación de Ollama (<raíz>/bin/ollama → <raíz>).
+# Si el binario está suelto en un directorio sin «bin», esa misma raíz vale.
+dependencies_ollama_dir() {
+    local binario bindir
+    binario=$(command -v ollama 2>/dev/null) || return 1
+    bindir="${binario%/*}"
+    [[ "$bindir" != "$binario" ]] || bindir='.'
+    if [[ "${bindir##*/}" == 'bin' ]]; then
+        (cd "$bindir/.." 2>/dev/null && pwd)
+    else
+        (cd "$bindir" 2>/dev/null && pwd)
+    fi
+}
+
+# Ruta del runner que ejecuta los modelos. Sin él, «ollama list» funciona
+# pero cualquier generación devuelve HTTP 500.
+dependencies_ollama_runner_path() {
+    local binario bindir dir candidato
+    if [[ -n "${OLLAMA_LLAMA_SERVER:-}" ]]; then
+        [[ -x "$OLLAMA_LLAMA_SERVER" ]] && { printf '%s\n' "$OLLAMA_LLAMA_SERVER"; return 0; }
+        return 1
+    fi
+
+    local -a candidatos=()
+    if binario=$(command -v ollama 2>/dev/null) && [[ -n "$binario" ]]; then
+        bindir="${binario%/*}"
+        [[ "$bindir" != "$binario" ]] || bindir='.'
+        candidatos+=("$bindir/llama-server")
+    fi
+    if dir=$(dependencies_ollama_dir); then
+        candidatos+=("$dir/lib/ollama/llama-server")
+    fi
+    candidatos+=(
+        "${OLLAMA_INSTALL_DIR:-/usr/local}/lib/ollama/llama-server"
+        "/usr/local/lib/ollama/llama-server"
+        "/usr/lib/ollama/llama-server"
+    )
+    for candidato in "${candidatos[@]}"; do
+        [[ -x "$candidato" ]] && { printf '%s\n' "$candidato"; return 0; }
+    done
+    return 1
+}
+
+# 0 solo si están el binario y el runner que ejecuta los modelos.
+dependencies_ollama_ok() {
+    command -v ollama >/dev/null 2>&1 || return 1
+    dependencies_ollama_runner_path >/dev/null 2>&1
+}
+
 dependencies_binary_ok() {
     local binario="$1"
+    if [[ "$binario" == 'ollama' ]]; then
+        dependencies_ollama_ok
+        return $?
+    fi
     if [[ "$binario" == 'nmap-vulners' ]]; then
         [[ -f "${NMAP_VULNERS_PATH:-/usr/share/nmap/scripts/vulners.nse}" ]]
         return $?
@@ -245,9 +302,57 @@ dependencies_install_avml() {
     dependencies_verify_avml
 }
 
+# Repara solo el runner: descarga el paquete oficial y extrae lib/ollama sobre
+# la instalación existente. No reemplaza el binario ni crea un servicio nuevo,
+# así que conserva los modelos y la configuración del usuario.
+dependencies_ollama_repair_runner() {
+    local dir paquete url tmp
+    dir=$(dependencies_ollama_dir) || { printf 'No se pudo localizar la instalación de Ollama.\n' >&2; return 1; }
+    case "$(uname -m)" in
+        x86_64) paquete='ollama-linux-amd64' ;;
+        aarch64|arm64) paquete='ollama-linux-arm64' ;;
+        *) printf 'Arquitectura no soportada para reparar Ollama: %s.\n' "$(uname -m)" >&2; return 1 ;;
+    esac
+    if ! command -v zstd >/dev/null 2>&1; then
+        printf 'Falta «zstd» para extraer el paquete de Ollama. Instálalo (sudo apt install zstd) y reinténtalo.\n' >&2
+        return 1
+    fi
+    tmp=$(mktemp -p /var/tmp 2>/dev/null) || tmp=$(mktemp) || {
+        printf 'No se pudo crear un temporal para la descarga.\n' >&2; return 1; }
+    # /var/tmp está en disco; /tmp suele ser tmpfs y el paquete (~1,5 GB)
+    # competiría con la RAM del modelo en máquinas pequeñas.
+    url="https://ollama.com/download/${paquete}.tar.zst"
+    printf 'Descargando el paquete oficial de Ollama (~1,5 GB) para extraer el runner...\n' >&2
+    if ! curl -fL --retry 2 -o "$tmp" "$url"; then
+        printf 'La descarga del paquete de Ollama falló.\n' >&2
+        rm -f "$tmp"; return 1
+    fi
+    printf 'Extrayendo solo lib/ollama en %s (no toca tus modelos)...\n' "$dir" >&2
+    if ! sudo tar --zstd -xf "$tmp" -C "$dir" lib/ollama; then
+        printf 'No se pudo extraer el runner en %s.\n' "$dir" >&2
+        rm -f "$tmp"; return 1
+    fi
+    rm -f "$tmp"
+    if ! dependencies_ollama_runner_path >/dev/null 2>&1; then
+        printf 'La extracción terminó pero no se encontró «llama-server».\n' >&2
+        return 1
+    fi
+}
+
 dependencies_install_ollama() {
-    if dependencies_binary_ok ollama; then
+    if dependencies_ollama_ok; then
         printf 'ollama ya está instalado.\n' >&2
+        printf '  ✓ binario ollama y runner llama-server presentes.\n' >&2
+        dependencies_offer_model_catalog
+        return 0
+    fi
+    if command -v ollama >/dev/null 2>&1; then
+        printf 'ollama está en PATH, pero le falta el runner «llama-server»: por eso el asistente recibe HTTP 500 al generar. Se extraerá solo el runner del paquete oficial (sin tocar tus modelos ni el servicio).\n' >&2
+        printf 'Escribe OLLAMA_SI para continuar (cualquier otra entrada cancela): ' >&2
+        local reparar; IFS= read -r reparar
+        [[ "$reparar" == 'OLLAMA_SI' ]] || { printf 'Reparación de Ollama cancelada.\n' >&2; return 1; }
+        dependencies_ollama_repair_runner || return 1
+        printf 'ollama reparado correctamente (runner llama-server).\n' >&2
         dependencies_offer_model_catalog
         return 0
     fi
@@ -257,10 +362,13 @@ dependencies_install_ollama() {
     if ! curl -fsSL https://ollama.com/install.sh | sh; then
         printf 'El instalador de Ollama terminó con error.\n' >&2; return 1
     fi
-    if ! dependencies_binary_ok ollama; then
+    if ! command -v ollama >/dev/null 2>&1; then
         printf 'El instalador terminó pero «ollama» no aparece en PATH.\n' >&2; return 1
     fi
-    printf 'ollama instalado correctamente.\n' >&2
+    if ! dependencies_ollama_runner_path >/dev/null 2>&1; then
+        printf 'El instalador terminó pero sigue faltando el runner «llama-server» (revisa /usr/local/lib/ollama).\n' >&2; return 1
+    fi
+    printf 'ollama instalado correctamente (binario y runner llama-server).\n' >&2
     dependencies_offer_model_catalog
 }
 
