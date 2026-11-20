@@ -271,7 +271,7 @@ def _write_markdown(path, report):
              'Un hash y una firma no demuestran autoría, intención ni malware.',
              'Este informe describe una COPIA privada, no el soporte original.', '']
     if report['advertencias']:
-        lines.extend('## Advertencias', '')
+        lines.extend(['## Advertencias', ''])
         lines.extend('- %s' % item for item in report['advertencias'])
         lines.append('')
     lines.extend(['## Familias', '', '| Familia | Archivos |', '|---|---|'])
@@ -314,8 +314,11 @@ def check_api(api_base, delay):
     parsed = urllib.parse.urlparse(api_base)
     if parsed.scheme not in ('https', 'http') or not parsed.hostname:
         raise Unsafe('base de API inválida')
-    if parsed.hostname not in LOOPBACK:
-        if parsed.scheme != 'https' or not parsed.hostname.endswith('virustotal.com'):
+    host = parsed.hostname
+    if host not in LOOPBACK:
+        is_vt = (host == 'virustotal.com' or
+                 (host.endswith('.virustotal.com') and not host.startswith('.')))
+        if parsed.scheme != 'https' or not is_vt:
             raise Unsafe('la clave solo se envía a VirusTotal por HTTPS o a loopback')
         if delay < 15:
             raise Unsafe('la API pública limita a 4 consultas/minuto; usa --delay >= 15')

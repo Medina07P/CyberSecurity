@@ -182,6 +182,23 @@ class IoTTests(unittest.TestCase):
                              / 'report.json').read_text())
         self.assertNotIn('metadatos', report['archivos'][0])
 
+    def test_exiftool_limit_writes_warning_and_metadata_in_markdown_report(self):
+        tree = self.triage_tree({'a.png': PNG, 'b.png': PNG + b'2'})
+        self.stub('exiftool', 'printf \'[{"MIMEType": "image/png", "ImageWidth": 64}]\\n\'')
+        result = self.invoke('triage', tree, '--exiftool', '--exiftool-limit', '1')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        run = self.read('triage')
+        self.assertEqual(run['state'], 'COMPLETADO')
+        analysis = Path(run['artifact_roots']['analysis'])
+        report = json.loads((analysis / 'report.json').read_text())
+        self.assertEqual(len(report['advertencias']), 1)
+        self.assertIn('Metadatos limitados a 1 archivos', report['advertencias'][0])
+        self.assertEqual(sum(1 for row in report['archivos'] if 'metadatos' in row), 1)
+        markdown = (analysis / 'report.md').read_text()
+        self.assertIn('## Advertencias', markdown)
+        self.assertIn('Metadatos limitados a 1 archivos', markdown)
+        self.assertIn('## Metadatos (exiftool, subconjunto)', markdown)
+
     # --- VirusTotal v3 -------------------------------------------------
 
     def server(self, answers):
@@ -250,6 +267,30 @@ class IoTTests(unittest.TestCase):
         env = dict(self.env, VT_API_KEY=KEY)
         result = self.invoke('lookup', run_dir, '--api-base', 'http://example.test/api/v3',
                              '--delay', '0', '--limit', '1',
+                             input='CONSULTAR_VIRUSTOTAL\n', env=env)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('solo se envía a VirusTotal por HTTPS', result.stderr)
+        self.assertEqual(self.runs('lookup'), [])
+
+    def test_lookup_and_vt_check_reject_spoofed_virustotal_suffixes(self):
+        for bad_url in ('https://evilvirustotal.com/api/v3',
+                        'https://virustotal.com.evil.test/api/v3',
+                        'https://.virustotal.com/api/v3'):
+            with self.subTest(url=bad_url):
+                check = self.helper('vt-check', '--api-base', bad_url, '--delay', '16')
+                self.assertEqual(check.returncode, 2)
+                self.assertIn('solo se envía a VirusTotal por HTTPS', check.stderr)
+        for good_url in ('https://www.virustotal.com/api/v3',
+                         'https://virustotal.com/api/v3'):
+            with self.subTest(url=good_url):
+                check = self.helper('vt-check', '--api-base', good_url, '--delay', '16')
+                self.assertEqual(check.returncode, 0, check.stderr)
+        tree = self.triage_tree({'uno.txt': b'texto\n'})
+        self.assertEqual(self.invoke('triage', tree).returncode, 0)
+        run_dir = self.runs('triage')[-1].parent
+        env = dict(self.env, VT_API_KEY=KEY)
+        result = self.invoke('lookup', run_dir, '--api-base', 'https://evilvirustotal.com/api/v3',
+                             '--delay', '16', '--limit', '1',
                              input='CONSULTAR_VIRUSTOTAL\n', env=env)
         self.assertEqual(result.returncode, 2)
         self.assertIn('solo se envía a VirusTotal por HTTPS', result.stderr)
