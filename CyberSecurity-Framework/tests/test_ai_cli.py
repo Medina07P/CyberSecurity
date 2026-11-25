@@ -610,6 +610,31 @@ class SummaryRecoveryTests(CliBase):
         self.assertNotIn("N borra también el resumen guardado anterior", p.stdout)
         self.assertNotIn("Resumen guardado anterior borrado.", p.stdout)
 
+    def test_invalid_session_target_and_symlink_or_preexisting_data_dir(self):
+        self.session_file.write_text("..\n", encoding="utf-8")
+        p = self.run_cli(["estado"], server=None)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("Objetivo de la sesión: (sin objetivo)", p.stdout)
+
+        shared = Path(self.base.name) / "shared_dir"
+        shared.mkdir(mode=0o755)
+        shared.chmod(0o755)
+        env = self._env()
+        env["AI_DATA_DIR"] = str(shared)
+        self._write_config("http://127.0.0.1:1")
+        p_pre = subprocess.run([sys.executable, str(SCRIPT), "estado"], env=env,
+                               capture_output=True, text=True, timeout=30)
+        self.assertEqual(p_pre.returncode, 0, p_pre.stderr)
+        self.assertEqual(shared.stat().st_mode & 0o777, 0o755)
+
+        link = Path(self.base.name) / "link_dir"
+        link.symlink_to(shared)
+        env["AI_DATA_DIR"] = str(link)
+        p_link = subprocess.run([sys.executable, str(SCRIPT), "estado"], env=env,
+                                capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(p_link.returncode, 0)
+        self.assertIn("enlace simbólico", p_link.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

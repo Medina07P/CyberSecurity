@@ -10,6 +10,8 @@ MARK = "[REDACTADO]"
 _KEYS = (r"(?:aws_)?secret[_-]?(?:access[_-]?)?key|access[_-]?key|private[_-]?key"
          r"|password|passwd|pwd|api[_-]?key|apikey|token|secret|\bpass")
 _VALUE = r"(?:\"[^\"\r\n]{0,4096}\"|'[^'\r\n]{0,4096}'|[^\s\"',&;]+)"
+_COLON_VALUE = r"(?:\"[^\"\r\n]{0,4096}\"|'[^'\r\n]{0,4096}'|[^\s\"',]+)"
+_KEYED_COLON = re.compile(r"(?i)((?:" + _KEYS + r")[\"']?[ \t]*:[ \t]+)" + _COLON_VALUE)
 _KEYED = re.compile(r"(?i)((?:" + _KEYS + r")[\"']?[ \t]*[=:][ \t]*)" + _VALUE)
 _CLI_LONG = re.compile(
     r"(?i)(--(?:password|passwd|pass|pwd|token|secret|api-?key)(?:[ \t]+|=))" + _VALUE)
@@ -28,6 +30,7 @@ _BEARER = re.compile(r"(?i)\b(Bearer|Basic)[ \t]+[A-Za-z0-9._~+/=-]+")
 _CRYPT = re.compile(r"\$(?:1|5|6|2[abxy]|y)\$[^\s:]+")
 _GH = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})")
 _URL_USERINFO = re.compile(r"(://[^\s/:@]{1,256}:)[^\s/@]{1,512}(@)")
+_JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")
 _HEX = re.compile(r"(?<![0-9A-Za-z])[0-9a-fA-F]{32,64}(?![0-9A-Za-z])")
 
 
@@ -52,16 +55,28 @@ def _pem(text: str) -> str:
 
 
 def redact(text: str) -> str:
-    text = _pem(text)
-    text = _COOKIE.sub(lambda m: m.group(1) + MARK, text)
-    text = _AUTH.sub(lambda m: m.group(1) + MARK, text)
+    if "-----BEGIN " in text:
+        text = _pem(text)
+    if ":" in text:
+        text = _COOKIE.sub(lambda m: m.group(1) + MARK, text)
+        text = _AUTH.sub(lambda m: m.group(1) + MARK, text)
     text = _AWS.sub(MARK, text)
-    text = _CLI_LONG.sub(lambda m: m.group(1) + MARK, text)
-    text = _CLI_P.sub(lambda m: m.group(1) + MARK, text)
-    text = _CRYPT.sub(MARK, text)
-    text = _GH.sub(MARK, text)
+    if "--" in text:
+        text = _CLI_LONG.sub(lambda m: m.group(1) + MARK, text)
+    if "-p" in text:
+        text = _CLI_P.sub(lambda m: m.group(1) + MARK, text)
+    if "$" in text:
+        text = _CRYPT.sub(MARK, text)
+    if "gh" in text or "github_pat_" in text:
+        text = _GH.sub(MARK, text)
     text = _BEARER.sub(lambda m: m.group(1) + " " + MARK, text)
-    text = _URL_USERINFO.sub(lambda m: m.group(1) + MARK + m.group(2), text)
-    text = _KEYED.sub(lambda m: m.group(1) + MARK, text)
+    if "://" in text:
+        text = _URL_USERINFO.sub(lambda m: m.group(1) + MARK + m.group(2), text)
+    if ":" in text:
+        text = _KEYED_COLON.sub(lambda m: m.group(1) + MARK, text)
+    if "=" in text or ":" in text:
+        text = _KEYED.sub(lambda m: m.group(1) + MARK, text)
+    if "eyJ" in text:
+        text = _JWT.sub(MARK, text)
     text = _HEX.sub(_hex, text)
     return text

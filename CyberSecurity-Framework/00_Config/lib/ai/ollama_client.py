@@ -35,8 +35,13 @@ class OllamaClient:
         try:
             parsed = urlparse(endpoint)
             host = parsed.hostname
-            parsed.port  # valida el puerto (puede lanzar ValueError)
+            port = parsed.port  # valida el puerto (puede lanzar ValueError)
         except (ValueError, AttributeError):
+            raise OllamaError(
+                "La dirección de Ollama configurada no es válida. Revisa el "
+                "endpoint en la configuración del asistente.")
+        scheme = (parsed.scheme or "").lower()
+        if scheme not in ("http", "https") or not host:
             raise OllamaError(
                 "La dirección de Ollama configurada no es válida. Revisa el "
                 "endpoint en la configuración del asistente.")
@@ -47,6 +52,11 @@ class OllamaClient:
                 "de esta máquina salvo que se permita explícitamente."
                 % (host or "dirección desconocida"))
         self.endpoint = endpoint.rstrip("/")
+        display_host = f"[{host}]" if ":" in host else host
+        self._display_endpoint = (
+            f"{scheme}://{display_host}:{port}" if port is not None
+            else f"{scheme}://{display_host}"
+        )
         self.model = model
         self.timeout = timeout
         # Sin proxies del entorno: nada de lo local debe salir por HTTP(S)_PROXY.
@@ -56,7 +66,7 @@ class OllamaClient:
     def _no_server(self):
         return OllamaError(
             "No se pudo conectar con Ollama en %s. Comprueba que está "
-            "arrancado (ollama serve)." % self.endpoint)
+            "arrancado (ollama serve)." % self._display_endpoint)
 
     def _no_model(self):
         return OllamaError(

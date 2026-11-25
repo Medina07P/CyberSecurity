@@ -100,6 +100,18 @@ class ClientTests(unittest.TestCase):
         self.assertNotIn("s3cretpw", str(cm.exception))
         self.assertNotIn("s3cretpw", cm.exception.user_message)
 
+    def test_no_server_hides_userinfo_and_non_http_rejected(self):
+        with self.assertRaises(OllamaError):
+            OllamaClient("file:///tmp", "m")
+        with self.assertRaises(OllamaError):
+            OllamaClient("file://localhost/tmp", "m")
+        c = OllamaClient("http://user:s3cretpw@127.0.0.1:1", "m", timeout=1)
+        with self.assertRaises(OllamaError) as cm:
+            c.chat([{"role": "user", "content": "x"}])
+        self.assertNotIn("s3cretpw", cm.exception.user_message)
+        self.assertNotIn("user:", cm.exception.user_message)
+        self.assertIn("http://127.0.0.1:1", cm.exception.user_message)
+
     def test_connection_refused_gives_spanish_message(self):
         s = self.serve()
         url = s.url

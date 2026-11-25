@@ -50,24 +50,26 @@ dependencies_model_lookup() {
 dependencies_general_model_size() {
     python3 -c '
 import os, sys
-sys.path.insert(0, "'"$DEPENDENCIES_LIB_DIR"'")
+lib_dir = sys.argv[1]
+sys.path.insert(0, lib_dir)
 from ai.hardware import read_mem_available_gib, has_nvidia_gpu, has_amd_gpu, recommend_model, MODEL_1B, MODEL_3B, MODEL_7B, MODEL_14B
 mem = read_mem_available_gib(os.environ.get("DEPENDENCIES_MEMINFO_PATH", "/proc/meminfo"))
 rec = recommend_model(mem, has_nvidia_gpu(), has_amd_gpu())
 print({MODEL_1B: "1b", MODEL_3B: "3b", MODEL_7B: "7b", MODEL_14B: "14b"}.get(rec.model, "3b"))
-'
+' "$DEPENDENCIES_LIB_DIR"
 }
 
 dependencies_mem_check() {
     python3 -c '
 import os, sys
-sys.path.insert(0, "'"$DEPENDENCIES_LIB_DIR"'")
+lib_dir = sys.argv[1]
+sys.path.insert(0, lib_dir)
 from ai.hardware import read_mem_available_gib
-necesaria = float(sys.argv[1])
+necesaria = float(sys.argv[2])
 disponible = read_mem_available_gib(os.environ.get("DEPENDENCIES_MEMINFO_PATH", "/proc/meminfo"))
 print(f"{disponible:.1f}")
 sys.exit(0 if disponible >= necesaria else 1)
-' "$1"
+' "$DEPENDENCIES_LIB_DIR" "$1"
 }
 
 dependencies_pull_model() {

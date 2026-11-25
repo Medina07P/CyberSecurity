@@ -74,12 +74,26 @@ def data_dir() -> Path:
     # índice en get_index/cmd_reindexar para no auto-ingerirse.
     env = os.environ.get("AI_DATA_DIR")
     d = Path(env) if env else (framework_root() / "09_Automation" / "ai" / "data")
+    if d.is_symlink():
+        raise OllamaError("El directorio de datos del asistente no puede ser un enlace simbólico.")
+    existed = d.exists()
     d.mkdir(parents=True, exist_ok=True)
-    try:
-        os.chmod(d, 0o700)
-    except OSError:
-        pass
+    if not existed or not env:
+        try:
+            os.chmod(d, 0o700)
+        except OSError:
+            pass
     return d
+
+
+def _valid_session_target(value: str) -> bool:
+    if not value or len(value) > 253:
+        return False
+    if value in (".", "..") or "/" in value or "\\" in value or "\x00" in value:
+        return False
+    if any(ch.isspace() for ch in value):
+        return False
+    return True
 
 
 def read_target(fw: Path):
@@ -87,8 +101,9 @@ def read_target(fw: Path):
     path = Path(sf) if sf else (fw / "00_Config" / ".session")
     try:
         for line in path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                return line.strip()
+            val = line.strip()
+            if val:
+                return val if _valid_session_target(val) else None
     except OSError:
         pass
     return None

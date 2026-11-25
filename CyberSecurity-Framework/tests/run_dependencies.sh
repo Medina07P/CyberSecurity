@@ -10,12 +10,34 @@ source "$FW/00_Config/lib/dependencies_models.bash"
 # verdad en esta máquina (p.ej. tras usar la opción D), un PATH abierto los
 # deja "ya instalados" según dependencies_binary_ok y las pruebas de
 # confirmación negada / fallo del instalador dejan de ser deterministas.
-# Se excluye cualquier directorio del PATH real que ya tenga uno de los dos.
-CLEAN_PATH="$(IFS=:; for d in $PATH; do
-    [[ -x "$d/avml" || -x "$d/ollama" ]] && continue
-    printf '%s:' "$d"
-done)"
-CLEAN_PATH="${CLEAN_PATH%:}"
+# Se excluyen solo avml, ollama y llama-server en un directorio espejo cuando
+# algún componente del PATH real los contiene (sin eliminar /usr/bin entero).
+CLEAN_BIN="$(mktemp -d)"
+CLEAN_PATH="$(python3 - "$CLEAN_BIN" "$PATH" <<'PY'
+import os, sys
+root, path_env = sys.argv[1], sys.argv[2]
+hide = {"avml", "ollama", "llama-server"}
+out = []
+for idx, d in enumerate(path_env.split(":")):
+    if not d or not os.path.isdir(d):
+        continue
+    if any(os.access(os.path.join(d, h), os.X_OK) for h in hide):
+        mirror = os.path.join(root, f"m{idx}")
+        os.mkdir(mirror, 0o700)
+        for name in os.listdir(d):
+            if name in hide:
+                continue
+            src = os.path.join(d, name)
+            try:
+                os.symlink(src, os.path.join(mirror, name))
+            except OSError:
+                pass
+        out.append(mirror)
+    else:
+        out.append(d)
+print(":".join(out), end="")
+PY
+)"
 
 pasan=0; fallan=0
 ok()  { echo "  ok   $1"; pasan=$((pasan+1)); }
@@ -23,7 +45,7 @@ ko()  { echo "  FALLO $1"; fallan=$((fallan+1)); }
 eq()  { [[ "$2" == "$3" ]] && ok "$1" || ko "$1 (esperado '$3', obtenido '$2')"; }
 
 echo "=== dependencies_binary_ok ==="
-TMPBIN="$(mktemp -d)"; trap 'rm -rf "$TMPBIN"' EXIT
+TMPBIN="$(mktemp -d)"; trap 'rm -rf "$TMPBIN" "$CLEAN_BIN"' EXIT
 printf '#!/bin/sh\n' > "$TMPBIN/presente"; chmod +x "$TMPBIN/presente"
 bash -c "export PATH='$TMPBIN'; source '$FW/00_Config/lib/dependencies.bash'; dependencies_binary_ok presente"
 eq "binario presente en PATH cerrado" "$?" "0"
@@ -212,11 +234,15 @@ chmod +x "$STUBDIR/sudo"
 cat > "$STUBDIR/curl" <<'EOF'
 #!/bin/sh
 echo "curl $*" >> "$CALLS"
-out=""; prev=""
+out=""; prev=""; read_cfg=0
 for a in "$@"; do
     [ "$prev" = "-o" ] && out="$a"
+    [ "$prev" = "-K" ] && [ "$a" = "-" ] && read_cfg=1
     prev="$a"
 done
+if [ "$read_cfg" = "1" ] && [ -n "${CURL_STDIN_LOG:-}" ]; then
+    cat > "$CURL_STDIN_LOG"
+fi
 last=""
 for a in "$@"; do last="$a"; done
 case "$last" in
@@ -245,6 +271,16 @@ cat > "$STUBDIR/fixture.json" <<'JSON'
 JSON
 out=$(CURL_JSON_FILE="$STUBDIR/fixture.json" PATH="$STUBDIR:$CLEAN_PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_avml_release")
 eq "tag y URL del asset avml" "$out" "v0.99.0|https://example.invalid/avml"
+
+KEYS_SEC="$STUBDIR/keys_sec.yaml"
+STDIN_LOG="$STUBDIR/stdin.log"
+printf 'version: 1\ntheharvester:\n  github:\n    key: tok-secreto-xyz\n' > "$KEYS_SEC"
+: > "$CALLS"
+out=$(KEYS_FILE="$KEYS_SEC" CURL_STDIN_LOG="$STDIN_LOG" CURL_JSON_FILE="$STUBDIR/fixture.json" PATH="$STUBDIR:$CLEAN_PATH" bash -c "source '$FW/00_Config/lib/dependencies.bash'; dependencies_avml_release")
+eq "avml release con token devuelve tag|url" "$out" "v0.99.0|https://example.invalid/avml"
+eq "token no aparece en argv de curl" "$(grep -c -F 'tok-secreto-xyz' "$CALLS")" "0"
+grep -q -F 'Authorization: Bearer tok-secreto-xyz' "$STDIN_LOG" && ok "token enviado por stdin (-K -)" || ko "token enviado por stdin (-K -)"
+rm -f "$KEYS_SEC" "$STDIN_LOG"
 
 cat > "$STUBDIR/sin-asset.json" <<'JSON'
 {"tag_name": "v0.99.0", "assets": [{"name": "avml-arm64", "browser_download_url": "https://example.invalid/arm"}]}

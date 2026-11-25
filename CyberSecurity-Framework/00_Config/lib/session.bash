@@ -28,7 +28,7 @@ validate_target() {
     if [[ "$t" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
         for o in "${BASH_REMATCH[@]:1:4}"; do
             [[ "$o" =~ ^[0-9]+$ ]] || return 1
-            (( o >= 0 && o <= 255 )) || return 1
+            (( 10#$o >= 0 && 10#$o <= 255 )) || return 1
         done
         return 0
     fi
@@ -173,7 +173,7 @@ scope_add_target() {
     ins_line="${ins%%|*}"
     pad="${ins#*|}"
 
-    tmp="$SESSION_SCOPE_FILE.auto.tmp"
+    tmp=$(mktemp "$(dirname "$SESSION_SCOPE_FILE")/.scope.auto.XXXXXX") || return 2
     if ! awk -v ins="$ins_line" -v pad="$pad" -v add="$(printf '%s\n' "${missing[@]}")" '
         { print }
         NR == ins {
@@ -205,9 +205,10 @@ scope_add_target() {
 
     # La copia se hace justo antes de sustituir: .bak es siempre el estado
     # previo al último cambio bueno, no el de un intento fallido.
-    cp -f "$SESSION_SCOPE_FILE" "$SESSION_SCOPE_FILE.bak" || { rm -f "$tmp"; return 2; }
+    rm -f "$SESSION_SCOPE_FILE.bak"
+    cp -p "$SESSION_SCOPE_FILE" "$SESSION_SCOPE_FILE.bak" || { rm -f "$tmp"; return 2; }
     chmod --reference="$SESSION_SCOPE_FILE" "$tmp" 2>/dev/null
-    mv -f "$tmp" "$SESSION_SCOPE_FILE" || return 2
+    mv -f "$tmp" "$SESSION_SCOPE_FILE" || { rm -f "$tmp"; return 2; }
 
     for i in "${missing[@]}"; do
         printf '   + scope.yaml: %s\n' "$i" >&2
@@ -280,69 +281,86 @@ targets_add_entry() {
 
 # ─── Comprobación de alcance (mejor esfuerzo) ──────────────
 
-# _ip_to_int <a.b.c.d> → entero de 32 bits
+# _ip_to_int <a.b.c.d> → entero de 32 bits (base 10 estricta, 0..255)
 _ip_to_int() {
-    local a b c d
-    IFS=. read -r a b c d <<< "$1"
-    [[ -n "$d" ]] || return 1
-    printf '%s\n' "$(( (a << 24) + (b << 16) + (c << 8) + d ))"
+    local ip="$1" a b c d
+    [[ "$ip" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || return 1
+    a="${BASH_REMATCH[1]}" b="${BASH_REMATCH[2]}" c="${BASH_REMATCH[3]}" d="${BASH_REMATCH[4]}"
+    (( 10#$a <= 255 && 10#$b <= 255 && 10#$c <= 255 && 10#$d <= 255 )) || return 1
+    printf '%s\n' "$(( (10#$a << 24) + (10#$b << 16) + (10#$c << 8) + 10#$d ))"
 }
 
-# scope_allows <objetivo> → 0 si encaja en scope.yaml, 1 si no, 2 si no se puede interpretar
+_scope_ip_matches_list() {
+    local t_int="$1" list="$2" entry base bits b_int mask
+    while IFS= read -r entry; do
+        [[ -z "$entry" ]] && continue
+        if [[ "$entry" == */* ]]; then
+            base="${entry%/*}"; bits="${entry#*/}"
+        else
+            base="$entry"; bits=32
+        fi
+        [[ "$bits" =~ ^[0-9]+$ ]] || continue
+        (( 10#$bits >= 0 && 10#$bits <= 32 )) || continue
+        b_int=$(_ip_to_int "$base") || continue
+        if (( 10#$bits == 0 )); then
+            mask=0
+        else
+            mask=$(( (0xFFFFFFFF << (32 - 10#$bits)) & 0xFFFFFFFF ))
+        fi
+        (( (t_int & mask) == (b_int & mask) )) && return 0
+    done <<< "$list"
+    return 1
+}
+
+_scope_domain_matches_list() {
+    local target="${1,,}" list="$2" dom
+    while IFS= read -r dom; do
+        [[ -z "$dom" ]] && continue
+        dom="${dom,,}"
+        if [[ "$dom" == *"*"* ]]; then
+            dom="${dom#\*.}"
+            [[ "$target" == *".$dom" || "$target" == "$dom" ]] && return 0
+        else
+            [[ "$target" == "$dom" ]] && return 0
+        fi
+    done <<< "$list"
+    return 1
+}
+
+# scope_allows <objetivo> → 0 si encaja en scope.yaml, 1 si no o excluido, 2 si no se puede interpretar
 scope_allows() {
     local target="$1" scope="$SESSION_SCOPE_FILE"
     [[ -f "$scope" ]] || return 2
+    [[ -n "$target" ]] || return 2
 
-    local allowed domains="" d
-    allowed=$(grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?' "$scope" 2>/dev/null)
-    # Los dominios salen solo de targets.domains: una regla excluida o el email
-    # de contacto no autorizan nada.
-    while IFS= read -r d; do
-        d=$(_scope_normalize "$d")
-        [[ -n "$d" ]] && domains+="$d"$'\n'
+    local allowed="" domains="" excluded="" v
+    while IFS= read -r v; do
+        v=$(_scope_normalize "$v")
+        [[ -n "$v" ]] && allowed+="$v"$'\n'
+    done < <(_scope_block_values ips "$scope")
+    while IFS= read -r v; do
+        v=$(_scope_normalize "$v")
+        [[ -n "$v" ]] && domains+="$v"$'\n'
     done < <(_scope_block_values domains "$scope")
+    while IFS= read -r v; do
+        v=$(_scope_normalize "$v")
+        [[ -n "$v" ]] && excluded+="$v"$'\n'
+    done < <(_scope_block_values excluded "$scope")
 
     # Sin ninguna regla interpretable no se puede opinar (2 = no determinado).
-    [[ -z "$allowed" && -z "$domains" ]] && return 2
+    [[ -z "$allowed" && -z "$domains" && -z "$excluded" ]] && return 2
 
-    local t_int cidr base bits mask
-    if validate_target "$target" && [[ "$target" =~ ^[0-9] ]]; then
-        [[ -z "$allowed" ]] && return 2
+    if validate_target "$target" && [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        local t_int
         t_int=$(_ip_to_int "$target") || return 2
-        local entry
-        while IFS= read -r entry; do
-            if [[ "$entry" == */* ]]; then
-                base="${entry%/*}"; bits="${entry#*/}"
-            else
-                base="$entry"; bits=32
-            fi
-            [[ "$bits" =~ ^[0-9]+$ ]] || continue
-            (( bits >= 0 && bits <= 32 )) || continue
-            local b_int
-            b_int=$(_ip_to_int "$base") || continue
-            if (( bits == 0 )); then
-                mask=0
-            else
-                mask=$(( (0xFFFFFFFF << (32 - bits)) & 0xFFFFFFFF ))
-            fi
-            (( (t_int & mask) == (b_int & mask) )) && return 0
-        done <<< "$allowed"
+        _scope_ip_matches_list "$t_int" "$excluded" && return 1
+        [[ -z "$allowed" ]] && return 2
+        _scope_ip_matches_list "$t_int" "$allowed" && return 0
         return 1
     fi
 
-    # Dominio: coincidencia exacta para las entradas peladas y por sufijo
-    # para las que llevan comodín (*.dominio).
-    local dom
-    while IFS= read -r dom; do
-        [[ -z "$dom" ]] && continue
-        if [[ "$dom" == *"*"* ]]; then
-            dom="${dom#\*.}"
-            [[ "${target,,}" == *".${dom,,}" || "${target,,}" == "${dom,,}" ]] && return 0
-        else
-            [[ "${target,,}" == "${dom,,}" ]] && return 0
-        fi
-    done <<< "$domains"
-    # Había reglas y ninguna encaja: está fuera (1), no «no determinado» (2).
-    [[ -n "$domains" ]] && return 1
-    return 2
+    _scope_domain_matches_list "$target" "$excluded" && return 1
+    [[ -n "$domains" ]] || return 2
+    _scope_domain_matches_list "$target" "$domains" && return 0
+    return 1
 }

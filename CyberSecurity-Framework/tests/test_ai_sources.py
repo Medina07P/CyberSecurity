@@ -87,6 +87,13 @@ class DiscoverTests(Base):
         self.assertEqual(d["../scans/nikto/nikto_http___h.txt"].target, sources.slug("http://h"))
         self.assertEqual(sources.slug("http://h:8443/x"), "http___h_8443_x")
 
+    def test_slug_blocks_traversal_and_backslashes(self):
+        self.assertEqual(sources.slug(".."), "__")
+        self.assertEqual(sources.slug("."), "_")
+        self.assertEqual(sources.slug("../etc"), "___etc")
+        self.assertEqual(sources.slug("a\\b"), "a_b")
+        self.assertEqual(sources.slug("x\x00y"), "xy")
+
     def test_large_file_truncated_to_max_bytes(self):
         p = self.fw / "big.md"
         with open(p, "wb") as f:
@@ -221,6 +228,12 @@ class RedactExtraTests(unittest.TestCase):
         b64 = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYFAKEKEY=="
         self.chk("aws_secret_access_key = " + b64, [b64])
         self.chk("private_key: " + b64, [b64])
+
+    def test_jwt_and_colon_ampersand_redacted(self):
+        self.chk("password: abc&123;xyz resto", ["abc", "123", "xyz"], ["resto"])
+        self.chk("token: sec&val", ["sec", "val"])
+        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjoiYSJ9.signatura123"
+        self.chk("token en log " + jwt + " fin", [jwt], ["token en log", "fin"])
 
     def test_quoted_values_with_spaces(self):
         self.chk('password: "hunter two"', ["hunter", "two"])

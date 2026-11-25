@@ -36,7 +36,12 @@ DATA_DIR_REL_PARTS = ("09_Automation", "ai", "data")
 
 
 def slug(target: str) -> str:
-    return target.replace(":", "_").replace("/", "_")
+    cleaned = target.replace("\x00", "").replace(":", "_").replace("/", "_").replace("\\", "_")
+    while ".." in cleaned:
+        cleaned = cleaned.replace("..", "__")
+    if cleaned in ("", "."):
+        return "_"
+    return cleaned
 
 
 def _abs(path) -> str:

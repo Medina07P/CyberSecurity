@@ -92,11 +92,15 @@ dependencies_ollama_runner_path() {
     if dir=$(dependencies_ollama_dir); then
         candidatos+=("$dir/lib/ollama/llama-server")
     fi
-    candidatos+=(
-        "${OLLAMA_INSTALL_DIR:-/usr/local}/lib/ollama/llama-server"
-        "/usr/local/lib/ollama/llama-server"
-        "/usr/lib/ollama/llama-server"
-    )
+    if [[ -n "${OLLAMA_INSTALL_DIR:-}" ]]; then
+        candidatos+=("${OLLAMA_INSTALL_DIR}/lib/ollama/llama-server")
+    fi
+    if [[ -z "${binario:-}" || "$binario" == /usr/* || "$binario" == /bin/* || "$binario" == /sbin/* ]]; then
+        candidatos+=(
+            "/usr/local/lib/ollama/llama-server"
+            "/usr/lib/ollama/llama-server"
+        )
+    fi
     for candidato in "${candidatos[@]}"; do
         [[ -x "$candidato" ]] && { printf '%s\n' "$candidato"; return 0; }
     done
@@ -225,16 +229,17 @@ dependencies_install_nmap_vulners() {
 dependencies_github_token() {
     python3 -c '
 import sys, os
-sys.path.insert(0, "'"$DEPENDENCIES_LIB_DIR"'")
+lib_dir = sys.argv[1]
+sys.path.insert(0, lib_dir)
 from pathlib import Path
 from osint.credentials import load_credentials
-fw = Path("'"$DEPENDENCIES_LIB_DIR"'").resolve().parents[1]
+fw = Path(lib_dir).resolve().parents[1]
 registry = Path(os.environ.get("KEYS_FILE", fw / "00_Config/credentials/api-keys.yaml"))
 try:
     print(load_credentials(registry, []).get("github", ""), end="")
 except Exception:
     pass
-'
+' "$DEPENDENCIES_LIB_DIR"
 }
 
 dependencies_offer_github_token() {
@@ -248,8 +253,11 @@ dependencies_offer_github_token() {
 dependencies_avml_release() {
     local token json
     token=$(dependencies_github_token)
-    if [[ -n "$token" ]]; then
-        json=$(curl -fsSL -H "Authorization: Bearer $token" https://api.github.com/repos/microsoft/avml/releases/latest)
+    if [[ -n "$token" && "$token" != *$'\n'* && "$token" != *$'\r'* ]]; then
+        local escaped="${token//\\/\\\\}"
+        escaped="${escaped//\"/\\\"}"
+        json=$(printf 'header = "Authorization: Bearer %s"\n' "$escaped" | \
+            curl -fsSL -K - https://api.github.com/repos/microsoft/avml/releases/latest)
     else
         json=$(curl -fsSL https://api.github.com/repos/microsoft/avml/releases/latest)
     fi
@@ -323,55 +331,60 @@ dependencies_descargar_archivo() {
     fi
 
     if [[ "$total" =~ ^[0-9]+$ ]] && (( total >= 8*1024*1024 && conexiones > 1 )); then
-        printf '⚙  Descargando con %s conexiones paralelas...\n' "$conexiones" >&2
-        for ((i = 0; i < conexiones; i++)); do
-            inicio=$(( total * i / conexiones ))
-            fin=$(( total * (i + 1) / conexiones - 1 ))
-            parte="$destino.parte$i"
-            partes+=("$parte")
-            curl -sS -fL --retry 2 -r "$inicio-$fin" -o "$parte" "$url" &
-            pids+=($!)
-        done
-
-        while :; do
-            vivos=0
-            for pid in "${pids[@]}"; do
-                estado=$(ps -o stat= -p "$pid" 2>/dev/null | tr -d '[:space:]')
-                [[ -n "$estado" && "$estado" != Z* ]] && { vivos=1; break; }
-            done
-            (( vivos )) || break
-            size=0
-            for parte in "${partes[@]}"; do
-                size_parte=$(stat -c %s "$parte" 2>/dev/null || echo 0)
-                size=$(( size + size_parte ))
-            done
-            printf '\r  ↓ %s / %s MiB descargados...' "$((size / 1048576))" "$((total / 1048576))" >&2
-            sleep 3
-        done
-
-        for pid in "${pids[@]}"; do
-            wait "$pid" || rc=1
-        done
-        if (( rc == 0 )); then
+        local dest_dir="${destino%/*}" partdir=""
+        [[ "$dest_dir" != "$destino" && -n "$dest_dir" ]] || dest_dir='.'
+        partdir=$(mktemp -d -p "$dest_dir" ".cs-dl.XXXXXX" 2>/dev/null) || partdir=$(mktemp -d) || partdir=''
+        if [[ -n "$partdir" ]]; then
+            printf '⚙  Descargando con %s conexiones paralelas...\n' "$conexiones" >&2
             for ((i = 0; i < conexiones; i++)); do
                 inicio=$(( total * i / conexiones ))
                 fin=$(( total * (i + 1) / conexiones - 1 ))
-                esperado=$(( fin - inicio + 1 ))
-                size=$(stat -c %s "${partes[$i]}" 2>/dev/null || echo 0)
-                (( size == esperado )) || { rc=1; break; }
+                parte="$partdir/parte$i"
+                partes+=("$parte")
+                curl -sS -fL --retry 2 -r "$inicio-$fin" -o "$parte" "$url" &
+                pids+=($!)
             done
-        fi
-        if (( rc == 0 )); then
-            if cat "${partes[@]}" > "$destino"; then
-                printf '\r  ↓ %s / %s MiB descargados.\n' "$((total / 1048576))" "$((total / 1048576))" >&2
-            else
-                rc=1
+
+            while :; do
+                vivos=0
+                for pid in "${pids[@]}"; do
+                    estado=$(ps -o stat= -p "$pid" 2>/dev/null | tr -d '[:space:]')
+                    [[ -n "$estado" && "$estado" != Z* ]] && { vivos=1; break; }
+                done
+                (( vivos )) || break
+                size=0
+                for parte in "${partes[@]}"; do
+                    size_parte=$(stat -c %s "$parte" 2>/dev/null || echo 0)
+                    size=$(( size + size_parte ))
+                done
+                printf '\r  ↓ %s / %s MiB descargados...' "$((size / 1048576))" "$((total / 1048576))" >&2
+                sleep 3
+            done
+
+            for pid in "${pids[@]}"; do
+                wait "$pid" || rc=1
+            done
+            if (( rc == 0 )); then
+                for ((i = 0; i < conexiones; i++)); do
+                    inicio=$(( total * i / conexiones ))
+                    fin=$(( total * (i + 1) / conexiones - 1 ))
+                    esperado=$(( fin - inicio + 1 ))
+                    size=$(stat -c %s "${partes[$i]}" 2>/dev/null || echo 0)
+                    (( size == esperado )) || { rc=1; break; }
+                done
             fi
-        else
-            printf '\n⚠  La descarga por partes no cuadró; se reintenta con una sola conexión.\n' >&2
+            if (( rc == 0 )); then
+                if cat "${partes[@]}" > "$destino"; then
+                    printf '\r  ↓ %s / %s MiB descargados.\n' "$((total / 1048576))" "$((total / 1048576))" >&2
+                else
+                    rc=1
+                fi
+            else
+                printf '\n⚠  La descarga por partes no cuadró; se reintenta con una sola conexión.\n' >&2
+            fi
+            rm -rf "$partdir"
+            (( rc == 0 )) && return 0
         fi
-        rm -f "${partes[@]}"
-        (( rc == 0 )) && return 0
     fi
 
     # Una sola conexión, o reintento tras un reparto fallido.
